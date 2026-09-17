@@ -37,3 +37,6 @@ device_settings.json
 .idea/
 Thumbs.db
 desktop.ini
+
+# Redistribuiveis de terceiros: baixados pelo CI, nao versionados
+apps/desktop-pdv/packaging/redist/*.exe

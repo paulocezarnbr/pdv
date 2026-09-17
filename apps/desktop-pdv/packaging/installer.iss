@@ -4,6 +4,11 @@
 ;  Compilar:  ISCC.exe packaging\installer.iss
 ;  Requer:    Inno Setup 6.2+  (https://jrsoftware.org/isdl.php)
 ;             build do PyInstaller ja feito em dist\PDV\
+;             packaging\redist\VC_redist.x64.exe  (ver redist\README.md)
+;
+;  Instalador AUTOSSUFICIENTE: um unico .exe, sem pre-requisito manual.
+;  O runtime Python e todas as bibliotecas ja vem embarcados no build do
+;  PyInstaller - o lojista NAO instala Python nem roda pip.
 ;
 ;  Modelo de permissao adotado:
 ;    Program Files  -> Administradores/SYSTEM: total | Usuarios: ler+executar
@@ -55,12 +60,21 @@ Name: "autostart";  Description: "Iniciar o PDV junto com o Windows"; GroupDescr
 Name: "firewall";   Description: "Liberar a porta do servidor local (app do garcom na rede da loja)"; GroupDescription: "Rede:"
 
 [Files]
-; Todo o build onedir do PyInstaller.
+; Todo o build onedir do PyInstaller: ja inclui o interpretador Python, o Qt
+; e cada biblioteca de terceiros. Nada e baixado durante a instalacao.
 Source: "..\dist\PDV\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 ; Scripts de manutencao ficam no diretorio protegido: o operador nao pode
 ; edita-los para desfazer o proprio endurecimento.
 Source: "harden.ps1"; DestDir: "{app}\tools"; Flags: ignoreversion
+
+; --- Pre-requisito embarcado ----------------------------------------------
+; O Qt depende do Visual C++ Runtime. Numa maquina recem-formatada ele NAO
+; existe, e sem ele o PDV.exe encerra sem mensagem nenhuma - o sintoma classico
+; de "instalei e nao abre". Embarcar (em vez de baixar na hora) garante a
+; implantacao tambem em loja que ainda nao tem internet configurada.
+Source: "redist\VC_redist.x64.exe"; DestDir: "{tmp}"; \
+    Flags: deleteafterinstall; Check: not IsVCRedistInstalled
 
 [Dirs]
 ; Criados com ACL explicita logo depois, pelo harden.ps1.
@@ -75,6 +89,13 @@ Name: "{autodesktop}\{#AppName}";        Filename: "{app}\{#AppExeName}"; Tasks:
 Name: "{commonstartup}\{#AppName}";      Filename: "{app}\{#AppExeName}"; Tasks: autostart
 
 [Run]
+; --- 0. Pre-requisito: Visual C++ Runtime ---------------------------------
+Filename: "{tmp}\VC_redist.x64.exe"; \
+    Parameters: "/install /quiet /norestart"; \
+    StatusMsg: "Instalando componentes do Windows (Visual C++)..."; \
+    Check: not IsVCRedistInstalled; \
+    Flags: waituntilterminated
+
 ; --- 1. Endurecimento das permissoes NTFS ---------------------------------
 ; Roda ANTES de oferecer a execucao do app: se falhar, o instalador avisa e o
 ; administrador decide. Instalar sem ACL correta e pior que nao instalar.
@@ -104,18 +125,32 @@ Type: filesandordirs; Name: "{app}"
 
 [Code]
 { ---------------------------------------------------------------------------
+  Deteccao do Visual C++ Runtime 2015-2022.
+
+  Checar a chave de registro e mais confiavel que procurar o arquivo: a DLL
+  pode existir em System32 vinda junto de outro programa, sem o runtime estar
+  de fato registrado e completo.
+  --------------------------------------------------------------------------- }
+
+function IsVCRedistInstalled(): Boolean;
+var
+  Installed: Cardinal;
+begin
+  Result := False;
+  if RegQueryDWordValue(HKEY_LOCAL_MACHINE,
+       'SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64',
+       'Installed', Installed) then
+    Result := (Installed = 1);
+end;
+
+{ ---------------------------------------------------------------------------
   O banco de dados da loja NUNCA e removido na desinstalacao.
 
   Uma reinstalacao e operacao rotineira de suporte; apagar vendas ainda nao
   sincronizadas junto com o programa destruiria o faturamento do dia. Os dados
-  ficam em ProgramData e sobrevivem — a remocao e sempre ato deliberado e
+  ficam em ProgramData e sobrevivem - a remocao e sempre ato deliberado e
   manual do administrador.
   --------------------------------------------------------------------------- }
-
-function InitializeSetup(): Boolean;
-begin
-  Result := True;
-end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin

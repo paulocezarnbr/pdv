@@ -137,6 +137,22 @@ class OutboxReader:
                     (attempts, error[:500], available_at, item.seq),
                 )
 
+    def quarantine(self, items: list[OutboxItem], error: str) -> None:
+        """Move itens rejeitados para quarentena (dead-letter).
+
+        Rejeição é veredito do servidor: o mesmo payload produziria o mesmo
+        resultado, então retentar é desperdício. Mas **nada é apagado** — o item
+        fica no banco com `attempts` no teto, sai do caminho da fila e espera
+        análise humana. Perder uma venda para "limpar a fila" é inaceitável.
+        """
+        with self._db.transaction() as connection:
+            for item in items:
+                connection.execute(
+                    "UPDATE sync_outbox SET attempts = ?, last_error = ?, "
+                    "available_at = ? WHERE seq = ?",
+                    (MAX_ATTEMPTS, error[:500], iso(utc_now()), item.seq),
+                )
+
     # -- internos ------------------------------------------------------------- #
 
     @staticmethod

@@ -312,6 +312,28 @@ com o tempo; o que saiu do estoque naquele dia, não).
 **`sync_cursors`** — `entity_table` PK, `last_server_seq`, `last_pulled_at`.
 **`device_settings`** — porta COM da balança, protocolo, nome da impressora, tara padrão.
 
+**`sync_inbox`** — comandos vindos do painel remoto (M15). Espelho do Outbox,
+no sentido contrário.
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `seq` | INTEGER PK AUTOINCREMENT | Ordem de aplicação |
+| `command_uuid` | TEXT UNIQUE | **Idempotência**: reenvio não aplica duas vezes |
+| `command_type` | TEXT | `apply_discount` \| `cancel_item` \| `update_order` \| `refresh_catalog` |
+| `target_type`, `target_id` | TEXT | Pedido/item alvo |
+| `payload_json` | TEXT | Parâmetros do comando |
+| `issued_by_user_id` | TEXT | Quem emitiu **no painel** |
+| `issued_at` | TEXT | Relógio do servidor (confiável) |
+| `signature` | TEXT | Assinatura do servidor; o terminal não obedece sem verificar |
+| `status` | TEXT | `pending` \| `applied` \| `rejected` \| `expired` |
+| `rejection_reason` | TEXT NULL | Ex.: desconto acima do teto do perfil |
+| `applied_at` | TEXT NULL | |
+| `expires_at` | TEXT | Comando velho **não** é aplicado: um desconto emitido há 3 h para um pedido que já fechou não pode "acordar" depois |
+
+> O resultado de cada comando sobe pelo `sync_outbox` como qualquer outro dado,
+> junto da entrada de `audit_ledger` correspondente. O painel só mostra
+> `aplicado` quando o terminal confirma — nunca por otimismo do servidor.
+
 ---
 
 ## 3. Fluxo de Sincronização (venda pesada)
