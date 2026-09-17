@@ -10,6 +10,14 @@ Modo **onedir** e não onefile, de propósito:
 * Onefile também abre o caixa com 3–8 s de atraso a cada início por causa da
   extração. Num PDV isso é inaceitável.
 
+Dois executáveis, um único diretório:
+
+* `PDV.exe` — o caixa, executado pelo operador.
+* `PDVSetup.exe` — o assistente de primeira execução, chamado pelo instalador
+  logo depois do endurecimento de ACL. Compartilham o mesmo `COLLECT`, então as
+  DLLs do Qt e do Python entram no pacote **uma vez só**: dois onedir separados
+  dobrariam os ~120 MB sem ganho nenhum.
+
 Build:
     pyinstaller packaging/pdv.spec --noconfirm --clean
 """
@@ -19,6 +27,7 @@ from pathlib import Path
 from PyInstaller.utils.hooks import collect_submodules
 
 APP_NAME = "PDV"
+SETUP_NAME = "PDVSetup"
 ROOT = Path(SPECPATH).parent  # noqa: F821 - SPECPATH é injetado pelo PyInstaller
 SRC = ROOT / "src"
 
@@ -34,6 +43,8 @@ hiddenimports = [
     # o analisador estático do PyInstaller não os enxerga.
     "win32print",
     "win32api",
+    # DPAPI — usado pelo cofre de segredos via import tardio.
+    "win32crypt",
     # Driver serial e seus backends por plataforma.
     "serial",
     "serial.tools.list_ports",
@@ -88,7 +99,24 @@ a = Analysis(  # noqa: F821
     optimize=2,
 )
 
+# Segunda análise: o assistente de instalação. Ponto de entrada diferente,
+# mesma árvore de dependências — por isso as duas entram no mesmo COLLECT.
+setup_analysis = Analysis(  # noqa: F821
+    [str(ROOT / "setup_wizard.py")],
+    pathex=[str(SRC)],
+    binaries=[],
+    datas=datas,
+    hiddenimports=hiddenimports,
+    hookspath=[],
+    hooksconfig={},
+    runtime_hooks=[],
+    excludes=excludes,
+    noarchive=False,
+    optimize=2,
+)
+
 pyz = PYZ(a.pure)  # noqa: F821
+setup_pyz = PYZ(setup_analysis.pure)  # noqa: F821
 
 exe = EXE(  # noqa: F821
     pyz,
@@ -119,10 +147,44 @@ exe = EXE(  # noqa: F821
     uac_admin=False,
 )
 
+setup_exe = EXE(  # noqa: F821
+    setup_pyz,
+    setup_analysis.scripts,
+    [],
+    exclude_binaries=True,
+    name=SETUP_NAME,
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=False,
+    # Sem console: durante a instalação uma janela preta piscando assusta o
+    # lojista e não informa nada — o relatório sai numa caixa de diálogo e,
+    # sempre, em ProgramData\ERPFood\PDV\logs\setup.log.
+    console=False,
+    disable_windowed_traceback=True,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
+    icon=str(ROOT / "packaging" / "pdv.ico")
+    if (ROOT / "packaging" / "pdv.ico").exists()
+    else None,
+    version=str(ROOT / "packaging" / "version_info.txt")
+    if (ROOT / "packaging" / "version_info.txt").exists()
+    else None,
+    # Escreve só em ProgramData, onde o instalador já concedeu Modify ao grupo
+    # Users. Pedir elevação aqui obrigaria o lojista a aprovar um segundo UAC
+    # para redetectar a balança — e ele aprovaria sem ler.
+    uac_admin=False,
+)
+
 coll = COLLECT(  # noqa: F821
     exe,
+    setup_exe,
     a.binaries,
     a.datas,
+    setup_analysis.binaries,
+    setup_analysis.datas,
     strip=False,
     upx=False,
     upx_exclude=[],

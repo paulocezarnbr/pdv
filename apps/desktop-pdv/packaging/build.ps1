@@ -57,6 +57,8 @@ try {
     Write-Host "`n[2/4] Compilando com $Backend..."
 
     if ($Backend -eq 'pyinstaller') {
+        # O spec produz DOIS executaveis no mesmo diretorio: PDV.exe (o caixa) e
+        # PDVSetup.exe (o assistente chamado pelo instalador).
         & python -m PyInstaller packaging/pdv.spec --noconfirm --clean
         if ($LASTEXITCODE -ne 0) { throw 'PyInstaller falhou.' }
         $exePath = 'dist\PDV\PDV.exe'
@@ -86,30 +88,80 @@ try {
             Rename-Item 'dist\main.dist' 'PDV'
         }
         $exePath = 'dist\PDV\PDV.exe'
+
+        # O assistente de instalacao precisa ser compilado a parte: o Nuitka
+        # gera um executavel por ponto de entrada. Sem esta etapa o instalador
+        # apontaria para um PDVSetup.exe inexistente e a instalacao terminaria
+        # com o caixa sem banco, sem segredo e sem perifericos configurados.
+        Write-Host '      Compilando o assistente de instalacao...'
+        & python -m nuitka `
+            --standalone `
+            --assume-yes-for-downloads `
+            --enable-plugin=pyside6 `
+            --windows-console-mode=disable `
+            --include-data-files=src/pdv/data/schema.sql=pdv/data/schema.sql `
+            --include-package=pdv `
+            --output-dir=dist `
+            --output-filename=PDVSetup.exe `
+            --company-name="ERP Food Service" `
+            --product-name="PDV Balcao - Instalacao" `
+            --file-version=1.0.0.0 `
+            --product-version=1.0.0.0 `
+            setup_wizard.py
+        if ($LASTEXITCODE -ne 0) { throw 'Nuitka falhou ao compilar o assistente.' }
+
+        # As duas compilacoes partem das mesmas dependencias, entao so o
+        # executavel e os poucos arquivos exclusivos precisam ser mesclados no
+        # diretorio final. Duplicar as DLLs do Qt dobraria o tamanho a toa.
+        $setupDist = 'dist\setup_wizard.dist'
+        if (-not (Test-Path $setupDist)) { throw "Nuitka nao gerou $setupDist" }
+        Get-ChildItem $setupDist -Recurse -File | ForEach-Object {
+            $relative = $_.FullName.Substring((Resolve-Path $setupDist).Path.Length + 1)
+            $target = Join-Path 'dist\PDV' $relative
+            if (-not (Test-Path $target)) {
+                $parent = Split-Path -Parent $target
+                if (-not (Test-Path $parent)) {
+                    New-Item -ItemType Directory -Force $parent | Out-Null
+                }
+                Copy-Item $_.FullName $target
+            }
+        }
+        Remove-Item $setupDist -Recurse -Force
     }
 
     if (-not (Test-Path $exePath)) { throw "Binario nao encontrado em $exePath" }
-    $sizeMb = [math]::Round((Get-Item $exePath).Length / 1MB, 2)
-    Write-Host "      OK - $exePath ($sizeMb MB)"
+
+    # O instalador chama os dois. Faltando um, a falha so apareceria na loja.
+    $binaries = @($exePath, 'dist\PDV\PDVSetup.exe')
+    foreach ($binary in $binaries) {
+        if (-not (Test-Path $binary)) { throw "Binario nao encontrado em $binary" }
+        $sizeMb = [math]::Round((Get-Item $binary).Length / 1MB, 2)
+        Write-Host "      OK - $binary ($sizeMb MB)"
+    }
 
     # -- 3. Assinatura -------------------------------------------------------
     if ($SignCert) {
-        Write-Host "`n[3/4] Assinando o binario..."
+        Write-Host "`n[3/4] Assinando os binarios..."
         $signtool = Get-ChildItem `
             'C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe' `
             -ErrorAction SilentlyContinue | Select-Object -Last 1
 
         if (-not $signtool) { throw 'signtool.exe nao encontrado (instale o Windows SDK).' }
 
-        $signArgs = @('sign', '/fd', 'SHA256', '/f', $SignCert)
-        if ($SignPassword) { $signArgs += @('/p', $SignPassword) }
-        # Carimbo de tempo: sem ele a assinatura expira junto com o certificado
-        # e o binario ja instalado passa a acusar erro.
-        $signArgs += @('/tr', $TimestampUrl, '/td', 'SHA256', $exePath)
+        # Os dois sao assinados. Um PDVSetup.exe sem assinatura dispararia o
+        # SmartScreen no meio da instalacao, depois de o cliente ja ter
+        # aprovado o instalador — o momento em que ele mais desconfia.
+        foreach ($binary in $binaries) {
+            $signArgs = @('sign', '/fd', 'SHA256', '/f', $SignCert)
+            if ($SignPassword) { $signArgs += @('/p', $SignPassword) }
+            # Carimbo de tempo: sem ele a assinatura expira junto com o
+            # certificado e o binario ja instalado passa a acusar erro.
+            $signArgs += @('/tr', $TimestampUrl, '/td', 'SHA256', $binary)
 
-        & $signtool.FullName @signArgs
-        if ($LASTEXITCODE -ne 0) { throw 'Assinatura falhou.' }
-        Write-Host '      OK - binario assinado e com carimbo de tempo.'
+            & $signtool.FullName @signArgs
+            if ($LASTEXITCODE -ne 0) { throw "Assinatura de $binary falhou." }
+        }
+        Write-Host '      OK - binarios assinados e com carimbo de tempo.'
     }
     else {
         Write-Host "`n[3/4] Assinatura ignorada (sem -SignCert)." -ForegroundColor Yellow

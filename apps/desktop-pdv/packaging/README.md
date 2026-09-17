@@ -137,9 +137,50 @@ O pipeline roda os testes antes de empacotar e **aborta se algum falhar**.
 ### Saída
 
 ```
-dist\PDV\PDV.exe                       binário (onedir)
+dist\PDV\PDV.exe                       o caixa (onedir)
+dist\PDV\PDVSetup.exe                  assistente de instalação
 dist\installer\PDV-Setup-1.0.0.exe     instalador
 ```
+
+Os dois executáveis dividem o mesmo diretório e, portanto, as mesmas DLLs do Qt
+e do Python: ~122 MB no total contra ~240 MB se fossem dois `onedir` separados.
+
+### O que o `PDVSetup.exe` faz
+
+O instalador copia arquivos; ele é quem entrega um caixa que comprovadamente
+vende. Roda **depois** do `harden.ps1` — é o endurecimento que concede escrita
+em `ProgramData`, e na ordem inversa o banco nasceria com a ACL herdada.
+
+1. cria o banco e aplica as migrations;
+2. gera o `device_secret` e o protege com DPAPI em escopo de máquina;
+3. varre as portas seriais e identifica a balança pelo protocolo que responde;
+4. localiza a impressora térmica **por modelo**, nunca por marca;
+5. roda o teste de fumaça e imprime um cupom com acentuação, corte e gaveta.
+
+| Saída | Significado | O instalador |
+|---|---|---|
+| 0 | tudo verificado | segue |
+| 2 | pendências (balança desligada, sem térmica) | segue e relata |
+| 3 | não é possível vender | segue e alerta |
+
+O relatório completo fica sempre em
+`C:\ProgramData\ERPFood\PDV\logs\setup.log`, em UTF-8.
+
+Uso avulso, para suporte:
+
+```powershell
+& "C:\Program Files\ERPFood\PDV\PDVSetup.exe" --detect-only
+```
+
+`--detect-only` redetecta os periféricos sem tocar em catálogo nem em
+sincronização — é o que o atalho "Reconfigurar periféricos" do menu Iniciar
+chama quando a balança é trocada ou o cabo USB muda de porta.
+
+> **`--demo` nunca em loja real.** A flag carrega o catálogo de demonstração; o
+> provisionamento normal deixa o catálogo vazio, porque os produtos descem na
+> primeira sincronização com a retaguarda. Semear a confeitaria de exemplo no
+> PDV do cliente criaria itens fantasma aparecendo na busca do operador durante
+> uma venda de verdade.
 
 ---
 

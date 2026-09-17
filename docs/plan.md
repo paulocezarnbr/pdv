@@ -102,25 +102,45 @@ a baixar à parte, nenhum prompt de linha de comando.
 - [x] **Runtime Python e todas as bibliotecas embarcados** no pacote
       (PyInstaller/Nuitka). O cliente **não** instala Python nem roda `pip`.
 - [x] Endurecimento de ACL aplicado automaticamente durante a instalação.
-- [ ] **Visual C++ Redistributable embarcado** e instalado silenciosamente se
+- [x] **Visual C++ Redistributable embarcado** e instalado silenciosamente se
       ausente. Sem ele o Qt não carrega e o app morre sem mensagem — é a causa
       número um de "instalei e não abre" em máquina recém-formatada.
 - [ ] **Driver USB-serial da balança** (CH340 / FTDI / Prolific) detectado e
       instalado sob demanda. Cabo de balança raramente traz driver nativo.
 - [ ] **Driver da impressora Epson TM-T20X** instalado silenciosamente, com a
       fila criada e nomeada conforme esperado pelo `PrinterConfig`.
-- [ ] **Detecção automática de periféricos** no fim da instalação: varrer portas
+- [x] **Detecção automática de periféricos** no fim da instalação: varrer portas
       COM, identificar a balança pelo protocolo e localizar a impressora,
       gravando o resultado em `device_settings`. O lojista não sabe o que é
       uma porta COM e não deveria precisar saber.
+      *Regra aprendida em campo:* a classificação da impressora casa **modelo**
+      (`TM-T`, `MP-4200`, `DR700`), nunca marca. Testar por "epson" classificou
+      uma multifuncional a jato de tinta L8180 como térmica — em produção o PDV
+      teria mandado ESC/POS cru para ela. Sem térmica reconhecida a resposta é
+      `None` e o cupom vai para arquivo: a impressora padrão do Windows **não**
+      é promovida a candidata.
+- [x] `device_secret` gerado localmente na primeira execução e protegido por
+      DPAPI em escopo de máquina. Nunca trafega pela rede, nunca entra no banco
+      que ele protege.
 - [ ] **Ativação do terminal**: tela pedindo o código do tenant, que provisiona
-      `device_id`, `device_secret` (DPAPI) e o token de sincronização.
-- [ ] **Teste de fumaça pós-instalação**: pesa, imprime um cupom de teste e
-      sincroniza um registro. Falhou? O instalador diz exatamente o que falhou.
+      `device_id` e o token de sincronização junto à retaguarda.
+- [x] **Teste de fumaça pós-instalação**: verifica gravação no banco e modo WAL,
+      integridade da cadeia de auditoria, resposta da balança, impressão de um
+      cupom de teste (com acentuação, corte e pulso de gaveta) e presença de
+      catálogo. Cada verificação é independente — uma balança desligada não
+      esconde que a impressora também está sem papel. Relatório na tela e em
+      `ProgramData\ERPFood\PDV\logs\setup.log`; saída 0/2/3 para o instalador.
+- [x] Atalho "Reconfigurar periféricos" no menu Iniciar (`PDVSetup.exe
+      --detect-only`): troca de balança ou de porta USB se resolve sem
+      reinstalar nada.
 - [ ] Atualização in-place preservando o banco e a fila de sincronização.
-- [ ] Assinatura digital do instalador e do binário (sem ela, o SmartScreen
+- [ ] Assinatura digital do instalador e dos binários (sem ela, o SmartScreen
       barra e parte dos lojistas desiste da instalação).
-- [ ] Desinstalador que **preserva** os dados da loja.
+      **Bloqueado por insumo, não por código:** o `build.ps1` já assina os dois
+      executáveis e o instalador, com carimbo de tempo, assim que receber
+      `-SignCert`. Falta o certificado de Assinatura de Código (EV, emitido para
+      a pessoa jurídica) — nada no repositório destrava isso.
+- [x] Desinstalador que **preserva** os dados da loja.
 
 **Aceite:** numa máquina Windows recém-formatada, sem Python, sem Visual C++ e
 sem drivers, um único duplo-clique deixa o PDV vendendo — com balança lendo,

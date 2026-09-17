@@ -20,6 +20,7 @@
 #define AppVersion     "1.0.0"
 #define AppPublisher   "ERP Food Service"
 #define AppExeName     "PDV.exe"
+#define SetupExeName   "PDVSetup.exe"
 #define AppId          "{{8F3A6C21-4E7B-4D19-9A2F-5C8E1B7D3A64}"
 #define DataDir        "{commonappdata}\ERPFood\PDV"
 
@@ -84,6 +85,11 @@ Name: "{#DataDir}\cupons"
 
 [Icons]
 Name: "{group}\{#AppName}";              Filename: "{app}\{#AppExeName}"
+; Atalho de suporte: o tecnico troca a balanca ou o cabo USB muda de porta e
+; redetecta sem reinstalar nada. Sem isto, a alternativa no balcao seria editar
+; o banco a mao.
+Name: "{group}\Reconfigurar perifericos"; Filename: "{app}\{#SetupExeName}"; \
+    Parameters: "--detect-only --data-dir ""{#DataDir}"""
 Name: "{group}\Desinstalar {#AppName}";  Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#AppName}";        Filename: "{app}\{#AppExeName}"; Tasks: desktopicon
 Name: "{commonstartup}\{#AppName}";      Filename: "{app}\{#AppExeName}"; Tasks: autostart
@@ -110,7 +116,33 @@ Filename: "netsh.exe"; \
     StatusMsg: "Liberando a porta do servidor local..."; \
     Flags: runhidden waituntilterminated; Tasks: firewall
 
-; --- 3. Primeira execucao -------------------------------------------------
+; --- 3. Provisionamento: banco, segredo do terminal e perifericos ---------
+; Roda DEPOIS do harden.ps1, e nao antes: e ele que concede ao grupo Usuarios
+; permissao de escrita em ProgramData. Invertida, a ordem criaria o banco com a
+; ACL herdada e o endurecimento seguinte o deixaria inconsistente.
+;
+; Aqui o instalador deixa de "copiar arquivos" e passa a entregar um caixa que
+; comprovadamente vende: cria o banco, gera o device_secret no DPAPI, varre as
+; portas seriais atras da balanca, localiza a impressora termica e imprime um
+; cupom de teste. O relatorio aparece na tela e fica em
+; ProgramData\ERPFood\PDV\logs\setup.log.
+;
+; Codigo de saida 2 (pendencias) NAO aborta a instalacao: balanca desligada no
+; momento da instalacao e rotina, e o proprio assistente explica o que fazer.
+Filename: "{app}\{#SetupExeName}"; \
+    Parameters: "--data-dir ""{#DataDir}"""; \
+    StatusMsg: "Detectando balanca e impressora, testando a instalacao..."; \
+    Flags: waituntilterminated; Check: not WizardSilent
+
+; Instalacao automatizada (/SILENT): mesmo provisionamento, sem caixa de
+; dialogo. O resultado vai so para o setup.log, que e o que o script de
+; implantacao em massa consegue ler.
+Filename: "{app}\{#SetupExeName}"; \
+    Parameters: "--silent --data-dir ""{#DataDir}"""; \
+    StatusMsg: "Detectando balanca e impressora..."; \
+    Flags: runhidden waituntilterminated; Check: WizardSilent
+
+; --- 4. Primeira execucao -------------------------------------------------
 Filename: "{app}\{#AppExeName}"; \
     Description: "Abrir o {#AppName} agora"; \
     Flags: nowait postinstall skipifsilent
