@@ -63,6 +63,15 @@ hiddenimports = [
     "websockets",
     "websockets.legacy",
     *collect_submodules("zeroconf"),
+    # Argon2id da autorizacao de gerente. O `argon2-cffi` carrega a extensao
+    # compilada por nome (`_argon2_cffi_bindings._ffi`) dentro de um import
+    # tardio, entao o analisador estatico nao a enxerga. Sem estas linhas o
+    # pacote instala, o caixa abre, e o gerente descobre que nao consegue
+    # autorizar um cancelamento — na frente do cliente.
+    "argon2",
+    *collect_submodules("argon2"),
+    "_argon2_cffi_bindings",
+    "_argon2_cffi_bindings._ffi",
 ]
 
 # Corta o que não é usado no terminal de caixa. Cada exclusão reduz o tamanho
