@@ -99,7 +99,14 @@ def main() -> int:
             logger.error("Servidor do salão indisponível; o balcão segue operando")
             edge = None
 
-    window = CounterWindow(checkout, scale, printer, config)
+    window = CounterWindow(
+        checkout,
+        scale,
+        printer,
+        config,
+        database,
+        edge_port=edge.port if edge is not None else None,
+    )
     window.show()
     scale.start()
 

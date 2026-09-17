@@ -93,6 +93,7 @@ class AppConfig:
     @classmethod
     def from_env(cls) -> AppConfig:
         """Carrega do ambiente. Em produção o instalador grava estes valores."""
+        database_path = Path(os.getenv("PDV_DB_PATH", "./pdv_local.db"))
         return cls(
             tenant_id=os.getenv("PDV_TENANT_ID", "11111111-1111-1111-1111-111111111111"),
             store_id=os.getenv("PDV_STORE_ID", "22222222-2222-2222-2222-222222222222"),
@@ -101,7 +102,7 @@ class AppConfig:
                 "PDV_DEVICE_SECRET", "CHAVE-DE-DESENVOLVIMENTO-NAO-USE-EM-PRODUCAO"
             ).encode("utf-8"),
             store_name=os.getenv("PDV_STORE_NAME", "Confeitaria Demo"),
-            database_path=Path(os.getenv("PDV_DB_PATH", "./pdv_local.db")),
+            database_path=database_path,
             cloud_base_url=os.getenv("PDV_CLOUD_URL", "https://api.erpfood.local"),
             scale=ScaleConfig(
                 protocol=os.getenv("PDV_SCALE_PROTOCOL", "simulated"),  # type: ignore[arg-type]
@@ -112,6 +113,13 @@ class AppConfig:
                 backend=os.getenv("PDV_PRINTER_BACKEND", "file"),  # type: ignore[arg-type]
                 windows_printer_name=os.getenv(
                     "PDV_PRINTER_NAME", "EPSON TM-T20X Receipt"
+                ),
+                # Ao lado do banco, nunca relativo ao diretório de trabalho:
+                # instalado em Program Files o cwd é somente-leitura para o
+                # operador, e o cupom do backend `file` falharia por permissão
+                # — um erro de instalação disfarçado de erro de impressora.
+                output_dir=Path(
+                    os.getenv("PDV_RECEIPT_DIR", str(database_path.parent / "cupons"))
                 ),
             ),
         )

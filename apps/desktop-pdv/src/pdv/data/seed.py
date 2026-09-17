@@ -11,6 +11,7 @@ from __future__ import annotations
 from pdv.config import AppConfig
 from pdv.data.database import Database
 from pdv.domain.models import iso, new_id, utc_now
+from pdv.services.authorization import hash_pin
 
 
 def seed_demo_data(database: Database, config: AppConfig) -> None:
@@ -30,12 +31,14 @@ def seed_demo_data(database: Database, config: AppConfig) -> None:
         tx.executemany(
             """
             INSERT INTO users (id, tenant_id, name, login, role, can_authorize,
-                               max_discount_percent, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                               max_discount_percent, pin_hash, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
-                (operator_id, tenant, "Ana Caixa", "ana", "cashier", 0, "5", now),
-                (manager_id, tenant, "Bruno Gerente", "bruno", "manager", 1, "30", now),
+                (operator_id, tenant, "Ana Caixa", "ana", "cashier", 0, "5",
+                 hash_pin(DEMO_OPERATOR_PIN), now),
+                (manager_id, tenant, "Bruno Gerente", "bruno", "manager", 1, "30",
+                 hash_pin(DEMO_MANAGER_PIN), now),
             ],
         )
 
@@ -170,3 +173,11 @@ def seed_demo_data(database: Database, config: AppConfig) -> None:
 DEMO_OPERATOR_ID = "44444444-4444-4444-4444-444444444444"
 DEMO_OPERATOR_NAME = "Ana Caixa"
 DEMO_MANAGER_ID = "55555555-5555-5555-5555-555555555555"
+DEMO_MANAGER_NAME = "Bruno Gerente"
+DEMO_MANAGER_LOGIN = "bruno"
+
+#: PINs da base de demonstração. Existem para o sistema ser demonstrável sem
+#: cadastro manual — **nunca** devem sobreviver a uma loja real, onde os
+#: usuários descem da retaguarda na primeira sincronização.
+DEMO_OPERATOR_PIN = "1111"
+DEMO_MANAGER_PIN = "1234"

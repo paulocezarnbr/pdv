@@ -52,6 +52,10 @@ class EdgeServer:
         return self._hub
 
     @property
+    def port(self) -> int:
+        return self._port
+
+    @property
     def is_running(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
 

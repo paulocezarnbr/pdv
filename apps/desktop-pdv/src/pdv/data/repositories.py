@@ -116,6 +116,21 @@ class RecipeRepository:
     def __init__(self, connection: sqlite3.Connection) -> None:
         self._connection = connection
 
+    def get_for_product_or_none(self, product: Product) -> Recipe | None:
+        """Ficha do produto, ou `None` quando ele simplesmente não tem uma.
+
+        Existe para o item **unitário**, onde a ausência de ficha é legítima: um
+        refrigerante de revenda não tem receita, e exigir uma impediria a venda.
+        Para o pesável, a ausência continua sendo erro de cadastro — lá vale
+        `get_for_product`, que levanta.
+        """
+        if product.recipe_id is None:
+            return None
+        try:
+            return self.get_for_product(product)
+        except RecipeNotFoundError:
+            return None
+
     def get_for_product(self, product: Product) -> Recipe:
         """Ficha técnica do produto.
 

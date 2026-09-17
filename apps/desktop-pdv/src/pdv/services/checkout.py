@@ -19,6 +19,7 @@ restaurante em planilha paralela.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from decimal import Decimal
 
@@ -55,6 +56,8 @@ from pdv.hardware.printer.layout import ReceiptContext, build_sale_receipt
 from pdv.services.audit import AuditService
 from pdv.services.pricing import net_weight, price_for_weight
 from pdv.services.stock import StockService, explode_recipe, total_cost_cents
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -270,6 +273,106 @@ class CheckoutService:
             audit_seq=weight_entry.seq,
         )
 
+    def register_unit_item(
+        self,
+        *,
+        product: Product,
+        quantity: Decimal,
+        operator_id: EntityId,
+    ) -> SaleItem:
+        """Registra um item vendido por unidade (café, fatia, refrigerante).
+
+        Bem mais simples que o pesado, e a diferença é toda por ausência: não há
+        balança, logo não há quadro cru para guardar, nem evento de peso
+        capturado. O item unitário também pode ter ficha técnica — a fatia
+        consome insumo igual —, então a baixa de estoque continua valendo quando
+        houver receita.
+
+        Raises:
+            InvalidWeightError: produto vendido por peso veio parar aqui.
+            InsufficientStockError: sem saldo, se a loja bloqueia venda negativa.
+        """
+        if product.pricing_mode is not PricingMode.UNIT:
+            raise InvalidWeightError(
+                f"Produto {product.name!r} é vendido por peso — use a balança."
+            )
+        if quantity <= 0:
+            raise InvalidWeightError("Quantidade precisa ser maior que zero.")
+
+        sale = self._current or self.open_sale(operator_id)
+
+        # Arredondamento único no fim: multiplicar e arredondar por parcela
+        # acumularia centavos de diferença ao longo do dia.
+        total = Cents(
+            int((Decimal(int(product.price_cents)) * quantity).quantize(Decimal("1")))
+        )
+
+        with self._db.transaction() as connection:
+            recipe = RecipeRepository(connection).get_for_product_or_none(product)
+            consumptions = ()
+            warnings: list[str] = []
+
+            stock_repository = StockRepository(connection, self._outbox)
+            stock_service = StockService(stock_repository, self._config.stock)
+
+            if recipe is not None:
+                # A ficha é por `base_qty_g` do produto pronto; para item
+                # unitário a porção vendida é `base_qty_g` × quantidade.
+                portion = Grams(int(recipe.base_qty_g * quantity))
+                consumptions = explode_recipe(recipe, portion)
+                warnings = list(stock_service.check_availability(consumptions))
+
+            item = SaleItem(
+                id=new_id(),
+                client_uuid=new_id(),
+                product_id=product.id,
+                product_name=product.name,
+                pricing_mode=PricingMode.UNIT,
+                unit_price_cents=product.price_cents,
+                total_cents=total,
+                quantity=quantity,
+                scale_reading_raw=None,
+                consumptions=consumptions,
+            )
+
+            sale_repository = SaleRepository(connection, self._outbox)
+            sale_repository.add_item(
+                item, order_id=sale.id, tenant_id=EntityId(self._config.tenant_id)
+            )
+
+            if consumptions:
+                stock_service.write_off(
+                    consumptions,
+                    tenant_id=EntityId(self._config.tenant_id),
+                    store_id=EntityId(self._config.store_id),
+                    device_id=EntityId(self._config.device_id),
+                    order_item_id=item.id,
+                )
+
+            self._audit().append(
+                connection,
+                event_type=AuditEventType.ITEM_REGISTERED,
+                actor_user_id=operator_id,
+                severity=AuditSeverity.INFO,
+                payload={
+                    "order_id": sale.id,
+                    "order_item_id": item.id,
+                    "product_id": product.id,
+                    "quantity": str(quantity),
+                    "unit_price_cents": int(product.price_cents),
+                    "total_cents": int(total),
+                },
+            )
+
+            sale.items.append(item)
+            sale_repository.update_totals(
+                sale.id, sale.subtotal_cents, sale.discount_cents, sale.total_cents
+            )
+
+        if warnings:
+            logger.warning("Estoque baixo após venda unitária: %s", "; ".join(warnings))
+        return item
+
     # -- fechamento ----------------------------------------------------------- #
 
     def finalize_sale(
@@ -413,6 +516,56 @@ class CheckoutService:
             SaleRepository(connection, self._outbox).update_totals(
                 sale.id, sale.subtotal_cents, sale.discount_cents, sale.total_cents
             )
+
+    def apply_discount(
+        self,
+        *,
+        percent: Decimal,
+        operator_id: EntityId,
+        authorizer_id: EntityId,
+        reason: str,
+    ) -> Cents:
+        """Aplica desconto percentual sobre o subtotal. Devolve o valor abatido.
+
+        O percentual chega validado contra o teto de quem autorizou
+        (`AuthorizationService.authorize_discount`); aqui a preocupação é outra:
+        guardar em **centavos** o que foi de fato abatido. Percentual é derivado
+        e some no arredondamento — a conciliação do caixa fecha sobre o valor.
+        """
+        sale = self._current
+        if sale is None or not sale.items:
+            raise InvalidWeightError("Não há venda aberta para aplicar desconto")
+        if percent < 0 or percent > 100:
+            raise InvalidWeightError("Desconto precisa estar entre 0% e 100%")
+
+        subtotal = int(sale.subtotal_cents)
+        discount = Cents(
+            int((Decimal(subtotal) * percent / Decimal(100)).quantize(Decimal("1")))
+        )
+
+        with self._db.transaction() as connection:
+            sale.discount_cents = discount
+            SaleRepository(connection, self._outbox).update_totals(
+                sale.id, sale.subtotal_cents, sale.discount_cents, sale.total_cents
+            )
+
+            self._audit().append(
+                connection,
+                event_type=AuditEventType.DISCOUNT_APPLIED,
+                actor_user_id=operator_id,
+                authorizer_user_id=authorizer_id,
+                severity=AuditSeverity.WARNING,
+                payload={
+                    "order_id": sale.id,
+                    "percent": str(percent),
+                    "subtotal_cents": subtotal,
+                    "discount_cents": int(discount),
+                    "total_cents": int(sale.total_cents),
+                    "reason": reason,
+                },
+            )
+
+        return discount
 
     # -- internos ------------------------------------------------------------- #
 

@@ -67,11 +67,18 @@ PDV_SCALE_PROTOCOL=toledo_prix3 PDV_SCALE_PORT=COM3 PDV_PRINTER_BACKEND=win32raw
 ### Testes
 
 ```bash
-cd apps/desktop-pdv && PYTHONPATH=src python -m pytest tests/ -q
+cd apps/desktop-pdv && python -m pytest -q
 ```
 
-Nenhum teste precisa de balança, impressora, Qt ou rede — é por isso que a
-camada de protocolo e as regras de preço são puras.
+Nenhum teste precisa de balança, impressora ou rede: os protocolos e as regras
+de preço são puros, e a balança de demonstração é simulada.
+
+Os testes de tela **usam o Qt**, mas em modo `offscreen` — `tests/conftest.py`
+força `QT_QPA_PLATFORM=offscreen`, então nenhuma janela abre e a suíte roda
+igual numa build sem sessão gráfica. Eles existem porque a fiação da UI é uma
+camada que teste de serviço não alcança: na Fase 3, um `from __future__ import
+annotations` fez todas as rotas do servidor devolverem 422 com os serviços 100%
+verdes por baixo.
 
 ---
 
@@ -82,8 +89,17 @@ O operador não tira a mão do teclado numa fila.
 | Tecla | Ação |
 |---|---|
 | `F2` | Registrar item pesado (só habilita com peso estável) |
-| `F4` | Cancelar item — exige autorização de gerente |
-| `F10` | Finalizar venda e imprimir |
+| `F3` | Ir para a busca de item unitário (código ou nome) |
+| `F4` | Cancelar item — exige credencial de gerente |
+| `F6` | Desconto percentual — exige credencial de gerente, limitada ao teto do perfil |
+| `F8` | Painel do salão: pareamento, mesas abertas e fila da cozinha |
+| `F10` | Receber (dinheiro, débito, crédito, PIX ou dividido) e imprimir |
+
+A autorização de gerente é validada **offline**, com Argon2id contra a réplica
+local de `users.pin_hash`, e cada tentativa recusada vira evento de auditoria.
+A base de demonstração traz `bruno` / `1234` como gerente (teto de 30%) e
+`ana` / `1111` como caixa — que tem PIN válido e, de propósito, **não** pode
+autorizar: liberar o próprio cancelamento é o furto inteiro em um passo.
 
 ---
 

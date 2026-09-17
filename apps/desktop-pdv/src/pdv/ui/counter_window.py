@@ -3,28 +3,37 @@
 Princípios de UI de PDV que o layout respeita:
 
 * **Teclado acima do mouse.** O operador não tira a mão do teclado numa fila.
-  F2 registra, F4 cancela item, F10 finaliza, ESC limpa.
+  F2 registra o pesado, F3 lança o unitário, F4 cancela item, F6 desconta,
+  F8 abre o salão, F10 finaliza.
 * **O peso é o maior elemento da tela.** É o número que o cliente confere de pé
   do outro lado do balcão.
 * **Estado de conexão sempre visível.** O operador precisa saber que está
   offline — não para se preocupar, mas para não estranhar o relatório da nuvem.
 * **A UI nunca calcula dinheiro.** Ela exibe o que o `CheckoutService` decidiu.
   Regra de negócio em widget é dívida técnica que vaza para o financeiro.
+* **A UI nunca decide quem pode autorizar.** Cancelamento e desconto passam
+  pelo `AuthorizationService`, que valida Argon2id contra a réplica local e
+  funciona sem internet. Diálogo que pede senha e aceita qualquer coisa é pior
+  do que não pedir: fabrica no relatório a aparência de uma autorização.
 """
 
 from __future__ import annotations
 
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from PySide6.QtCore import Qt, QTimer, Slot
 from PySide6.QtGui import QFont, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QComboBox,
+    QDoubleSpinBox,
     QFrame,
     QHBoxLayout,
     QHeaderView,
     QInputDialog,
     QLabel,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QMainWindow,
     QMessageBox,
     QPushButton,
@@ -36,21 +45,24 @@ from PySide6.QtWidgets import (
 )
 
 from pdv.config import AppConfig
-from pdv.data.seed import DEMO_MANAGER_ID, DEMO_OPERATOR_ID, DEMO_OPERATOR_NAME
+from pdv.data.database import Database
+from pdv.data.seed import DEMO_OPERATOR_ID, DEMO_OPERATOR_NAME
 from pdv.domain.errors import PdvError
 from pdv.domain.models import (
     Cents,
     EntityId,
-    Payment,
-    PaymentMethod,
     Product,
+    SaleItem,
     ScaleReading,
     ScaleStatus,
 )
 from pdv.hardware.printer.backends import PrintService
 from pdv.hardware.printer.escpos import format_cents, format_grams
 from pdv.hardware.scale.worker import ScaleService
+from pdv.services.authorization import AuthorizationService
 from pdv.services.checkout import CheckoutService
+from pdv.ui.dialogs import ManagerAuthDialog, PaymentDialog
+from pdv.ui.salon_panel import SalonPanel
 
 _STATUS_LABELS: dict[ScaleStatus, tuple[str, str]] = {
     ScaleStatus.STABLE: ("ESTAVEL", "#1b7f3b"),
@@ -71,17 +83,26 @@ class CounterWindow(QMainWindow):
         scale: ScaleService,
         printer: PrintService,
         config: AppConfig,
+        database: Database,
+        *,
+        edge_port: int | None = None,
     ) -> None:
         super().__init__()
         self._checkout = checkout
         self._scale = scale
         self._printer = printer
         self._config = config
-        self._products: list[Product] = []
+        self._database = database
+        self._edge_port = edge_port
+        self._authorization = AuthorizationService(database, config.tenant_id)
+
+        self._weighed: list[Product] = []
+        self._unit: list[Product] = []
+        self._filtered: list[Product] = []
         self._last_reading: ScaleReading | None = None
 
         self.setWindowTitle(f"PDV Balcão — {config.store_name}")
-        self.resize(1180, 760)
+        self.resize(1280, 820)
 
         self._build_ui()
         self._wire_scale()
@@ -107,7 +128,11 @@ class CounterWindow(QMainWindow):
         self.setStatusBar(QStatusBar())
         self._sync_label = QLabel("Sincronização: —")
         self._connection_label = QLabel("Balança: conectando…")
+        self._salon_label = QLabel(
+            "Salão: ligado" if self._edge_port else "Salão: desligado"
+        )
         self.statusBar().addPermanentWidget(self._connection_label)
+        self.statusBar().addPermanentWidget(self._salon_label)
         self.statusBar().addPermanentWidget(self._sync_label)
 
     def _build_left_panel(self) -> QWidget:
@@ -150,7 +175,7 @@ class CounterWindow(QMainWindow):
 
         layout.addStretch()
 
-        self._register_button = QPushButton("F2  Registrar item")
+        self._register_button = QPushButton("F2  Registrar item pesado")
         self._register_button.setMinimumHeight(56)
         self._register_button.setFont(QFont("Segoe UI", 13, QFont.Weight.Bold))
         self._register_button.setEnabled(False)
@@ -165,11 +190,12 @@ class CounterWindow(QMainWindow):
         layout = QVBoxLayout(panel)
         layout.setSpacing(12)
 
+        layout.addWidget(self._build_unit_box())
         layout.addWidget(self._section_title("VENDA ATUAL"))
 
         self._items_table = QTableWidget(0, 5)
         self._items_table.setHorizontalHeaderLabels(
-            ["Produto", "Peso líq.", "R$/kg", "Total", "Baixa estoque"]
+            ["Produto", "Qtd / Peso líq.", "Unitário", "Total", "Baixa estoque"]
         )
         self._items_table.horizontalHeader().setSectionResizeMode(
             0, QHeaderView.ResizeMode.Stretch
@@ -179,6 +205,12 @@ class CounterWindow(QMainWindow):
             QTableWidget.SelectionBehavior.SelectRows
         )
         layout.addWidget(self._items_table, stretch=1)
+
+        self._discount_label = QLabel("")
+        self._discount_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+        self._discount_label.setStyleSheet("color: #b8860b;")
+        self._discount_label.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
+        layout.addWidget(self._discount_label)
 
         self._total_label = QLabel("TOTAL: R$ 0,00")
         self._total_label.setAlignment(Qt.AlignmentFlag.AlignRight)
@@ -191,7 +223,17 @@ class CounterWindow(QMainWindow):
         self._cancel_button.clicked.connect(self._cancel_item)
         buttons.addWidget(self._cancel_button)
 
-        self._finish_button = QPushButton("F10  Finalizar (dinheiro)")
+        self._discount_button = QPushButton("F6  Desconto")
+        self._discount_button.setMinimumHeight(52)
+        self._discount_button.clicked.connect(self._apply_discount)
+        buttons.addWidget(self._discount_button)
+
+        self._salon_button = QPushButton("F8  Salão")
+        self._salon_button.setMinimumHeight(52)
+        self._salon_button.clicked.connect(self._open_salon)
+        buttons.addWidget(self._salon_button)
+
+        self._finish_button = QPushButton("F10  Receber")
         self._finish_button.setMinimumHeight(52)
         self._finish_button.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
         self._finish_button.clicked.connect(self._finalize_sale)
@@ -199,6 +241,55 @@ class CounterWindow(QMainWindow):
         layout.addLayout(buttons)
 
         return panel
+
+    def _build_unit_box(self) -> QWidget:
+        """Lançamento de item unitário — café, fatia, refrigerante.
+
+        A confeitaria vende os dois: o bolo sai por quilo e o café sai por
+        unidade. Sem este campo o catálogo tem produtos que não têm como ser
+        vendidos, o que empurra o operador para o "lança como outro item" e
+        destrói o relatório de mix de produtos.
+        """
+        box = QFrame()
+        box.setFrameShape(QFrame.Shape.StyledPanel)
+        layout = QVBoxLayout(box)
+        layout.setSpacing(6)
+
+        layout.addWidget(self._section_title("ITEM UNITÁRIO (F3)"))
+
+        row = QHBoxLayout()
+        self._unit_search = QLineEdit()
+        self._unit_search.setPlaceholderText("Código ou nome do produto…")
+        self._unit_search.setMinimumHeight(40)
+        self._unit_search.setFont(QFont("Segoe UI", 12))
+        self._unit_search.textChanged.connect(self._filter_unit_products)
+        self._unit_search.returnPressed.connect(self._register_unit_item)
+        row.addWidget(self._unit_search, stretch=5)
+
+        self._unit_quantity = QDoubleSpinBox()
+        self._unit_quantity.setPrefix("x ")
+        self._unit_quantity.setDecimals(0)
+        self._unit_quantity.setMinimum(1)
+        self._unit_quantity.setMaximum(999)
+        self._unit_quantity.setValue(1)
+        self._unit_quantity.setMinimumHeight(40)
+        self._unit_quantity.setFont(QFont("Consolas", 13))
+        row.addWidget(self._unit_quantity, stretch=1)
+
+        add = QPushButton("Lançar")
+        add.setMinimumHeight(40)
+        add.clicked.connect(self._register_unit_item)
+        row.addWidget(add, stretch=1)
+        layout.addLayout(row)
+
+        self._unit_list = QListWidget()
+        self._unit_list.setMaximumHeight(96)
+        self._unit_list.itemDoubleClicked.connect(
+            lambda _item: self._register_unit_item()
+        )
+        layout.addWidget(self._unit_list)
+
+        return box
 
     @staticmethod
     def _section_title(text: str) -> QLabel:
@@ -209,7 +300,10 @@ class CounterWindow(QMainWindow):
 
     def _wire_shortcuts(self) -> None:
         QShortcut(QKeySequence("F2"), self, self._register_item)
+        QShortcut(QKeySequence("F3"), self, self._focus_unit_search)
         QShortcut(QKeySequence("F4"), self, self._cancel_item)
+        QShortcut(QKeySequence("F6"), self, self._apply_discount)
+        QShortcut(QKeySequence("F8"), self, self._open_salon)
         QShortcut(QKeySequence("F10"), self, self._finalize_sale)
 
     def _wire_scale(self) -> None:
@@ -222,19 +316,57 @@ class CounterWindow(QMainWindow):
     # -- dados ---------------------------------------------------------------- #
 
     def _load_products(self) -> None:
-        self._products = [p for p in self._checkout.products() if p.is_weighed]
+        products = self._checkout.products()
+        self._weighed = [p for p in products if p.is_weighed]
+        self._unit = [p for p in products if not p.is_weighed]
+
         self._product_combo.clear()
-        for product in self._products:
+        for product in self._weighed:
             self._product_combo.addItem(product.name)
-        if self._products:
+        if self._weighed:
             self._on_product_changed(0)
+
+        self._filter_unit_products("")
 
     @property
     def _selected_product(self) -> Product | None:
         index = self._product_combo.currentIndex()
-        if 0 <= index < len(self._products):
-            return self._products[index]
+        if 0 <= index < len(self._weighed):
+            return self._weighed[index]
         return None
+
+    @property
+    def _selected_unit_product(self) -> Product | None:
+        row = self._unit_list.currentRow()
+        if 0 <= row < len(self._filtered):
+            return self._filtered[row]
+        # Uma única correspondência dispensa seleção: quem digitou o código
+        # inteiro já escolheu, e obrigar a descer com a seta é atrito na fila.
+        if len(self._filtered) == 1:
+            return self._filtered[0]
+        return None
+
+    @Slot(str)
+    def _filter_unit_products(self, text: str) -> None:
+        needle = text.strip().lower()
+        self._filtered = [
+            product
+            for product in self._unit
+            if not needle
+            or needle in product.name.lower()
+            or needle in product.sku.lower()
+        ]
+
+        self._unit_list.clear()
+        for product in self._filtered:
+            self._unit_list.addItem(
+                QListWidgetItem(
+                    f"{product.sku}   {product.name}   "
+                    f"R$ {format_cents(product.price_cents)}"
+                )
+            )
+        if len(self._filtered) == 1:
+            self._unit_list.setCurrentRow(0)
 
     # -- reações da balança --------------------------------------------------- #
 
@@ -324,7 +456,7 @@ class CounterWindow(QMainWindow):
             QMessageBox.critical(self, "Não foi possível registrar", str(exc))
             return
 
-        self._append_item_row(result)
+        self._append_item_row(result.item, result.consumptions)
         self._refresh_total()
         self._register_button.setEnabled(False)
 
@@ -333,19 +465,62 @@ class CounterWindow(QMainWindow):
                 "Estoque: " + " | ".join(result.stock_warnings), 10000
             )
 
-    def _append_item_row(self, result) -> None:  # noqa: ANN001 - WeighedItemResult
-        item = result.item
+    @Slot()
+    def _focus_unit_search(self) -> None:
+        self._unit_search.setFocus()
+        self._unit_search.selectAll()
+
+    def _register_unit_item(self) -> None:
+        product = self._selected_unit_product
+        if product is None:
+            self.statusBar().showMessage(
+                "Selecione o produto unitário antes de lançar", 4000
+            )
+            return
+
+        try:
+            quantity = Decimal(str(int(self._unit_quantity.value())))
+        except (InvalidOperation, ValueError):  # pragma: no cover - spin box limita
+            return
+
+        try:
+            item = self._checkout.register_unit_item(
+                product=product,
+                quantity=quantity,
+                operator_id=EntityId(DEMO_OPERATOR_ID),
+            )
+        except PdvError as exc:
+            QMessageBox.critical(self, "Não foi possível lançar", str(exc))
+            return
+
+        self._append_item_row(item, item.consumptions)
+        self._refresh_total()
+
+        # Deixar o campo pronto para o próximo item: numa fila, o operador
+        # lança três cafés seguidos e não deve precisar limpar nada.
+        self._unit_search.clear()
+        self._unit_quantity.setValue(1)
+        self._unit_search.setFocus()
+
+    def _append_item_row(self, item: SaleItem, consumptions) -> None:  # noqa: ANN001
         row = self._items_table.rowCount()
         self._items_table.insertRow(row)
 
         write_off = ", ".join(
             f"{c.inventory_item_name.split()[0]} {c.consumed_mg / 1000:.1f}g"
-            for c in result.consumptions
+            for c in consumptions
         )
+        if item.net_weight_grams:
+            measure = format_grams(item.net_weight_grams)
+            unit_price = f"{format_cents(item.unit_price_cents)}/kg"
+        else:
+            measure = f"x {item.quantity}"
+            unit_price = format_cents(item.unit_price_cents)
+
         cells = [
             item.product_name,
-            format_grams(item.net_weight_grams),
-            format_cents(item.unit_price_cents),
+            measure,
+            unit_price,
             format_cents(item.total_cents),
             write_off,
         ]
@@ -358,10 +533,13 @@ class CounterWindow(QMainWindow):
             self._items_table.setItem(row, column, cell)
 
     def _cancel_item(self) -> None:
-        """Cancelamento exige senha de gerente — vetor de furto nº 1 em PDV."""
+        """Cancelamento exige credencial de gerente — vetor de furto nº 1."""
         row = self._items_table.currentRow()
         if row < 0:
             return
+
+        product_name = self._items_table.item(row, 0).text()
+        value = self._items_table.item(row, 3).text()
 
         reason, confirmed = QInputDialog.getText(
             self, "Cancelamento de item",
@@ -370,19 +548,19 @@ class CounterWindow(QMainWindow):
         if not confirmed or not reason.strip():
             return
 
-        # Em produção: diálogo de credencial validando Argon2id contra
-        # `users.password_hash` replicado — funciona offline.
-        password, confirmed = QInputDialog.getText(
-            self, "Autorização de gerente", "Senha do gerente:",
+        authorizer = ManagerAuthDialog.ask(
+            self._authorization,
+            operation=f"Cancelar {product_name} — R$ {value}",
+            parent=self,
         )
-        if not confirmed or not password:
+        if authorizer is None:
             return
 
         try:
             self._checkout.cancel_item(
                 index=row,
                 operator_id=EntityId(DEMO_OPERATOR_ID),
-                authorizer_id=EntityId(DEMO_MANAGER_ID),
+                authorizer_id=authorizer.id,
                 reason=reason.strip(),
             )
         except PdvError as exc:
@@ -391,22 +569,77 @@ class CounterWindow(QMainWindow):
 
         self._items_table.removeRow(row)
         self._refresh_total()
+        self.statusBar().showMessage(
+            f"Item cancelado — autorizado por {authorizer.name}", 8000
+        )
+
+    def _apply_discount(self) -> None:
+        """Desconto percentual, limitado pelo perfil de quem autoriza."""
+        sale = self._checkout.current_sale
+        if sale is None or not sale.items:
+            return
+
+        percent, confirmed = QInputDialog.getDouble(
+            self, "Desconto", "Percentual sobre o subtotal:", 0.0, 0.0, 100.0, 2
+        )
+        if not confirmed or percent <= 0:
+            return
+
+        requested = Decimal(str(percent))
+        authorizer = ManagerAuthDialog.ask(
+            self._authorization,
+            operation=(
+                f"Desconto de {percent:.2f}% sobre "
+                f"R$ {format_cents(sale.subtotal_cents)}"
+            ),
+            percent=requested,
+            parent=self,
+        )
+        if authorizer is None:
+            return
+
+        reason, confirmed = QInputDialog.getText(
+            self, "Desconto", "Motivo (registrado na auditoria):"
+        )
+        if not confirmed or not reason.strip():
+            return
+
+        try:
+            self._checkout.apply_discount(
+                percent=requested,
+                operator_id=EntityId(DEMO_OPERATOR_ID),
+                authorizer_id=authorizer.id,
+                reason=reason.strip(),
+            )
+        except PdvError as exc:
+            QMessageBox.critical(self, "Desconto negado", str(exc))
+            return
+
+        self._refresh_total()
+        self.statusBar().showMessage(
+            f"Desconto autorizado por {authorizer.name}", 8000
+        )
+
+    def _open_salon(self) -> None:
+        SalonPanel(
+            self._database, self._config, port=self._edge_port, parent=self
+        ).exec()
 
     def _finalize_sale(self) -> None:
         sale = self._checkout.current_sale
         if sale is None or not sale.items:
             return
 
+        dialog = PaymentDialog(sale.total_cents, parent=self)
+        if dialog.exec() != PaymentDialog.DialogCode.Accepted:
+            return
+
         total = sale.total_cents
-        payment = Payment(
-            method=PaymentMethod.CASH,
-            amount_cents=Cents(int(total)),
-            change_cents=Cents(0),
-        )
+        local_number = sale.local_number
 
         try:
             receipt = self._checkout.finalize_sale(
-                payments=(payment,),
+                payments=dialog.payments,
                 operator_id=EntityId(DEMO_OPERATOR_ID),
                 operator_name=DEMO_OPERATOR_NAME,
             )
@@ -416,17 +649,27 @@ class CounterWindow(QMainWindow):
 
         # A venda já está confirmada no banco. A impressão é assíncrona: papel
         # acabado não pode desfazer uma transação concluída.
-        self._printer.submit(receipt, job_name=f"Venda {sale.local_number:06d}")
+        self._printer.submit(receipt, job_name=f"Venda {local_number:06d}")
 
         self._items_table.setRowCount(0)
         self._refresh_total()
         self.statusBar().showMessage(
-            f"Venda {sale.local_number:06d} finalizada — R$ {format_cents(total)}", 6000
+            f"Venda {local_number:06d} finalizada — R$ {format_cents(total)}", 6000
         )
 
     def _refresh_total(self) -> None:
         sale = self._checkout.current_sale
         total = sale.total_cents if sale else Cents(0)
+        discount = sale.discount_cents if sale else Cents(0)
+
+        if int(discount) > 0 and sale is not None:
+            self._discount_label.setText(
+                f"Subtotal R$ {format_cents(sale.subtotal_cents)}   "
+                f"Desconto −R$ {format_cents(discount)}"
+            )
+        else:
+            self._discount_label.setText("")
+
         self._total_label.setText(f"TOTAL: R$ {format_cents(total)}")
 
     @Slot()
