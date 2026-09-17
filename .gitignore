@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Banco local do PDV e saídas de impressão (nunca versionar dados de loja)
+*.db
+*.db-wal
+*.db-shm
+pdv_local.db
+out/
+apps/desktop-pdv/out/
+
+# Empacotamento
+build/
+dist/
+*.spec.bak
+
+# Node (web-admin / mobile-waiter)
+node_modules/
+.next/
+.expo/
+
+# Segredos e config local
+.env
+.env.*
+!.env.example
+device_settings.json
+
+# Editores / SO
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini

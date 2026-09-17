@@ -1,0 +1,23 @@
+# --- App Desktop PDV (Windows) ---
+PySide6==6.7.2          # UI (LGPL: permite distribuicao comercial fechada)
+pyserial==3.5           # Balanca via COM/USB-serial
+httpx==0.27.0           # Cliente de sincronizacao
+pydantic==2.8.2         # Validacao de config e DTOs de sync
+
+# --- Impressao termica ---
+pywin32==306; sys_platform == "win32"   # win32print RAW (rota primaria no Windows)
+python-escpos==3.1      # Rota alternativa via libusb (Linux / terminal dedicado)
+
+# --- Servidor local (LAN: mobile garcom + KDS) ---
+fastapi==0.112.0
+uvicorn[standard]==0.30.5
+zeroconf==0.132.2       # mDNS _pdvedge._tcp
+
+# --- Seguranca ---
+argon2-cffi==23.1.0     # Validacao offline de senha de gerente
+
+# --- Dev ---
+pytest==8.3.2
+pytest-qt==4.4.0
+mypy==1.11.1
+ruff==0.5.7
