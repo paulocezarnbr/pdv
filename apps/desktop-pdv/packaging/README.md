@@ -176,6 +176,39 @@ Uso avulso, para suporte:
 sincronização — é o que o atalho "Reconfigurar periféricos" do menu Iniciar
 chama quando a balança é trocada ou o cabo USB muda de porta.
 
+### Ativação do terminal
+
+Implantação em massa:
+
+```powershell
+.\PDV-Setup-1.0.0.exe /SILENT /ACTIVATIONCODE=A1B2C3D4
+```
+
+Na instalação interativa o próprio `PDVSetup.exe` pergunta numa caixa de
+diálogo — o código é gerado no painel na hora e ditado para quem está na loja,
+então o instalador não teria como conhecê-lo de antemão.
+
+Ativar **não** é obrigatório. Sem código o PDV instala, vende e acumula na fila
+de saída; só não sincroniza. O token recebido vai para o cofre DPAPI, nunca para
+`device_settings`.
+
+> **Terminal com fila pendente não troca de tenant.** Aquelas vendas foram
+> registradas sob o CNPJ antigo; reapontar antes de esvaziar a fila mandaria o
+> faturamento de uma loja para outra — erro que só aparece na conciliação fiscal
+> do mês. Sincronize primeiro.
+
+### Atualização
+
+Basta rodar o instalador novo por cima. O `{app}` é substituído; `ProgramData`
+(banco, fila de sincronização, ativação, logs) não é tocado. O instalador fecha
+o PDV antes de gravar — daí o aviso para **fechar o caixa** primeiro — e recusa
+downgrade, porque um binário antigo pode não entender migrations já aplicadas
+no banco da loja.
+
+A redetecção de periféricos numa atualização só preenche o que estiver vazio.
+Uma balança desligada na hora do update não rebaixa para `simulated` um terminal
+que estava vendendo.
+
 > **`--demo` nunca em loja real.** A flag carrega o catálogo de demonstração; o
 > provisionamento normal deixa o catálogo vazio, porque os produtos descem na
 > primeira sincronização com a retaguarda. Semear a confeitaria de exemplo no

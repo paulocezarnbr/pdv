@@ -96,6 +96,32 @@ tenants ─┬─< stores ─┬─< devices ─────< cash_sessions ─�
 | `serial_prefix` | TEXT | Série fiscal exclusiva do PDV |
 | `last_sync_at` | TIMESTAMPTZ | Monitoramento de caixa mudo |
 | `clock_drift_seconds` | INT | Diferença medida no último sync |
+| `token_hash` | TEXT | SHA-256 do token de sync. **Nunca o token em texto** |
+| `hostname`, `os`, `arch` | TEXT | Rótulo para o painel distinguir terminais. Forjável: não é controle de segurança |
+| `activated_at` | TIMESTAMPTZ | Última ativação bem-sucedida |
+
+> **O `device_secret` não está aqui, e isso é deliberado.** A chave HMAC que
+> torna o ledger de auditoria verificável é gerada **no terminal** e protegida
+> por DPAPI; não trafega e não é conhecida pelo servidor. O que o servidor
+> guarda é a âncora (último `seq` e `hash` aceitos por dispositivo), que é o que
+> torna o passado imutável mesmo se a máquina da loja for comprometida.
+
+**`device_activation_codes`** — pareamento de uso único.
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `code_hash` | TEXT PK | SHA-256 do código. Um dump do banco não entrega códigos ativos |
+| `tenant_id`, `store_id`, `device_id` | UUID | Identidade que o código concede |
+| `created_at` | TIMESTAMPTZ | Validade de 15 min é contada daqui |
+| `used_at`, `used_by_ip` | TIMESTAMPTZ, INET | Preenchidos no consumo atômico |
+| `revoked_at` | TIMESTAMPTZ | Queimar um código ditado por engano custa um clique |
+
+O consumo é `UPDATE ... WHERE used_at IS NULL ... RETURNING`: ler-e-depois-gravar
+abriria a janela em que dois terminais recebem a mesma identidade.
+
+**`device_activation_attempts`** — `ip`, `attempted_at`. Teto de 10 tentativas por
+IP em 15 minutos. Sem ele, um código de 8 caracteres cai por força bruta dentro
+da própria validade.
 
 **`users`** — `id`, `tenant_id`, `name`, `login`, `password_hash` (Argon2id),
 `role`, `pin_hash` (autorização rápida no PDV), `discount_tier_id`, `is_active`.

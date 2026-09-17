@@ -52,6 +52,20 @@ UninstallDisplayName={#AppName}
 UninstallDisplayIcon={app}\{#AppExeName}
 SetupLogging=yes
 
+; --- Atualizacao no lugar -------------------------------------------------
+; O PDV aberto mantem PDV.exe e as DLLs do Qt travados. Sem fechar antes, o
+; Inno grava parte dos arquivos, falha no resto e exige reinicio - deixando a
+; loja com um diretorio meio atualizado ate alguem reiniciar a maquina.
+CloseApplications=yes
+CloseApplicationsFilter=*.exe,*.dll,*.pyd
+; Nao reabrimos sozinhos: quem decide quando o caixa volta a operar e o lojista,
+; e reabrir no meio de uma conferencia atrapalha mais do que ajuda.
+RestartApplications=no
+; Dados, fila de sincronizacao e banco vivem em ProgramData, fora de {app}.
+; A atualizacao troca binario e nada mais.
+UsePreviousAppDir=yes
+UsePreviousTasks=yes
+
 [Languages]
 Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
 
@@ -138,7 +152,7 @@ Filename: "{app}\{#SetupExeName}"; \
 ; dialogo. O resultado vai so para o setup.log, que e o que o script de
 ; implantacao em massa consegue ler.
 Filename: "{app}\{#SetupExeName}"; \
-    Parameters: "--silent --data-dir ""{#DataDir}"""; \
+    Parameters: "--silent --data-dir ""{#DataDir}""{code:ActivationArg}"; \
     StatusMsg: "Detectando balanca e impressora..."; \
     Flags: runhidden waituntilterminated; Check: WizardSilent
 
@@ -164,12 +178,120 @@ Type: filesandordirs; Name: "{app}"
   de fato registrado e completo.
   --------------------------------------------------------------------------- }
 
+{ ---------------------------------------------------------------------------
+  Bloqueio de downgrade.
+
+  Reinstalar versao antiga por cima reintroduz vulnerabilidade ja corrigida e,
+  pior neste sistema, pode rodar um binario que desconhece migrations ja
+  aplicadas no banco da loja - com a fila de sincronizacao cheia de vendas em
+  um esquema que ele nao entende.
+
+  O caminho seguro de rollback e desinstalar (os dados ficam) e instalar a
+  versao desejada, com decisao consciente de quem da suporte.
+  --------------------------------------------------------------------------- }
+
+function InstalledVersion(): String;
+var
+  Value: String;
+  Key: String;
+begin
+  Result := '';
+  Key := 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{#AppId}_is1';
+
+  { As duas visoes do registro sao consultadas de proposito. Em InitializeSetup
+    o modo de instalacao 64 bits ainda nao esta decidido, entao HKLM sozinho
+    poderia ler a visao errada e concluir "instalacao nova" onde ha uma
+    instalacao anterior - justamente o caso em que a protecao de downgrade e o
+    aviso de fechar o caixa mais importam. }
+  if RegQueryStringValue(HKLM64, Key, 'DisplayVersion', Value) then
+    Result := Value
+  else if RegQueryStringValue(HKLM32, Key, 'DisplayVersion', Value) then
+    Result := Value;
+end;
+
+function InitializeSetup(): Boolean;
+var
+  Existing: String;
+  InstalledVer, ThisVer: Int64;
+  Comparison: Integer;
+begin
+  Result := True;
+  Existing := InstalledVersion();
+
+  if Existing = '' then
+    Exit;  { instalacao nova }
+
+  { Versao gravada em formato inesperado: seguimos, mas sem prometer nada
+    sobre a ordem - melhor atualizar do que travar a loja por um registro
+    estranho. }
+  if (not StrToVersion(Existing, InstalledVer)) or
+     (not StrToVersion('{#AppVersion}', ThisVer)) then
+    Exit;
+
+  Comparison := ComparePackedVersion(InstalledVer, ThisVer);
+
+  if Comparison > 0 then
+  begin
+    MsgBox('Versao mais recente ja instalada: ' + Existing + '.' + #13#10 + #13#10 +
+           'Instalar a {#AppVersion} por cima seria um downgrade e pode deixar ' +
+           'o banco da loja num formato que esta versao nao entende.' + #13#10 + #13#10 +
+           'Para voltar de versao, desinstale primeiro (os dados sao mantidos).',
+           mbError, MB_OK);
+    Result := False;
+    Exit;
+  end;
+
+  if Comparison = 0 then
+  begin
+    Result := (MsgBox('A versao {#AppVersion} ja esta instalada.' + #13#10 + #13#10 +
+                      'Reinstalar por cima? Os dados da loja serao preservados.',
+                      mbConfirmation, MB_YESNO) = IDYES);
+    Exit;
+  end;
+
+  MsgBox('Atualizando o PDV de ' + Existing + ' para {#AppVersion}.' + #13#10 + #13#10 +
+         'FECHE O CAIXA antes de continuar: o PDV aberto sera encerrado e uma ' +
+         'venda em andamento seria perdida.' + #13#10 + #13#10 +
+         'O banco de dados, a fila de sincronizacao e a ativacao do terminal ' +
+         'sao preservados.',
+         mbInformation, MB_OK);
+end;
+
+{ ---------------------------------------------------------------------------
+  Codigo de ativacao para implantacao em massa.
+
+      PDV-Setup-1.0.0.exe /SILENT /ACTIVATIONCODE=A1B2C3D4
+
+  Na instalacao interativa isto fica vazio e quem pergunta e o proprio
+  PDVSetup.exe, numa caixa de dialogo - o codigo e gerado no painel no momento
+  da implantacao e ditado para quem esta na loja, entao o instalador nao teria
+  como conhece-lo de antemao.
+
+  Ativar nao e obrigatorio: sem codigo o PDV instala, vende e acumula na fila
+  de saida. Travar a instalacao porque a internet da loja ainda nao foi ligada
+  transformaria um contratempo em visita tecnica perdida.
+  --------------------------------------------------------------------------- }
+
+function ActivationArg(Param: String): String;
+var
+  Code: String;
+begin
+  Code := ExpandConstant('{param:ACTIVATIONCODE|}');
+  if Code = '' then
+    Result := ''
+  else
+    Result := ' --activation-code "' + Code + '"';
+end;
+
 function IsVCRedistInstalled(): Boolean;
 var
   Installed: Cardinal;
 begin
+  { HKLM64 explicito: o runtime x64 registra-se na visao de 64 bits, e ler a
+    visao de 32 bits concluiria "ausente" numa maquina que ja o tem - reinstalar
+    por cima e inofensivo, mas custa tempo em toda implantacao. }
   Result := False;
-  if RegQueryDWordValue(HKEY_LOCAL_MACHINE,
+  if RegQueryDWordValue(HKLM64,
        'SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64',
        'Installed', Installed) then
     Result := (Installed = 1);

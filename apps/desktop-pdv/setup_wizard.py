@@ -28,6 +28,12 @@ from pdv.config import AppConfig
 from pdv.data.database import Database
 from pdv.data.seed import seed_demo_data
 from pdv.data.settings import SettingsStore
+from pdv.provisioning.activation import (
+    ActivationError,
+    HttpActivationTransport,
+    activate,
+    is_activated,
+)
 from pdv.provisioning.detection import detect_all, settings_from_detection
 from pdv.provisioning.secrets import SecretVault
 from pdv.provisioning.smoke import CheckStatus, run_smoke_test
@@ -101,8 +107,53 @@ def _configure_logging(data_dir: Path) -> None:
     )
 
 
+def _activate_step(
+    database: Database,
+    vault: SecretVault,
+    base_config: AppConfig,
+    activation_code: str | None,
+) -> str:
+    """Ativa o terminal se houver código. Nunca aborta o provisionamento.
+
+    Um terminal sem ativação ainda **vende**: registra a venda, baixa estoque e
+    imprime o cupom, acumulando tudo na fila de saída. O que ele não faz é
+    sincronizar. Travar a instalação porque a internet da loja ainda não foi
+    ligada transformaria um contratempo em visita técnica perdida.
+    """
+    if is_activated(database):
+        settings = SettingsStore(database).load()
+        return f"[ OK ] Terminal já ativado (loja {settings.store_id})"
+
+    if not activation_code:
+        return (
+            "[AVISO] Terminal não ativado — trabalhará offline.\n"
+            "        → As vendas ficam na fila até a ativação. Rode "
+            "PDVSetup.exe --activation-code CODIGO"
+        )
+
+    try:
+        result = activate(
+            activation_code,
+            database=database,
+            vault=vault,
+            transport=HttpActivationTransport(base_config.cloud_base_url),
+        )
+    except ActivationError as exc:
+        logger.warning("Ativação não concluída: %s", exc)
+        return f"[AVISO] Ativação não concluída: {exc}\n        → O PDV vende offline até isso ser resolvido"
+
+    return (
+        f"[ OK ] Terminal ativado para {result.store_name or result.store_id} "
+        f"(device {result.device_id[:8]})"
+    )
+
+
 def provision(
-    data_dir: Path, *, detect_only: bool = False, seed_demo: bool = False
+    data_dir: Path,
+    *,
+    detect_only: bool = False,
+    seed_demo: bool = False,
+    activation_code: str | None = None,
 ) -> tuple[int, str]:
     """Executa o provisionamento. Devolve `(código_de_saída, relatório)`."""
     data_dir.mkdir(parents=True, exist_ok=True)
@@ -121,20 +172,52 @@ def provision(
     device_secret = vault.ensure_device_secret()
     lines.append("[ OK ] Segredo do terminal protegido no DPAPI")
 
+    # --- 1.5. Ativação do terminal ----------------------------------------- #
+    # Antes da detecção de propósito: a ativação define `device_id` e
+    # `tenant_id`, e é sob essa identidade que o ledger de auditoria começa a
+    # ser encadeado. Ativar depois de já haver eventos gravados obrigaria a
+    # reancorar a cadeia no servidor.
+    lines.append(_activate_step(database, vault, base_config, activation_code))
+
     # --- 2. Detecção de periféricos ---------------------------------------- #
     logger.info("Varrendo portas seriais e impressoras...")
     detection = detect_all()
 
     detected_values = settings_from_detection(detection)
-    store.set_many(detected_values)
+
+    # Numa reinstalação/atualização a configuração existente manda. Sobrescrever
+    # aqui rebaixaria para `simulated` um terminal cuja balança apenas estava
+    # desligada no momento do update — e a loja pararia de vender por peso sem
+    # que nada tivesse de fato quebrado.
+    if detect_only:
+        store.set_many(detected_values)
+    else:
+        kept = set(detected_values) - set(store.set_many_if_absent(detected_values))
+        if kept:
+            lines.append(
+                "[INFO] Configuração existente preservada "
+                f"({', '.join(sorted(kept))})"
+            )
 
     lines.append(f"[INFO] {detection.ports_scanned} porta(s) serial(is) verificada(s)")
+
+    # O relatório fala do que ficou **configurado**, não do que a varredura viu.
+    # Numa atualização os dois divergem de propósito, e anunciar "nenhuma
+    # balança detectada" para um terminal que segue configurado e vendendo
+    # mandaria o técnico caçar um problema que não existe.
+    effective = store.load()
 
     scale = detection.best_scale
     if scale is not None:
         lines.append(
             f"[ OK ] Balança: {scale.protocol} em {scale.port} @ {scale.baudrate} "
             f"(confiança {scale.confidence})"
+        )
+    elif effective.scale_protocol and effective.scale_protocol != "simulated":
+        lines.append(
+            f"[INFO] Balança: mantida a configuração atual "
+            f"({effective.scale_protocol} em {effective.scale_port}) — "
+            f"não respondeu durante a varredura."
         )
     else:
         lines.append(
@@ -145,6 +228,11 @@ def provision(
     printer = detection.best_printer
     if printer is not None:
         lines.append(f"[ OK ] Impressora: {printer.name}")
+    elif effective.printer_backend and effective.printer_backend != "file":
+        lines.append(
+            f"[INFO] Impressora: mantida a configuração atual "
+            f"({effective.printer_name})"
+        )
     else:
         lines.append(
             "[AVISO] Nenhuma impressora encontrada — cupons irão para arquivo.\n"
@@ -195,15 +283,55 @@ def provision(
     return EXIT_OK, "\n".join(lines)
 
 
+#: QApplication é criada uma vez e mantida viva pelo processo inteiro. Soltar a
+#: referência entre o diálogo de ativação e a janela de relatório deixaria o Qt
+#: destruir a aplicação e recriá-la — caminho conhecido para travar no Windows.
+_QT_APP: object | None = None
+
+
+def _qt_app():  # noqa: ANN202
+    """A `QApplication` do processo, ou `None` se o Qt não estiver disponível."""
+    global _QT_APP
+
+    if _QT_APP is not None:
+        return _QT_APP
+    try:
+        from PySide6.QtWidgets import QApplication
+    except ImportError:  # pragma: no cover
+        return None
+
+    _QT_APP = QApplication.instance() or QApplication(sys.argv)
+    return _QT_APP
+
+
+def _ask_activation_code() -> str | None:
+    """Pede o código de ativação numa caixa de diálogo.
+
+    Cancelar é uma resposta legítima, não um erro: o PDV instalado e não ativado
+    vende offline e acumula na fila. Devolve `None` sem Qt disponível — a
+    instalação segue e o relatório avisa como ativar depois.
+    """
+    if _qt_app() is None:  # pragma: no cover
+        return None
+
+    from PySide6.QtWidgets import QInputDialog
+
+    code, accepted = QInputDialog.getText(
+        None,
+        "Ativação do terminal",
+        "Código de ativação (gerado no painel administrativo):\n\n"
+        "Deixe em branco para ativar depois — o PDV já vende offline.",
+    )
+    return code.strip() if accepted and code.strip() else None
+
+
 def _show_window(exit_code: int, report: str) -> None:
     """Mostra o resultado numa janela. Cai para o console se o Qt não subir."""
-    try:
-        from PySide6.QtWidgets import QApplication, QMessageBox
-    except ImportError:  # pragma: no cover
+    if _qt_app() is None:  # pragma: no cover
         _report(report)
         return
 
-    app = QApplication.instance() or QApplication(sys.argv)
+    from PySide6.QtWidgets import QMessageBox
 
     box = QMessageBox()
     box.setWindowTitle("Instalação do PDV Balcão")
@@ -219,7 +347,6 @@ def _show_window(exit_code: int, report: str) -> None:
 
     box.setDetailedText(report)
     box.exec()
-    del app
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -233,14 +360,28 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="carregar o catálogo de demonstração (nunca em loja real)",
     )
+    parser.add_argument(
+        "--activation-code",
+        help="código de ativação gerado no painel administrativo",
+    )
     parser.add_argument("--data-dir", type=Path, default=DEFAULT_DATA_DIR)
     args = parser.parse_args(argv)
 
     _configure_logging(args.data_dir)
 
     try:
+        # Sem código na linha de comando e com interface disponível, perguntamos.
+        # O instalador não tem como saber o código: ele é gerado no painel no
+        # momento da implantação e ditado para quem está na loja.
+        code = args.activation_code
+        if not code and not args.silent and not args.detect_only:
+            code = _ask_activation_code()
+
         exit_code, report = provision(
-            args.data_dir, detect_only=args.detect_only, seed_demo=args.demo
+            args.data_dir,
+            detect_only=args.detect_only,
+            seed_demo=args.demo,
+            activation_code=code,
         )
     except Exception as exc:  # noqa: BLE001
         logger.exception("Falha no provisionamento")

@@ -122,8 +122,18 @@ a baixar à parte, nenhum prompt de linha de comando.
 - [x] `device_secret` gerado localmente na primeira execução e protegido por
       DPAPI em escopo de máquina. Nunca trafega pela rede, nunca entra no banco
       que ele protege.
-- [ ] **Ativação do terminal**: tela pedindo o código do tenant, que provisiona
-      `device_id` e o token de sincronização junto à retaguarda.
+- [x] **Ativação do terminal**: o lojista digita um código curto gerado no
+      painel (`/ACTIVATIONCODE=` para implantação em massa) e o terminal recebe
+      `tenant_id`, `store_id`, `device_id` e o token de sincronização, guardado
+      no DPAPI e nunca em `device_settings`. Código de uso único, validade de
+      15 min, consumido atomicamente e com teto de tentativas por IP.
+      *Regra que protege o faturamento:* um terminal com fila pendente **não**
+      troca de tenant. Aquelas vendas foram registradas sob o CNPJ antigo;
+      reapontar antes de esvaziar a fila mandaria o faturamento de uma loja
+      para outra — erro que só aparece na conciliação fiscal do mês.
+      Ativar não é obrigatório: sem código o PDV instala, vende e acumula na
+      fila. Travar a instalação por falta de internet transformaria um
+      contratempo em visita técnica perdida.
 - [x] **Teste de fumaça pós-instalação**: verifica gravação no banco e modo WAL,
       integridade da cadeia de auditoria, resposta da balança, impressão de um
       cupom de teste (com acentuação, corte e pulso de gaveta) e presença de
@@ -133,7 +143,16 @@ a baixar à parte, nenhum prompt de linha de comando.
 - [x] Atalho "Reconfigurar periféricos" no menu Iniciar (`PDVSetup.exe
       --detect-only`): troca de balança ou de porta USB se resolve sem
       reinstalar nada.
-- [ ] Atualização in-place preservando o banco e a fila de sincronização.
+- [x] Atualização in-place preservando o banco e a fila de sincronização.
+      Dados vivem em `ProgramData`, fora de `{app}`: a atualização troca binário
+      e nada mais. O PDV aberto é encerrado antes (mantém DLLs travadas), há
+      bloqueio de downgrade (binário antigo não deve encontrar migrations que
+      desconhece) e aviso para fechar o caixa.
+      *Regressão evitada:* a redetecção de periféricos **não** sobrescreve a
+      configuração existente numa atualização. Uma balança desligada no instante
+      do update rebaixaria o terminal para `simulated` e a loja pararia de vender
+      por peso sem nada ter quebrado de fato. Sobrescrever é ato deliberado, via
+      atalho "Reconfigurar periféricos".
 - [ ] Assinatura digital do instalador e dos binários (sem ela, o SmartScreen
       barra e parte dos lojistas desiste da instalação).
       **Bloqueado por insumo, não por código:** o `build.ps1` já assina os dois

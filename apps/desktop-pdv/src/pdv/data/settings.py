@@ -64,6 +64,33 @@ class SettingsStore:
             for key, value in values.items():
                 self._set_in(connection, key, value)
 
+    def set_many_if_absent(self, values: dict[str, str]) -> dict[str, str]:
+        """Grava apenas as chaves ainda não configuradas. Devolve o que gravou.
+
+        É o modo correto numa **atualização**. Redetectar e sobrescrever a cada
+        update é destrutivo por dois caminhos, ambos silenciosos:
+
+        * a balança estar desligada no instante do update rebaixaria o terminal
+          para `simulated`, e a loja pararia de vender produto por peso sem que
+          nada tenha quebrado de fato;
+        * o nome de impressora que o técnico corrigiu à mão seria substituído
+          pelo palpite da detecção.
+
+        Redetecção que sobrescreve é ato deliberado — o atalho "Reconfigurar
+        periféricos" — e passa por `set_many`.
+        """
+        applied: dict[str, str] = {}
+        with self._db.transaction() as connection:
+            for key, value in values.items():
+                row = connection.execute(
+                    "SELECT value FROM device_settings WHERE key = ?", (key,)
+                ).fetchone()
+                if row is not None and row["value"]:
+                    continue
+                self._set_in(connection, key, value)
+                applied[key] = value
+        return applied
+
     @staticmethod
     def _set_in(connection, key: str, value: str) -> None:  # noqa: ANN001
         connection.execute(
