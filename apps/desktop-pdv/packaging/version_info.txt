@@ -1,0 +1,31 @@
+# Recurso de versao embarcado no PDV.exe.
+# Aparece em Propriedades > Detalhes e e usado pelo instalador para bloquear
+# downgrade silencioso (reinstalar versao antiga reintroduziria falhas ja
+# corrigidas).
+VSVersionInfo(
+  ffi=FixedFileInfo(
+    filevers=(1, 0, 0, 0),
+    prodvers=(1, 0, 0, 0),
+    mask=0x3f,
+    flags=0x0,
+    OS=0x40004,
+    fileType=0x1,
+    subtype=0x0,
+    date=(0, 0)
+  ),
+  kids=[
+    StringFileInfo([
+      StringTable(
+        '041604B0',
+        [StringStruct('CompanyName', 'ERP Food Service'),
+         StringStruct('FileDescription', 'PDV Balcao - Terminal de Caixa'),
+         StringStruct('FileVersion', '1.0.0.0'),
+         StringStruct('InternalName', 'PDV'),
+         StringStruct('LegalCopyright', 'Copyright (c) 2026 ERP Food Service'),
+         StringStruct('OriginalFilename', 'PDV.exe'),
+         StringStruct('ProductName', 'PDV Balcao'),
+         StringStruct('ProductVersion', '1.0.0.0')])
+    ]),
+    VarFileInfo([VarStruct('Translation', [1046, 1200])])
+  ]
+)

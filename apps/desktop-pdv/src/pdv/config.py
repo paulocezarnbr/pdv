@@ -72,6 +72,15 @@ class AppConfig:
     tenant_id: str
     store_id: str
     device_id: str
+    device_secret: bytes = b"CHAVE-DE-DESENVOLVIMENTO-NAO-USE-EM-PRODUCAO"
+    """Chave HMAC do ledger de auditoria.
+
+    Em producao **nunca** fica em codigo nem no banco: e provisionada na
+    ativacao do terminal e guardada via DPAPI do Windows, vinculada a maquina
+    e a conta. Ainda assim, um administrador com depurador consegue extrai-la
+    da memoria — por isso a garantia forte e a ancoragem no servidor, nao esta
+    chave. Ver o cabecalho de services/audit.py.
+    """
     store_name: str = "Confeitaria Demo"
     store_document: str = "00.000.000/0001-00"
     store_address: str = "Rua Exemplo, 123 - Centro"
@@ -88,6 +97,9 @@ class AppConfig:
             tenant_id=os.getenv("PDV_TENANT_ID", "11111111-1111-1111-1111-111111111111"),
             store_id=os.getenv("PDV_STORE_ID", "22222222-2222-2222-2222-222222222222"),
             device_id=os.getenv("PDV_DEVICE_ID", "33333333-3333-3333-3333-333333333333"),
+            device_secret=os.getenv(
+                "PDV_DEVICE_SECRET", "CHAVE-DE-DESENVOLVIMENTO-NAO-USE-EM-PRODUCAO"
+            ).encode("utf-8"),
             store_name=os.getenv("PDV_STORE_NAME", "Confeitaria Demo"),
             database_path=Path(os.getenv("PDV_DB_PATH", "./pdv_local.db")),
             cloud_base_url=os.getenv("PDV_CLOUD_URL", "https://api.erpfood.local"),

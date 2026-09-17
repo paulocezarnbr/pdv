@@ -469,6 +469,7 @@ class CheckoutService:
             store_id=EntityId(self._config.store_id),
             device_id=EntityId(self._config.device_id),
             outbox=self._outbox,
+            device_secret=self._config.device_secret,
         )
 
     def pending_sync_count(self) -> int:

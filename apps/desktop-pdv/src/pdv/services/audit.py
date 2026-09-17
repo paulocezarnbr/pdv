@@ -1,27 +1,51 @@
-"""Ledger de auditoria anti-furto — imutável e encadeado por hash.
+"""Ledger de auditoria anti-furto — encadeado por HMAC.
 
 Modelo de ameaça: **o banco local é hostil.** O arquivo SQLite fica na máquina
-do caixa, e quem tem acesso físico pode abri-lo com qualquer editor. Portanto a
-integridade não pode depender de permissão de arquivo.
+do caixa e quem tem acesso físico pode abri-lo com qualquer editor de SQLite.
+A integridade não pode depender de permissão de arquivo nem do gatilho do banco.
 
-Defesa: cada entrada carrega o hash da anterior, formando uma cadeia::
+Por que HMAC e não SHA-256 puro
+--------------------------------
 
-    hash_n = SHA256(prev_hash ‖ seq ‖ event_type ‖ payload_canônico ‖ created_at)
+Um encadeamento com hash público (``SHA256(prev ‖ dados)``) **não protege nada**
+quando o atacante tem o código, e num app Python ele sempre tem. Basta editar a
+linha e recalcular a cadeia inteira a partir dali — o algoritmo está publicado
+no próprio repositório. A cadeia continuaria "válida".
 
-Apagar ou editar uma entrada quebra todos os hashes seguintes. Como a cadeia é
-replicada ao servidor no sync, o backend detecta:
+Com HMAC o elo depende de um segredo que não está no banco::
 
-* **hash divergente** → conteúdo alterado;
-* **buraco no `seq`** → entrada removida;
-* **`seq` que nunca chega** → banco truncado.
+    hash_n = HMAC-SHA256(device_secret, prev_hash ‖ seq ‖ event_type
+                                        ‖ payload_canônico ‖ created_at)
 
-Não impede a adulteração — **torna-a detectável**, que é o que importa quando a
-conversa é com o dono do estabelecimento sobre quem cancelou 40 itens no sábado.
+Sem a chave, forjar um elo é computacionalmente inviável. Isso **eleva a
+barreira** de "qualquer um com o DB Browser" para "quem consegue extrair a
+chave do DPAPI do Windows". Não é inviolável — ver abaixo.
+
+O que realmente garante a integridade
+--------------------------------------
+
+Nenhuma criptografia local protege dados em hardware controlado pelo atacante:
+com privilégio de administrador e um depurador, a chave sai da memória. A
+garantia forte vem de **fora da máquina**:
+
+1. **Ancoragem no servidor.** Toda entrada sincronizada tem cópia na nuvem. A
+   partir do ACK, adulterar a versão local não muda nada: a verdade já saiu.
+2. **Marca d'água alta (high-water mark).** O servidor guarda o último `seq`
+   por dispositivo. Reenviar um `seq` já ancorado com conteúdo diferente é
+   rejeitado e vira alerta de fraude.
+3. **Sequência contígua.** `seq` sem buraco por dispositivo e `local_number`
+   sem buraco por terminal: apagar uma venda deixa um vão que o servidor vê.
+4. **Sincronização frequente.** A janela de vulnerabilidade é exatamente o
+   intervalo entre a venda e o ACK. Por isso o worker sobe em segundos, não em
+   horas — é uma decisão de *segurança*, não de performance.
+
+Em resumo: a adulteração local não é impedida, é **detectada** — e a janela em
+que ela vale alguma coisa é medida em segundos.
 """
 
 from __future__ import annotations
 
-import hashlib
+import hmac
 import json
 import sqlite3
 from typing import Any
@@ -56,10 +80,22 @@ def canonical_payload(payload: dict[str, Any]) -> str:
 
 
 def compute_hash(
-    *, prev_hash: str, seq: int, event_type: str, payload_json: str, created_at: str
+    *,
+    secret: bytes,
+    prev_hash: str,
+    seq: int,
+    event_type: str,
+    payload_json: str,
+    created_at: str,
 ) -> str:
+    """Elo da cadeia: HMAC-SHA256 com o segredo do dispositivo.
+
+    O `|` como separador não é decorativo: sem delimitador, dois campos
+    diferentes poderiam concatenar no mesmo material (``"ab"+"c"`` vs
+    ``"a"+"bc"``) e produzir elos colidentes.
+    """
     material = f"{prev_hash}|{seq}|{event_type}|{payload_json}|{created_at}"
-    return hashlib.sha256(material.encode("utf-8")).hexdigest()
+    return hmac.new(secret, material.encode("utf-8"), "sha256").hexdigest()
 
 
 class AuditService:
@@ -76,11 +112,15 @@ class AuditService:
         store_id: EntityId,
         device_id: EntityId,
         outbox: OutboxRepository,
+        device_secret: bytes,
     ) -> None:
+        if not device_secret:
+            raise ValueError("device_secret vazio: a cadeia seria forjavel")
         self._tenant_id = tenant_id
         self._store_id = store_id
         self._device_id = device_id
         self._outbox = outbox
+        self._secret = device_secret
 
     # -- escrita -------------------------------------------------------------- #
 
@@ -101,6 +141,7 @@ class AuditService:
         payload_json = canonical_payload(payload)
 
         digest = compute_hash(
+            secret=self._secret,
             prev_hash=prev_hash,
             seq=seq,
             event_type=event_type.value,
@@ -197,6 +238,7 @@ class AuditService:
                 )
 
             recomputed = compute_hash(
+                secret=self._secret,
                 prev_hash=row["prev_hash"],
                 seq=seq,
                 event_type=row["event_type"],

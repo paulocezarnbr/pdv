@@ -347,6 +347,7 @@ def test_audit_chain_is_valid_and_tamper_evident(app) -> None:  # noqa: ANN001
         store_id=EntityId(config.store_id),
         device_id=EntityId(config.device_id),
         outbox=OutboxRepository(),
+        device_secret=config.device_secret,
     )
     audit.verify_chain(database.connection)  # cadeia íntegra
 

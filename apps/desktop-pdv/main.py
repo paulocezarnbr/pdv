@@ -42,6 +42,7 @@ def verify_audit_integrity(database: Database, config: AppConfig) -> str | None:
         store_id=EntityId(config.store_id),
         device_id=EntityId(config.device_id),
         outbox=OutboxRepository(),
+        device_secret=config.device_secret,
     )
     try:
         audit.verify_chain(database.connection)
