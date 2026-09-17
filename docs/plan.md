@@ -167,12 +167,43 @@ impressora cortando e a primeira venda aparecendo na nuvem. Zero intervenção
 técnica.
 
 ### Fase 3 — Mobile Garçom + KDS (Sprint 8–10)
-- [ ] Descoberta do PDV na LAN via mDNS (`_pdvedge._tcp`).
-- [ ] Desktop expõe API local (FastAPI embarcado) + WebSocket para o KDS.
-- [ ] Mobile decide rota: LAN se disponível, senão Cloud; fila local se ambos caírem.
-- [ ] KDS com tempo por item, bump/recall e alerta de atraso.
-- **Aceite:** pedido lançado no celular aparece no KDS em < 1 s com Wi-Fi isolado
-  (sem rota para a internet).
+
+> **O terminal vira servidor.** Enquanto a internet estiver fora, é este processo
+> que numera pedidos, guarda a comanda e alimenta a cozinha. O celular do garçom
+> é cliente dele, não da nuvem.
+
+- [x] Descoberta do PDV na LAN via mDNS (`_pdvedge._tcp`).
+      Falhar no anúncio **não** impede o PDV de vender, e o app mantém a opção
+      de endereço manual: roteador com isolamento de cliente bloqueia mDNS, e
+      esconder a saída manual transformaria um contratempo em chamado.
+- [x] Desktop expõe API local (FastAPI embarcado) + WebSocket para o KDS.
+      Escuta em `0.0.0.0` porque precisa aceitar os celulares, mas **nenhuma**
+      rota de negócio confia no IP de origem: a LAN da loja é a mesma rede do
+      Wi-Fi do cliente.
+- [x] **Pareamento presencial**: o código é gerado na tela do caixa, vale 5 min
+      e serve uma vez só. O acesso físico ao balcão é a âncora — quem não chega
+      lá não pareia, mesmo estando na rede. Só o hash do token é gravado, e a
+      revogação vale no instante seguinte.
+- [x] KDS com tempo por item, bump/recall e alerta de atraso.
+      *Recall* existe porque a cozinha erra: bateu pronto no prato errado e
+      precisa desfazer sem cancelar o item — cancelar mexe na venda, o que é
+      decisão de gerente, não de quem está na chapa. O tempo conta do
+      `queued_at`: o que importa é há quanto tempo o cliente pediu.
+- [x] **Item por peso é recusado no celular.** Quem pesa é a balança do balcão,
+      que guarda o quadro cru como prova pericial. Aceitar peso digitado por
+      quem cobra abriria exatamente o buraco que o M09 existe para fechar.
+- [ ] Mobile decide rota: LAN se disponível, senão Cloud; fila local se ambos
+      caírem. **O app em si (React Native/Flutter) ainda não foi escrito** — o
+      contrato do lado do servidor está pronto e testado.
+- **Aceite:** ✅ pedido lançado no celular aparece no KDS em **445 ms**, medido
+  sobre HTTP + WebSocket reais contra o servidor rodando (critério: < 1 s).
+
+**O invariante que sustenta a fase:** o `client_uuid` gerado no celular é
+preservado ponta a ponta. O app tem duas rotas até a nuvem — a LAN, por este
+terminal, e a internet, direto — e escolhe uma sem poder confirmar que a outra
+não entregou. Se o terminal gerasse uuid próprio ao receber o pedido, a mesma
+comanda chegaria à nuvem com dois identificadores e o restaurante seria cobrado
+duas vezes. Preservar o uuid da origem é o que faz os dois caminhos convergirem.
 
 ### Fase 3.5 — Painel Administrativo Remoto (Sprint 10–12)
 

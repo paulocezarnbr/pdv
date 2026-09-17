@@ -49,6 +49,20 @@ hiddenimports = [
     "serial",
     "serial.tools.list_ports",
     *collect_submodules("serial"),
+    # Servidor local do salao: o uvicorn resolve loop, protocolo e ciclo de vida
+    # por string em tempo de execucao, entao o analisador estatico nao enxerga
+    # nenhum deles. Sem estas linhas o pacote instala e o servidor morre ao subir.
+    "uvicorn.loops.auto",
+    "uvicorn.loops.asyncio",
+    "uvicorn.protocols.http.auto",
+    "uvicorn.protocols.http.h11_impl",
+    "uvicorn.protocols.websockets.auto",
+    "uvicorn.protocols.websockets.websockets_impl",
+    "uvicorn.lifespan.on",
+    "uvicorn.logging",
+    "websockets",
+    "websockets.legacy",
+    *collect_submodules("zeroconf"),
 ]
 
 # Corta o que não é usado no terminal de caixa. Cada exclusão reduz o tamanho

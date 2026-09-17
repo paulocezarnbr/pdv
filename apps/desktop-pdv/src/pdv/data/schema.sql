@@ -303,3 +303,71 @@ CREATE TABLE IF NOT EXISTS users (
     is_active      INTEGER NOT NULL DEFAULT 1,
     updated_at     TEXT NOT NULL
 );
+
+-- ===========================================================================
+-- Fase 3 — Servidor local (edge) para o app do garçom e o KDS
+-- ===========================================================================
+
+-- Aparelhos de garçom pareados com ESTE terminal.
+--
+-- A LAN da loja não é confiável: costuma ser a mesma rede do Wi-Fi do cliente.
+-- Estar na rede não autoriza nada — o aparelho precisa ter sido pareado por
+-- alguém com acesso físico ao caixa, e carrega um token próprio.
+CREATE TABLE IF NOT EXISTS edge_devices (
+    id            TEXT PRIMARY KEY,
+    tenant_id     TEXT NOT NULL,
+    store_id      TEXT NOT NULL,
+    name          TEXT NOT NULL,           -- "Celular da Ana"
+    kind          TEXT NOT NULL DEFAULT 'waiter'
+                     CHECK (kind IN ('waiter','kds')),
+    token_hash    TEXT NOT NULL,           -- SHA-256; o token cru nunca é gravado
+    operator_id   TEXT,                    -- garçom vinculado, quando houver
+    paired_at     TEXT NOT NULL,
+    last_seen_at  TEXT,
+    revoked_at    TEXT,                    -- celular perdido se revoga daqui
+    created_at    TEXT NOT NULL,
+    updated_at    TEXT NOT NULL,
+    client_uuid   TEXT NOT NULL UNIQUE,
+    is_synced     INTEGER NOT NULL DEFAULT 0,
+    synced_at     TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_edge_devices_token ON edge_devices (token_hash);
+
+-- Códigos de pareamento de uso único, exibidos na tela do caixa.
+CREATE TABLE IF NOT EXISTS edge_pairing_codes (
+    code_hash   TEXT PRIMARY KEY,
+    created_at  TEXT NOT NULL,
+    expires_at  TEXT NOT NULL,
+    used_at     TEXT,
+    used_by     TEXT
+);
+
+-- Fila do KDS. Espelha os itens do pedido, mas com o ciclo de vida da COZINHA,
+-- que é diferente do ciclo de vida da venda: um item pago pode ainda não ter
+-- saído, e um item entregue pode ser devolvido.
+CREATE TABLE IF NOT EXISTS kds_tickets (
+    id             TEXT PRIMARY KEY,
+    tenant_id      TEXT NOT NULL,
+    store_id       TEXT NOT NULL,
+    order_id       TEXT NOT NULL,
+    order_item_id  TEXT NOT NULL,
+    station        TEXT NOT NULL DEFAULT 'cozinha',
+    product_name   TEXT NOT NULL,
+    quantity       TEXT NOT NULL DEFAULT '1',
+    notes          TEXT,
+    status         TEXT NOT NULL DEFAULT 'queued'
+                      CHECK (status IN ('queued','preparing','ready','delivered','canceled')),
+    queued_at      TEXT NOT NULL,
+    started_at     TEXT,
+    ready_at       TEXT,
+    delivered_at   TEXT,
+    created_at     TEXT NOT NULL,
+    updated_at     TEXT NOT NULL,
+    origin_device_id TEXT NOT NULL,
+    client_uuid    TEXT NOT NULL UNIQUE,
+    is_synced      INTEGER NOT NULL DEFAULT 0,
+    synced_at      TEXT,
+    FOREIGN KEY (order_id) REFERENCES orders (id)
+);
+CREATE INDEX IF NOT EXISTS idx_kds_tickets_open
+    ON kds_tickets (status, queued_at);

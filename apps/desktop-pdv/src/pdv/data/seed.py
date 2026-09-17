@@ -144,6 +144,28 @@ def seed_demo_data(database: Database, config: AppConfig) -> None:
             ],
         )
 
+        # -- itens unitários, para o salão ------------------------------------ #
+        # Sem produto unitário não há como exercitar o app do garçom: item por
+        # peso exige a balança do balcão e é recusado de propósito no celular.
+        # Uma confeitaria real vende os dois — a fatia e o café saem na mesa.
+        tx.executemany(
+            """
+            INSERT INTO products
+                (id, tenant_id, store_id, sku, barcode, name, category,
+                 pricing_mode, price_cents, tare_grams, recipe_id, is_active,
+                 updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'unit', ?, 0, NULL, 1, ?)
+            """,
+            [
+                (new_id(), tenant, store, "CAFE-EXP", "7891000000011",
+                 "Café Expresso", "Cafeteria", 700, now),
+                (new_id(), tenant, store, "FATIA-CHOC", "7891000000028",
+                 "Fatia de Torta de Chocolate", "Confeitaria", 1450, now),
+                (new_id(), tenant, store, "SUCO-LAR", "7891000000035",
+                 "Suco de Laranja 300ml", "Bebidas", 1200, now),
+            ],
+        )
+
 
 DEMO_OPERATOR_ID = "44444444-4444-4444-4444-444444444444"
 DEMO_OPERATOR_NAME = "Ana Caixa"

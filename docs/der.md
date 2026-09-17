@@ -318,6 +318,59 @@ com o tempo; o que saiu do estoque naquele dia, não).
 
 ---
 
+### 2.6b Servidor Local (LAN — Fase 3)
+
+**`edge_devices`** — celulares e telas pareados com **um** terminal.
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `id` | UUID PK | |
+| `tenant_id`, `store_id` | UUID | |
+| `name` | TEXT | "Celular da Ana" — é como o caixa reconhece o aparelho |
+| `kind` | TEXT | `waiter` \| `kds` |
+| `token_hash` | TEXT | SHA-256. **Nunca o token em texto** |
+| `operator_id` | UUID | garçom vinculado, quando houver |
+| `paired_at`, `last_seen_at` | TEXT | `last_seen_at` é o que mostra quem está online |
+| `revoked_at` | TEXT | celular perdido se revoga do caixa; vale no ato |
+
+> **A LAN da loja não é confiável.** Na prática é a mesma rede do Wi-Fi que o
+> restaurante oferece ao cliente, com a senha num cartaz. Estar na rede não
+> autoriza nada: o aparelho precisa ter sido pareado por alguém com acesso
+> **físico** ao caixa.
+
+**`edge_pairing_codes`** — `code_hash` (PK), `created_at`, `expires_at`,
+`used_at`, `used_by`. Seis dígitos, validade de 5 minutos, uso único. Curto
+porque fica **visível na tela do caixa**, onde qualquer um que passe pelo balcão
+consegue ler. O consumo é atômico (`UPDATE ... WHERE used_at IS NULL` conferindo
+`rowcount`): ler-e-depois-gravar deixaria dois celulares usarem o mesmo código.
+
+**`kds_tickets`** — a fila da cozinha.
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `id` | UUID PK | |
+| `order_id`, `order_item_id` | UUID FK | |
+| `station` | TEXT | cozinha, bar, confeitaria |
+| `product_name`, `quantity`, `notes` | TEXT | snapshot: "sem açúcar" pertence ao ticket |
+| `status` | TEXT | `queued` → `preparing` → `ready` → `delivered` \| `canceled` |
+| `queued_at` | TEXT | **origem do tempo**: o que importa é há quanto tempo o cliente pediu |
+| `started_at`, `ready_at`, `delivered_at` | TEXT | limpos no recall — ver abaixo |
+
+> **Por que uma tabela própria e não um campo em `order_items`.** O ciclo de
+> vida da cozinha é outro: um item **pago** pode ainda não ter saído, e um item
+> **pronto** pode voltar. O recall apaga os carimbos das etapas abandonadas; se
+> `ready_at` sobrevivesse a um prato que voltou para a chapa, o relatório de
+> tempo de preparo faria a cozinha parecer mais rápida justamente nos casos em
+> que ela errou.
+
+**`orders.channel` e `orders.origin_device_id` no salão.** Pedido do garçom
+nasce com `channel = 'waiter'` e `origin_device_id` apontando para o **celular**,
+não para o PDV onde está gravado. Manter a origem é o que permite ao relatório
+dizer de qual aparelho saiu cada venda — e ao M09 separar o que veio do balcão
+do que veio do salão.
+
+---
+
 ### 2.7 Tabelas Locais do PDV (nunca sobem como entidade)
 
 **`sync_outbox`** — a fila que garante o offline.

@@ -9,9 +9,12 @@ pywin32==306; sys_platform == "win32"   # win32print RAW (rota primaria no Windo
 python-escpos==3.1      # Rota alternativa via libusb (Linux / terminal dedicado)
 
 # --- Servidor local (LAN: mobile garcom + KDS) ---
-fastapi==0.112.0
-uvicorn[standard]==0.30.5
-zeroconf==0.132.2       # mDNS _pdvedge._tcp
+# Versoes efetivamente exercitadas: o servidor sobe, pareia, recebe pedido e
+# entrega ao KDS por WebSocket em 445 ms (criterio da Fase 3: < 1 s).
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+websockets==17.1        # protocolo WS do uvicorn e cliente nos testes
+zeroconf==0.151.3       # mDNS _pdvedge._tcp
 
 # --- Seguranca ---
 argon2-cffi==23.1.0     # Validacao offline de senha de gerente

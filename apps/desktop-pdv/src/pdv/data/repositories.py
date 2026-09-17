@@ -270,7 +270,16 @@ class SaleRepository:
         device_id: EntityId,
         operator_id: EntityId,
         local_number: int,
+        channel: str = "counter",
+        origin_device_id: EntityId | None = None,
     ) -> None:
+        """Cria o pedido.
+
+        `origin_device_id` distingue **quem lançou** de **onde está gravado**.
+        Um pedido do garçom nasce no celular e é gravado no PDV; manter a origem
+        é o que permite ao relatório dizer de qual aparelho saiu cada venda — e
+        ao módulo anti-furto separar o que veio do balcão do que veio do salão.
+        """
         now = iso(utc_now())
         self._connection.execute(
             """
@@ -278,11 +287,12 @@ class SaleRepository:
                 (id, tenant_id, store_id, device_id, local_number, channel, status,
                  operator_id, opened_at, created_at, updated_at, origin_device_id,
                  client_uuid, is_synced)
-            VALUES (?, ?, ?, ?, ?, 'counter', 'open', ?, ?, ?, ?, ?, ?, 0)
+            VALUES (?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, 0)
             """,
             (
-                order_id, tenant_id, store_id, device_id, local_number,
-                operator_id, now, now, now, device_id, client_uuid,
+                order_id, tenant_id, store_id, device_id, local_number, channel,
+                operator_id, now, now, now, origin_device_id or device_id,
+                client_uuid,
             ),
         )
 
