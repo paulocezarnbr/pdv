@@ -210,7 +210,7 @@ def test_a_success_clears_the_failure_count(env) -> None:  # noqa: ANN001
 
 def test_two_hashes_of_the_same_pin_differ(env) -> None:  # noqa: ANN001
     """Sal por hash: PINs iguais entre usuários não se denunciam no banco."""
-    assert hash_pin("1234") != hash_pin("1234")
+    assert hash_pin("483916") != hash_pin("483916")
 
 
 # --------------------------------------------------------------------------- #

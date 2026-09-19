@@ -39,6 +39,13 @@ def seed_demo_data(database: Database, config: AppConfig) -> None:
                  hash_pin(DEMO_OPERATOR_PIN), now),
                 (manager_id, tenant, "Bruno Gerente", "bruno", "manager", 1, "30",
                  hash_pin(DEMO_MANAGER_PIN), now),
+                # Garçons: entram no app com o login deles, no aparelho que já
+                # está pareado. É o que permite fechar resultado e gorjeta por
+                # pessoa — antes o pedido ficava atribuído ao celular.
+                (DEMO_WAITER_ID, tenant, DEMO_WAITER_NAME, DEMO_WAITER_LOGIN,
+                 "waiter", 0, "0", hash_pin(DEMO_WAITER_PIN), now),
+                (DEMO_WAITER2_ID, tenant, DEMO_WAITER2_NAME, DEMO_WAITER2_LOGIN,
+                 "waiter", 0, "0", hash_pin(DEMO_WAITER2_PIN), now),
             ],
         )
 
@@ -195,12 +202,30 @@ def seed_demo_data(database: Database, config: AppConfig) -> None:
 
 DEMO_OPERATOR_ID = "44444444-4444-4444-4444-444444444444"
 DEMO_OPERATOR_NAME = "Ana Caixa"
+DEMO_OPERATOR_LOGIN = "ana"
 DEMO_MANAGER_ID = "55555555-5555-5555-5555-555555555555"
 DEMO_MANAGER_NAME = "Bruno Gerente"
 DEMO_MANAGER_LOGIN = "bruno"
 
+#: Garçons com identidade própria. O aparelho é pareado uma vez e fica; quem
+#: troca a cada turno é a **pessoa**. Sem isto, o pedido ficava atribuído ao
+#: celular, e não havia como fechar resultado nem gorjeta por funcionário.
+DEMO_WAITER_ID = "66666666-6666-6666-6666-666666666666"
+DEMO_WAITER_NAME = "João Garçom"
+DEMO_WAITER_LOGIN = "joao"
+DEMO_WAITER2_ID = "77777777-7777-7777-7777-777777777777"
+DEMO_WAITER2_NAME = "Maria Garçonete"
+DEMO_WAITER2_LOGIN = "maria"
+
 #: PINs da base de demonstração. Existem para o sistema ser demonstrável sem
 #: cadastro manual — **nunca** devem sobreviver a uma loja real, onde os
 #: usuários descem da retaguarda na primeira sincronização.
-DEMO_OPERATOR_PIN = "1111"
-DEMO_MANAGER_PIN = "1234"
+#:
+#: Seis dígitos e nada de sequência: são os mesmos PINs que `validate_pin`
+#: aceitaria de um usuário de verdade. Uma base de demonstração que usa `1234`
+#: ensina `1234` — e a política que recusa o PIN fraco do cliente não pode
+#: abrir exceção para a própria demonstração.
+DEMO_OPERATOR_PIN = "705284"
+DEMO_MANAGER_PIN = "483916"
+DEMO_WAITER_PIN = "629471"
+DEMO_WAITER2_PIN = "318264"

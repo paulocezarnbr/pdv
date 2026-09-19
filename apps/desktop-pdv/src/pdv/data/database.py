@@ -25,7 +25,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Final
 
-SCHEMA_VERSION: Final[int] = 4
+SCHEMA_VERSION: Final[int] = 5
 _SCHEMA_FILE: Final[Path] = Path(__file__).with_name("schema.sql")
 
 #: Migration 2 — tabelas do servidor local (Fase 3).
@@ -245,6 +245,41 @@ UPDATE orders
 """
 
 
+#: Migration 5 — o freio de autenticação passa a viver em disco.
+_MIGRATION_5_THROTTLE: Final[str] = """
+-- ===========================================================================
+-- Fase 3.7 — Freio de autenticação persistente
+-- ===========================================================================
+
+-- O bloqueio por tentativas vivia **só em memória**, num dicionário do
+-- `AuthorizationService`. Isso o tornava decorativo: matar o processo e abrir
+-- de novo zerava o contador, e cada reabertura dava mais cinco tentativas
+-- livres. Com Argon2id a 37 ms por tentativa, as 10 000 combinações de um PIN
+-- de 4 dígitos caem em ~6 minutos por esse caminho.
+--
+-- `scope` guarda `login:<nome>` para o freio por usuário e `*` para o global.
+-- O global existe porque o freio por usuário sozinho não impede espalhar as
+-- tentativas por vários logins, cada um com sua cota livre.
+--
+-- Os instantes são de relógio de parede porque precisam sobreviver ao
+-- processo. Quem tem administrador da máquina consegue atrasar o relógio e
+-- encurtar o bloqueio — e também consegue editar este banco direto, então a
+-- defesa contra esse perfil nunca foi local (ver o cabeçalho de
+-- `services/authorization.py`). Dentro de uma sessão o serviço ainda mantém um
+-- piso monôtonico, que o relógio não move.
+CREATE TABLE IF NOT EXISTS auth_throttle (
+    scope            TEXT PRIMARY KEY,
+    failures         INTEGER NOT NULL DEFAULT 0,
+    locked_until     TEXT,
+    first_failure_at TEXT NOT NULL,
+    last_failure_at  TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_auth_throttle_locked
+    ON auth_throttle (locked_until);
+"""
+
+
 class Database:
     """Dona da conexão. Uma instância por processo."""
 
@@ -338,6 +373,9 @@ class Database:
             connection.executescript(_MIGRATION_4_TABLES)
             if current > 0:
                 connection.executescript(_SALON_BACKFILL)
+
+        if current < 5:
+            connection.executescript(_MIGRATION_5_THROTTLE)
 
         if current < SCHEMA_VERSION:
             connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")

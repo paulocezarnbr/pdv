@@ -47,7 +47,6 @@ from PySide6.QtWidgets import (
 
 from pdv.config import AppConfig
 from pdv.data.database import Database
-from pdv.data.seed import DEMO_OPERATOR_ID, DEMO_OPERATOR_NAME
 from pdv.domain.errors import PdvError
 from pdv.domain.models import (
     Cents,
@@ -61,7 +60,7 @@ from pdv.hardware.printer.backends import PrintService
 from pdv.hardware.printer.escpos import format_cents, format_grams
 from pdv.hardware.scale.worker import ScaleService
 from pdv.remote.inbox import InboxRepository
-from pdv.services.authorization import AuthorizationService
+from pdv.services.authorization import AuthorizationService, Identity
 from pdv.services.checkout import CheckoutService
 from pdv.ui import theme
 from pdv.ui.dialogs import ManagerAuthDialog, PaymentDialog
@@ -91,9 +90,11 @@ class CounterWindow(QMainWindow):
         config: AppConfig,
         database: Database,
         *,
+        operator: Identity,
         edge_port: int | None = None,
     ) -> None:
         super().__init__()
+        self._operator = operator
         self._checkout = checkout
         self._scale = scale
         self._printer = printer
@@ -101,13 +102,16 @@ class CounterWindow(QMainWindow):
         self._database = database
         self._edge_port = edge_port
         self._authorization = AuthorizationService(database, config.tenant_id)
+        self._operator_id = EntityId(str(operator.id))
 
         self._weighed: list[Product] = []
         self._unit: list[Product] = []
         self._filtered: list[Product] = []
         self._last_reading: ScaleReading | None = None
 
-        self.setWindowTitle(f"PDV Balcão — {config.store_name}")
+        self.setWindowTitle(
+            f"PDV Balcão — {config.store_name} — {operator.name}"
+        )
         self.resize(1280, 820)
 
         self._build_ui()
@@ -134,6 +138,10 @@ class CounterWindow(QMainWindow):
         self.setCentralWidget(root)
 
         self.setStatusBar(QStatusBar())
+        # Quem está no caixa fica à vista o tempo todo. Numa troca de turno
+        # sem isso, o operador que assume vende no nome de quem saiu — e a
+        # trilha de auditoria passa a apontar para a pessoa errada.
+        self._operator_label = QLabel(f"Caixa: {self._operator.first_name}")
         self._sync_label = QLabel("Sincronização: —")
         self._connection_label = QLabel("Balança: conectando…")
         self._salon_label = QLabel(
@@ -146,12 +154,14 @@ class CounterWindow(QMainWindow):
         self._command_label.setStyleSheet(f"color: {theme.WARN};")
         self._command_label.setVisible(False)
         for label in (
+            self._operator_label,
             self._connection_label,
             self._salon_label,
             self._sync_label,
             self._command_label,
         ):
             label.setFont(theme.font(theme.SIZE_MICRO))
+        self.statusBar().addPermanentWidget(self._operator_label)
         self.statusBar().addPermanentWidget(self._connection_label)
         self.statusBar().addPermanentWidget(self._salon_label)
         self.statusBar().addPermanentWidget(self._sync_label)
@@ -568,7 +578,7 @@ class CounterWindow(QMainWindow):
             result = self._checkout.register_weighed_item(
                 product=product,
                 reading=reading,
-                operator_id=EntityId(DEMO_OPERATOR_ID),
+                operator_id=self._operator_id,
             )
         except PdvError as exc:
             QMessageBox.critical(self, "Não foi possível registrar", str(exc))
@@ -605,7 +615,7 @@ class CounterWindow(QMainWindow):
             item = self._checkout.register_unit_item(
                 product=product,
                 quantity=quantity,
-                operator_id=EntityId(DEMO_OPERATOR_ID),
+                operator_id=self._operator_id,
             )
         except PdvError as exc:
             QMessageBox.critical(self, "Não foi possível lançar", str(exc))
@@ -695,7 +705,7 @@ class CounterWindow(QMainWindow):
         try:
             self._checkout.cancel_item(
                 index=row,
-                operator_id=EntityId(DEMO_OPERATOR_ID),
+                operator_id=self._operator_id,
                 authorizer_id=authorizer.id,
                 reason=reason.strip(),
             )
@@ -744,7 +754,7 @@ class CounterWindow(QMainWindow):
         try:
             self._checkout.apply_discount(
                 percent=requested,
-                operator_id=EntityId(DEMO_OPERATOR_ID),
+                operator_id=self._operator_id,
                 authorizer_id=authorizer.id,
                 reason=reason.strip(),
             )
@@ -777,8 +787,8 @@ class CounterWindow(QMainWindow):
         try:
             receipt = self._checkout.finalize_sale(
                 payments=dialog.payments,
-                operator_id=EntityId(DEMO_OPERATOR_ID),
-                operator_name=DEMO_OPERATOR_NAME,
+                operator_id=self._operator_id,
+                operator_name=self._operator.name,
             )
         except PdvError as exc:
             QMessageBox.critical(self, "Não foi possível finalizar", str(exc))

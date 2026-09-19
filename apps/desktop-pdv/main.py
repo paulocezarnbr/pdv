@@ -49,11 +49,13 @@ from pdv.provisioning.activation import load_sync_token
 from pdv.provisioning.secrets import SecretVault
 from pdv.remote.commands import RemoteCommandService
 from pdv.services.audit import AuditService
+from pdv.services.authorization import AuthorizationService
 from pdv.services.checkout import CheckoutService
 from pdv.sync.engine import SyncEngine
 from pdv.sync.transport import HttpTransport
 from pdv.sync.worker import SyncService
 from pdv.ui.counter_window import CounterWindow
+from pdv.ui.login_dialog import LoginDialog
 from pdv.ui.theme import apply_theme
 
 logger = logging.getLogger(__name__)
@@ -140,6 +142,19 @@ def main() -> int:
             "O servidor será notificado na próxima sincronização.",
         )
 
+    # Login ANTES de qualquer periférico: sem alguém identificado não há caixa
+    # a abrir, e subir balança e impressora para depois fechar seria só ruído
+    # de porta serial no log.
+    operator = LoginDialog.ask(
+        AuthorizationService(database, config.tenant_id),
+        store_name=config.store_name,
+    )
+    if operator is None:
+        logger.info("Login cancelado; o PDV não abre sem operador identificado.")
+        return 0
+
+    logger.info("Caixa aberto por %s (%s)", operator.name, operator.role)
+
     checkout = CheckoutService(database, config)
 
     scale = ScaleService(build_scale(config.scale), config.scale)
@@ -165,6 +180,7 @@ def main() -> int:
         printer,
         config,
         database,
+        operator=operator,
         edge_port=edge.port if edge is not None else None,
     )
     window.show()

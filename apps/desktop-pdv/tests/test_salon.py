@@ -495,7 +495,9 @@ def test_the_upgrade_rescues_tables_that_were_only_text(tmp_path: Path) -> None:
         r["table_id"] is not None
         for r in connection.execute("SELECT table_id FROM orders")
     ), "toda comanda antiga encontra a mesa dela"
-    assert int(connection.execute("PRAGMA user_version").fetchone()[0]) == 4
+    from pdv.data.database import SCHEMA_VERSION
+
+    assert int(connection.execute("PRAGMA user_version").fetchone()[0]) == SCHEMA_VERSION
 
 
 # --------------------------------------------------------------------------- #

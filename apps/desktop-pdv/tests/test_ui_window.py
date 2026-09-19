@@ -22,7 +22,12 @@ import pytest
 from pdv.config import AppConfig, PrinterConfig, ScaleConfig
 from pdv.data.database import Database
 from pdv.data.repositories import ProductRepository
-from pdv.data.seed import DEMO_OPERATOR_ID, seed_demo_data
+from pdv.data.seed import (
+    DEMO_OPERATOR_ID,
+    DEMO_OPERATOR_LOGIN,
+    DEMO_OPERATOR_PIN,
+    seed_demo_data,
+)
 from pdv.domain.models import (
     EntityId,
     Grams,
@@ -33,6 +38,7 @@ from pdv.domain.models import (
     utc_now,
 )
 from pdv.edge.orders import TableOrderService
+from pdv.services.authorization import AuthorizationService
 from pdv.services.checkout import CheckoutService
 
 pytest.importorskip("PySide6")
@@ -78,7 +84,15 @@ def window(qtbot, env):  # noqa: ANN001, ANN201
     scale = ScaleService(build_scale(config.scale), config.scale)
     printer = PrintService(build_printer(config.printer))
 
-    widget = CounterWindow(checkout, scale, printer, config, database, edge_port=8420)
+    # O caixa passou a exigir login: quem opera vem da sessão autenticada, e
+    # não mais de uma constante. O teste entra como Ana, de verdade.
+    operator = AuthorizationService(database, config.tenant_id).authenticate(
+        DEMO_OPERATOR_LOGIN, DEMO_OPERATOR_PIN
+    )
+    widget = CounterWindow(
+        checkout, scale, printer, config, database,
+        operator=operator, edge_port=8420,
+    )
     qtbot.addWidget(widget)
     yield widget, checkout, database, config
 
