@@ -36,6 +36,15 @@ SRC = ROOT / "src"
 # instalado sobe e falha na primeira migration — e só em produção.
 datas = [
     (str(SRC / "pdv" / "data" / "schema.sql"), "pdv/data"),
+    # O app do garçom é um arquivo em disco, lido por caminho relativo ao
+    # módulo (`webapp/__init__.py`), exatamente como o schema. Sem estas duas
+    # linhas o pacote instala, o caixa abre, o celular pareia — e a primeira
+    # tela do garçom é um 500. O defeito só aparece na loja, porque rodando do
+    # código-fonte o arquivo está sempre lá.
+    (str(SRC / "pdv" / "edge" / "webapp" / "index.html"), "pdv/edge/webapp"),
+    # O SweetAlert2 vem junto pelo mesmo motivo que não vem de CDN: a loja
+    # opera sem internet (ver a rota `/vendor` em `edge/server.py`).
+    (str(SRC / "pdv" / "edge" / "webapp" / "vendor"), "pdv/edge/webapp/vendor"),
 ]
 
 hiddenimports = [
@@ -72,6 +81,17 @@ hiddenimports = [
     *collect_submodules("argon2"),
     "_argon2_cffi_bindings",
     "_argon2_cffi_bindings._ffi",
+    # Certificado TLS do servidor do salão (`edge/tls.py`). A `cryptography`
+    # é importada **dentro** das funções, de propósito — para que a ausência
+    # dela derrube o salão para HTTP em vez de impedir o caixa de abrir. O
+    # preço é que o analisador estático não a enxerga, e sem estas linhas o
+    # pacote instalado nunca subiria em HTTPS: cairia no `except ImportError`
+    # e ninguém notaria, porque a queda é silenciosa por construção.
+    "cryptography",
+    "cryptography.x509",
+    "cryptography.hazmat.primitives.serialization",
+    "cryptography.hazmat.primitives.asymmetric.ec",
+    "cryptography.hazmat.bindings._rust",
 ]
 
 # Corta o que não é usado no terminal de caixa. Cada exclusão reduz o tamanho

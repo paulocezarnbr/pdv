@@ -40,7 +40,7 @@ try {
     Write-Host "== Build do PDV ($Backend) ==" -ForegroundColor Cyan
 
     # -- 0. Os testes sao porta de entrada, nao etapa opcional ---------------
-    Write-Host "`n[0/4] Rodando os testes..."
+    Write-Host "`n[0/5] Rodando os testes..."
     $env:PYTHONPATH = 'src'
     & python -m pytest tests/ -q
     if ($LASTEXITCODE -ne 0) {
@@ -48,13 +48,13 @@ try {
     }
 
     # -- 1. Limpeza ----------------------------------------------------------
-    Write-Host "`n[1/4] Limpando artefatos anteriores..."
+    Write-Host "`n[1/5] Limpando artefatos anteriores..."
     foreach ($dir in @('build', 'dist')) {
         if (Test-Path $dir) { Remove-Item $dir -Recurse -Force }
     }
 
     # -- 2. Compilacao -------------------------------------------------------
-    Write-Host "`n[2/4] Compilando com $Backend..."
+    Write-Host "`n[2/5] Compilando com $Backend..."
 
     if ($Backend -eq 'pyinstaller') {
         # O spec produz DOIS executaveis no mesmo diretorio: PDV.exe (o caixa) e
@@ -139,9 +139,28 @@ try {
         Write-Host "      OK - $binary ($sizeMb MB)"
     }
 
+    # -- 3. Autoteste DENTRO do pacote --------------------------------------
+    #
+    # A suite roda contra o codigo-fonte, onde todo arquivo esta no lugar e
+    # todo modulo e importavel. O executavel empacotado e outro programa: o
+    # PyInstaller monta a arvore de imports por analise estatica, e todo import
+    # tardio e invisivel para ela. Este projeto esta cheio deles, cada um por
+    # um bom motivo — e um `hiddenimports` incompleto produz um pacote que
+    # instala, abre, e falha na loja.
+    Write-Host "`n[3/5] Rodando o autoteste dentro do pacote..."
+    # O PDV.exe e compilado sem console, entao o relatorio sai num arquivo ao
+    # lado do binario — do contrario ele se perderia inteiro aqui.
+    & $exePath --selftest
+    $selftestCode = $LASTEXITCODE
+    $report = 'dist\PDV\selftest.log'
+    if (Test-Path $report) { Get-Content $report | ForEach-Object { "      $_" } }
+    if ($selftestCode -ne 0) {
+        throw 'Autoteste falhou: o pacote esta incompleto. Nao publique.'
+    }
+
     # -- 3. Assinatura -------------------------------------------------------
     if ($SignCert) {
-        Write-Host "`n[3/4] Assinando os binarios..."
+        Write-Host "`n[4/5] Assinando os binarios..."
         $signtool = Get-ChildItem `
             'C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe' `
             -ErrorAction SilentlyContinue | Select-Object -Last 1
@@ -164,13 +183,13 @@ try {
         Write-Host '      OK - binarios assinados e com carimbo de tempo.'
     }
     else {
-        Write-Host "`n[3/4] Assinatura ignorada (sem -SignCert)." -ForegroundColor Yellow
+        Write-Host "`n[4/5] Assinatura ignorada (sem -SignCert)." -ForegroundColor Yellow
         Write-Host '      AVISO: o SmartScreen exibira "Editor desconhecido".' -ForegroundColor Yellow
     }
 
     # -- 4. Instalador -------------------------------------------------------
     if (-not $SkipInstaller) {
-        Write-Host "`n[4/4] Gerando o instalador..."
+        Write-Host "`n[5/5] Gerando o instalador..."
         $iscc = @(
             'C:\Program Files (x86)\Inno Setup 6\ISCC.exe',
             'C:\Program Files\Inno Setup 6\ISCC.exe'

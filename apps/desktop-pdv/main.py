@@ -116,6 +116,15 @@ def build_sync(
 
 
 def main() -> int:
+    # Antes de qualquer coisa, e antes do Qt: o autoteste roda dentro do
+    # executável compilado e responde "este pacote está completo?". É a última
+    # etapa do build, e o único jeito de pegar um `hiddenimports` faltando —
+    # que produz um pacote que instala, abre, e falha na loja.
+    if "--selftest" in sys.argv:
+        from pdv.selftest import run_cli
+
+        return run_cli()
+
     config = AppConfig.from_env()
 
     database = Database(config.database_path)

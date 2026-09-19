@@ -246,3 +246,84 @@ a assinatura permite detectar adulteração do executável já instalado.
 
 Use sempre `/tr` (carimbo de tempo): sem ele, a assinatura expira junto com o
 certificado e o binário já instalado passa a acusar erro.
+
+---
+
+## Compilar o executavel
+
+Um comando, do diretorio `apps/desktop-pdv`:
+
+```powershell
+.\packaging\build.ps1
+```
+
+O pipeline tem cinco etapas e **nenhuma delas e opcional**:
+
+| # | Etapa | Por que ela existe |
+|---|-------|--------------------|
+| 0 | Testes | Nao se empacota codigo quebrado. |
+| 1 | Limpeza | Artefato antigo no `dist/` ja mascarou um arquivo que deixou de ser gerado. |
+| 2 | Compilacao | `onedir`, nunca `onefile` — ver o cabecalho de `pdv.spec`. |
+| 3 | **Autoteste dentro do pacote** | Ver abaixo. |
+| 4 | Assinatura | Sem ela o SmartScreen diz "Editor desconhecido". |
+| 5 | Instalador | Inno Setup. |
+
+Saida: `dist\PDV\PDV.exe` (o caixa) e `dist\PDV\PDVSetup.exe` (o assistente),
+mais `dist\installer\*.exe` se o Inno Setup estiver instalado.
+
+### Por que a etapa 3 existe
+
+A suite roda contra o **codigo-fonte**, onde todo arquivo esta no lugar e todo
+modulo e importavel. O executavel empacotado e outro programa: o PyInstaller
+monta a arvore de imports por analise estatica, e **todo import tardio e
+invisivel para ela**.
+
+Este projeto esta cheio de imports tardios, cada um por um bom motivo:
+
+* `argon2` e `cryptography` sao importados dentro de funcoes para que a
+  ausencia delas degrade o sistema em vez de impedir o caixa de abrir;
+* o `uvicorn` resolve loop, protocolo e ciclo de vida **por string**, em tempo
+  de execucao;
+* `schema.sql` e o app do garcom sao lidos por caminho relativo ao modulo.
+
+Um `hiddenimports` incompleto produz um pacote que **instala e abre**, e falha
+depois — o gerente descobre que nao consegue autorizar um cancelamento na frente
+do cliente, ou o garcom abre o app e recebe um 500. A suite verde nao diz nada
+sobre isso, porque ela nunca rodou dentro do pacote.
+
+`PDV.exe --selftest` roda no binario entregue e responde uma pergunta so:
+*este pacote esta completo?* O relatorio vai para `dist\PDV\selftest.log`
+(o `PDV.exe` e compilado sem console, entao sem o arquivo ele se perderia).
+
+Cada verificacao diz o que quebra na loja se ela falhar:
+
+```
+  ok      schema.sql         23719 bytes
+  ok      migrations         banco novo na versao 6
+  ok      app do garcom      40 KiB + vendor
+  ok      Argon2id           hash e verificacao
+  ok      TLS do salao       4B 72 92 6B
+  ok      uvicorn            4 modulos resolvidos por string
+  ok      rotas do salao     22 rotas
+  ok      impressora         backend de arquivo
+  ok      porta serial       1 porta(s) COM
+  ok      interface          janelas importaveis
+```
+
+### Compilar so o binario, sem instalador
+
+```powershell
+.\packaging\build.ps1 -SkipInstaller
+```
+
+### Proteger a logica de negocio
+
+O PyInstaller empacota bytecode `.pyc`, que **e extraivel**. Quando isso
+importar:
+
+```powershell
+.\packaging\build.ps1 -Backend nuitka
+```
+
+Nuitka traduz para C e compila nativamente — nao ha `.pyc` para extrair.
+Compilacao de 10 a 25 minutos.
