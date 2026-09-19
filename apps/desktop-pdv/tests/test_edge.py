@@ -489,7 +489,7 @@ def test_pairing_requires_a_code_from_the_till(env) -> None:  # noqa: ANN001
 
 def test_paired_device_authenticates_with_its_token(env) -> None:  # noqa: ANN001
     _database, _config, _hub, _orders, _kds, auth = env
-    code = auth.create_pairing_code()
+    code, _ = auth.create_pairing_code()
 
     token = auth.pair(code, device_name="Celular da Ana")
     device = auth.authenticate(token)
@@ -501,7 +501,7 @@ def test_paired_device_authenticates_with_its_token(env) -> None:  # noqa: ANN00
 def test_a_pairing_code_works_exactly_once(env) -> None:  # noqa: ANN001
     """O código fica visível na tela do caixa; quem passa pelo balcão lê."""
     _database, _config, _hub, _orders, _kds, auth = env
-    code = auth.create_pairing_code()
+    code, _ = auth.create_pairing_code()
     auth.pair(code, device_name="Celular da Ana")
 
     with pytest.raises(PairingError):
@@ -510,7 +510,7 @@ def test_a_pairing_code_works_exactly_once(env) -> None:  # noqa: ANN001
 
 def test_expired_code_is_refused(env) -> None:  # noqa: ANN001
     database, _config, _hub, _orders, _kds, auth = env
-    code = auth.create_pairing_code()
+    code, _ = auth.create_pairing_code()
     with database.transaction() as connection:
         connection.execute(
             "UPDATE edge_pairing_codes SET expires_at = '2020-01-01T00:00:00Z'"
@@ -523,7 +523,7 @@ def test_expired_code_is_refused(env) -> None:  # noqa: ANN001
 def test_the_raw_token_is_never_stored(env) -> None:  # noqa: ANN001
     """Dump do banco — que o operador consegue abrir — não entrega credencial."""
     database, _config, _hub, _orders, _kds, auth = env
-    token = auth.pair(auth.create_pairing_code(), device_name="Celular da Ana")
+    token = auth.pair(auth.create_pairing_code()[0], device_name="Celular da Ana")
 
     stored = database.query_all("SELECT token_hash FROM edge_devices")
     assert all(row["token_hash"] != token for row in stored)
@@ -533,7 +533,7 @@ def test_the_raw_token_is_never_stored(env) -> None:  # noqa: ANN001
 def test_revocation_takes_effect_immediately(env) -> None:  # noqa: ANN001
     """Celular perdido se revoga do caixa, e vale já — não em alguns minutos."""
     _database, _config, _hub, _orders, _kds, auth = env
-    token = auth.pair(auth.create_pairing_code(), device_name="Celular perdido")
+    token = auth.pair(auth.create_pairing_code()[0], device_name="Celular perdido")
     device = auth.authenticate(token)
 
     assert auth.revoke(device.id) is True
@@ -554,7 +554,7 @@ def test_unknown_and_missing_tokens_are_refused(env) -> None:  # noqa: ANN001
 def test_pairing_records_last_seen(env) -> None:  # noqa: ANN001
     """É assim que o caixa mostra quais celulares estão online."""
     _database, _config, _hub, _orders, _kds, auth = env
-    token = auth.pair(auth.create_pairing_code(), device_name="Celular da Ana")
+    token = auth.pair(auth.create_pairing_code()[0], device_name="Celular da Ana")
     auth.authenticate(token)
 
     assert auth.list_devices()[0]["last_seen_at"] is not None
@@ -584,14 +584,29 @@ def client(env):  # noqa: ANN001, ANN201
 
 
 @pytest.fixture()
-def headers(env, client):  # noqa: ANN001, ANN201
+def device_headers(env, client):  # noqa: ANN001, ANN201
+    """Só o aparelho: serve para ler o mapa, não para lançar."""
     _database, _config, _hub, _orders, _kds, auth = env
-    code = auth.create_pairing_code()
+    code, _ = auth.create_pairing_code()
     response = client.post(
         "/pair", json={"code": code, "device_name": "Celular da Ana"}
     )
     assert response.status_code == 200, response.text
     return {"Authorization": f"Bearer {response.json()['token']}"}
+
+
+@pytest.fixture()
+def headers(client, device_headers):  # noqa: ANN001, ANN201
+    """Aparelho **e** pessoa — o que as rotas de escrita exigem."""
+    from pdv.data.seed import DEMO_WAITER_LOGIN, DEMO_WAITER_PIN
+
+    response = client.post(
+        "/staff/session",
+        json={"login": DEMO_WAITER_LOGIN, "pin": DEMO_WAITER_PIN},
+        headers=device_headers,
+    )
+    assert response.status_code == 200, response.text
+    return {**device_headers, "X-Staff-Token": response.json()["token"]}
 
 
 def test_health_is_open_and_says_which_store(client) -> None:  # noqa: ANN001

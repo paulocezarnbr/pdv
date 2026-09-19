@@ -43,7 +43,9 @@ from pdv.domain.models import (
     Cents,
     EntityId,
     Grams,
+    Payment,
     PricingMode,
+    Sale,
     SaleItem,
     iso,
     new_id,
@@ -51,7 +53,9 @@ from pdv.domain.models import (
 )
 from pdv.edge.hub import Event, EventHub
 from pdv.edge.tables import TableError, TableService
+from pdv.hardware.printer.layout import ReceiptContext, build_sale_receipt
 from pdv.services.audit import AuditService
+from pdv.services.payments import record_payments, settle_payments
 
 logger = logging.getLogger(__name__)
 
@@ -94,9 +98,22 @@ class TableOrder:
     table_id: EntityId | None = None
     bill_requested_at: str | None = None
 
+    #: Quem abriu a comanda, e o nome dele na réplica local de usuários. O
+    #: nome vem resolvido na mesma consulta porque a tela do caixa mostra
+    #: "Mesa 4 · João" e buscar usuário por linha faria uma consulta por mesa.
+    operator_id: EntityId | None = None
+    waiter_name: str = ""
+    tip_cents: Cents = Cents(0)
+    opened_at: str | None = None
+
     @property
     def bill_requested(self) -> bool:
         return bool(self.bill_requested_at)
+
+    @property
+    def charged_cents(self) -> Cents:
+        """O que o cliente paga: a conta **mais** a gorjeta."""
+        return Cents(int(self.total_cents) + int(self.tip_cents))
 
     def to_json(self) -> dict[str, object]:
         return {
@@ -107,9 +124,30 @@ class TableOrder:
             "table_label": self.table_label,
             "status": self.status,
             "total_cents": int(self.total_cents),
+            "tip_cents": int(self.tip_cents),
             "item_count": self.item_count,
             "bill_requested_at": self.bill_requested_at,
+            "operator_id": self.operator_id,
+            "waiter_name": self.waiter_name,
+            "opened_at": self.opened_at,
         }
+
+
+@dataclass(frozen=True, slots=True)
+class SettledOrder:
+    """O resultado do recebimento, com o que o cupom precisa imprimir."""
+
+    order: TableOrder
+    payments: tuple[Payment, ...]
+    tip_cents: Cents
+    charged_cents: Cents
+    #: O cupom pronto para a fila de impressão. A venda já está confirmada
+    #: quando o papel começa a sair: papel acabado não desfaz transação.
+    receipt: bytes = b""
+
+    @property
+    def change_cents(self) -> Cents:
+        return Cents(sum(int(p.change_cents) for p in self.payments))
 
 
 class TableOrderService:
@@ -287,6 +325,205 @@ class TableOrderService:
         )
         logger.info("Conta pedida: mesa %s", order.table_label)
         return self.get_order(order_id)
+
+    def settle(
+        self,
+        *,
+        order_id: EntityId,
+        payments: tuple[Payment, ...],
+        operator_id: EntityId,
+        operator_name: str,
+        tip_cents: Cents = Cents(0),
+    ) -> SettledOrder:
+        """O caixa **recebe** a conta da mesa e fecha a comanda.
+
+        Era a metade que faltava. `request_bill` existia desde a Fase 3 e
+        marcava a mesa como "pedindo a conta" — e ali a história acabava: nada
+        no balcão fechava aquele pedido. Na prática a mesa ficava ocupada para
+        sempre no mapa, e o jeito de liberá-la era cancelar a comanda, isto é,
+        apagar a venda para poder sentar o próximo cliente. O vetor de furto do
+        salão virava o procedimento normal da casa.
+
+        O que este método faz é o fechamento de verdade: valida a quitação com
+        as mesmas regras do balcão, grava as formas de pagamento, fecha o
+        pedido e libera a mesa — que fica livre por consequência, porque a
+        ocupação é derivada de existir pedido aberto apontando para ela.
+
+        Sobre a gorjeta: entra por fora do total. Ela não é faturamento da loja
+        e não pode inflar a base de imposto; é registrada na comanda para
+        fechar o resultado de quem atendeu (ver `services/staff_report.py`).
+
+        Raises:
+            OrderClosedError: pedido já fechado ou cancelado. Repetir não
+                cobra duas vezes.
+            InsufficientPaymentError: falta dinheiro, ou sobra em meio
+                eletrônico (ver `services/payments.py`).
+        """
+        order = self._require_open(order_id)
+        if order.item_count == 0:
+            raise OrderClosedError(
+                f"A comanda {order.local_number} não tem itens. "
+                "Mesa sem consumo se libera cancelando, não recebendo."
+            )
+
+        tip = Cents(max(0, int(tip_cents)))
+        charged = Cents(int(order.total_cents) + int(tip))
+        settled = settle_payments(payments, charged)
+
+        now = iso(utc_now())
+        with self._db.transaction() as connection:
+            connection.execute(
+                "UPDATE orders SET status = 'paid', closed_at = ?, updated_at = ?, "
+                "       tip_cents = ?, is_synced = 0 "
+                " WHERE id = ? AND status = 'open'",
+                (now, now, int(tip), order_id),
+            )
+            record_payments(
+                connection,
+                self._outbox,
+                order_id=order_id,
+                tenant_id=EntityId(self._config.tenant_id),
+                payments=settled,
+            )
+            self._outbox.enqueue(
+                connection,
+                entity_table="orders",
+                entity_id=order_id,
+                client_uuid=EntityId(new_id()),
+                operation="update",
+                payload={
+                    "id": order_id,
+                    "status": "paid",
+                    "closed_at": now,
+                    "total_cents": int(order.total_cents),
+                    "tip_cents": int(tip),
+                    "table_id": order.table_id,
+                    "served_by_user_id": order.operator_id,
+                },
+            )
+            # O recebimento da mesa entra no ledger como venda fechada, igual
+            # ao do balcão: são a mesma coisa vista de dois lugares, e separá-las
+            # faria o faturamento do dia depender de somar dois relatórios.
+            self._audit().append(
+                connection,
+                event_type=AuditEventType.SALE_CLOSED,
+                actor_user_id=operator_id,
+                severity=AuditSeverity.INFO,
+                payload={
+                    "order_id": order_id,
+                    "local_number": order.local_number,
+                    "channel": "waiter",
+                    "table_label": order.table_label,
+                    "served_by_user_id": order.operator_id,
+                    "served_by_name": order.waiter_name,
+                    "received_by_name": operator_name,
+                    "items": order.item_count,
+                    "total_cents": int(order.total_cents),
+                    "tip_cents": int(tip),
+                    "payments": [
+                        {"method": p.method.value, "amount_cents": int(p.amount_cents)}
+                        for p in settled
+                    ],
+                },
+            )
+
+        self._hub.publish(
+            Event(
+                "order.settled",
+                {
+                    "order_id": order_id,
+                    "local_number": order.local_number,
+                    "table_id": order.table_id,
+                    "table_label": order.table_label,
+                    "total_cents": int(order.total_cents),
+                    "tip_cents": int(tip),
+                },
+            )
+        )
+        logger.info(
+            "Mesa recebida: %s (comanda %s) por %s",
+            order.table_label, order.local_number, operator_name,
+        )
+        closed = self.get_order(order_id)
+        return SettledOrder(
+            order=closed,
+            payments=settled,
+            tip_cents=tip,
+            charged_cents=charged,
+            receipt=self._receipt(closed, settled, operator_name),
+        )
+
+    def _receipt(
+        self, order: TableOrder, payments: tuple[Payment, ...], operator_name: str
+    ) -> bytes:
+        """Monta o cupom da mesa com o mesmo layout do balcão.
+
+        Mesmo caminho de `CheckoutService.finalize_sale`, e de propósito: um
+        segundo layout de cupom só para mesa divergiria do primeiro na próxima
+        alteração legal, e o cliente receberia documentos diferentes conforme
+        tivesse sentado ou comprado no balcão.
+        """
+        sale = Sale(
+            id=order.id,
+            client_uuid=order.client_uuid,
+            tenant_id=EntityId(self._config.tenant_id),
+            store_id=EntityId(self._config.store_id),
+            device_id=EntityId(self._config.device_id),
+            operator_id=order.operator_id or EntityId(self._config.device_id),
+            local_number=order.local_number,
+            items=self._sale_items(order.id),
+            discount_cents=Cents(0),
+        )
+        return build_sale_receipt(
+            sale,
+            payments,
+            ReceiptContext(
+                store_name=self._config.store_name,
+                store_document=self._config.store_document,
+                store_address=self._config.store_address,
+                operator_name=operator_name,
+                terminal_label=f"PDV {self._config.device_id[:8]}",
+                # O rótulo da mesa vai no lugar do cliente: é o que a pessoa
+                # confere para saber que a conta é a dela.
+                customer_name=order.table_label or None,
+            ),
+            self._config.printer,
+        )
+
+    def _sale_items(self, order_id: EntityId) -> tuple[SaleItem, ...]:
+        """Os itens vivos da comanda, no formato que o cupom consome.
+
+        Os cancelados ficam de fora: no cupom eles confundiriam o cliente, que
+        não tem como distinguir "cancelado" de "cobrado". Na tela do garçom
+        eles aparecem, porque lá o problema é o oposto — é ele quem precisa
+        mostrar ao cliente que o item saiu da conta.
+        """
+        rows = self._db.query_all(
+            "SELECT id, client_uuid, product_id, product_name, pricing_mode, "
+            "       quantity, unit_price_cents, total_cents "
+            "  FROM order_items "
+            " WHERE order_id = ? AND canceled_at IS NULL "
+            " ORDER BY created_at",
+            (order_id,),
+        )
+        return tuple(
+            SaleItem(
+                id=EntityId(str(row["id"])),
+                client_uuid=EntityId(str(row["client_uuid"])),
+                product_id=EntityId(str(row["product_id"])),
+                product_name=str(row["product_name"]),
+                pricing_mode=PricingMode(str(row["pricing_mode"])),
+                quantity=Decimal(str(row["quantity"])),
+                gross_weight_grams=Grams(0),
+                tare_grams=Grams(0),
+                net_weight_grams=Grams(0),
+                unit_price_cents=Cents(int(row["unit_price_cents"])),
+                total_cents=Cents(int(row["total_cents"])),
+                scale_reading_raw=None,
+                consumptions=(),
+            )
+            for row in rows
+        )
 
     def clear_bill_request(self, order_id: EntityId) -> TableOrder:
         """Desfaz o pedido de conta — a mesa resolveu pedir sobremesa."""
@@ -471,6 +708,7 @@ class TableOrderService:
         quantity: Decimal,
         notes: str = "",
         station: str = "cozinha",
+        created_by_user_id: EntityId | None = None,
     ) -> TableOrder:
         """Acrescenta um item unitário e enfileira o ticket na cozinha.
 
@@ -530,6 +768,14 @@ class TableOrderService:
             SaleRepository(connection, self._outbox).add_item(
                 item, order_id=order_id, tenant_id=EntityId(self._config.tenant_id)
             )
+            # Quem lançou, gravado no item e não só na comanda: mesa grande é
+            # atendida por mais de uma pessoa, e atribuir tudo a quem abriu
+            # apagaria o segundo garçom do relatório e da trilha.
+            if created_by_user_id:
+                connection.execute(
+                    "UPDATE order_items SET created_by_user_id = ? WHERE id = ?",
+                    (created_by_user_id, item.id),
+                )
             connection.execute(
                 "UPDATE orders SET subtotal_cents = subtotal_cents + ?, "
                 "total_cents = total_cents + ?, updated_at = ? WHERE id = ?",
@@ -561,6 +807,7 @@ class TableOrderService:
                     "product_id": product.id,
                     "quantity": str(quantity),
                     "total_cents": int(total),
+                    "created_by_user_id": created_by_user_id,
                 },
             )
 
@@ -588,10 +835,15 @@ class TableOrderService:
     #: `TableOrder`, e três listas de colunas divergem na primeira alteração.
     _SELECT = (
         "SELECT o.id, o.client_uuid, o.local_number, o.customer_id, o.status, "
-        "       o.total_cents, o.table_id, o.bill_requested_at, "
+        "       o.total_cents, o.tip_cents, o.table_id, o.bill_requested_at, "
+        "       o.operator_id, o.opened_at, u.name AS waiter_name, "
         "       (SELECT COUNT(*) FROM order_items i "
         "         WHERE i.order_id = o.id AND i.canceled_at IS NULL) AS items "
         "  FROM orders o "
+        # LEFT JOIN, não INNER: comanda aberta por um usuário que depois saiu do
+        # cadastro não pode sumir da tela do caixa — sumir é pior que aparecer
+        # sem nome, porque a mesa continua ocupada na vida real.
+        "  LEFT JOIN users u ON u.id = o.operator_id "
     )
 
     def get_order(self, order_id: EntityId) -> TableOrder:
@@ -717,6 +969,10 @@ def _to_order(row: sqlite3.Row) -> TableOrder:
         bill_requested_at=(
             str(row["bill_requested_at"]) if row["bill_requested_at"] else None
         ),
+        operator_id=EntityId(str(row["operator_id"])) if row["operator_id"] else None,
+        waiter_name=str(row["waiter_name"] or ""),
+        tip_cents=Cents(int(row["tip_cents"] or 0)),
+        opened_at=str(row["opened_at"]) if row["opened_at"] else None,
     )
 
 
@@ -724,6 +980,7 @@ __all__ = [
     "OrderClosedError",
     "OrderNotFoundError",
     "ProductNotSellableError",
+    "SettledOrder",
     "TableOccupiedError",
     "TableOrder",
     "TableOrderService",

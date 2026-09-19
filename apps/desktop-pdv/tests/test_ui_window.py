@@ -233,7 +233,10 @@ def test_the_panel_shows_open_tables_and_the_kitchen_queue(salon, env) -> None: 
 
     assert panel._orders_table.rowCount() == 1
     assert panel._orders_table.item(0, 0).text() == "Mesa 7"
-    assert panel._orders_table.item(0, 4).text() == "", "ninguém pediu a conta ainda"
+    # A coluna 1 é o garçom e a 5 é a situação — o pedido é aberto direto pelo
+    # serviço neste teste, sem sessão no app, e por isso o nome vem do cadastro.
+    assert panel._orders_table.item(0, 1).text() == "Ana"
+    assert panel._orders_table.item(0, 5).text() == "", "ninguém pediu a conta ainda"
     assert panel._kds_table.rowCount() == 1
     assert panel._kds_table.item(0, 3).text() == "na fila"
 
@@ -258,7 +261,7 @@ def test_the_counter_sees_which_table_asked_for_the_bill(salon, env) -> None:  #
 
     from pdv.ui import theme
 
-    assert panel._orders_table.item(0, 4).text() == "pedindo a conta"
+    assert panel._orders_table.item(0, 5).text() == "pedindo a conta"
     assert panel._orders_table.item(0, 0).foreground().color().name() == theme.WARN
 
 
@@ -332,13 +335,15 @@ def test_a_pairing_code_is_shown_grouped(salon) -> None:  # noqa: ANN001
     panel._generate_code()
 
     text = panel._code_label.text()
-    assert len(text) == 7 and text[3] == " "
+    # Oito dígitos em dois grupos de quatro: o formato que as pessoas já leem
+    # em código de confirmação, sem contar dígito.
+    assert len(text) == 9 and text[4] == " "
     assert text.replace(" ", "").isdigit()
 
 
 def test_a_paired_device_is_listed_and_can_be_revoked(salon, env) -> None:  # noqa: ANN001
     panel, _database, _config = salon
-    code = panel._auth.create_pairing_code()
+    code, _ = panel._auth.create_pairing_code()
     token = panel._auth.pair(code, device_name="Celular da Ana")
 
     # Pareado e ainda calado: o pareamento não registra contato, e a coluna tem

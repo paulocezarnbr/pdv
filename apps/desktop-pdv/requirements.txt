@@ -18,6 +18,9 @@ zeroconf==0.151.3       # mDNS _pdvedge._tcp
 
 # --- Seguranca ---
 argon2-cffi==25.1.0     # Validacao offline do PIN de gerente (Argon2id)
+cryptography==47.0.0    # Certificado TLS autoassinado do servidor do salao
+                        # (LAN da loja = Wi-Fi do cliente; sem TLS o token
+                        #  do aparelho e o PIN trafegam legiveis)
 
 # --- Dev ---
 pytest==8.3.2

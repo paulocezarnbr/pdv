@@ -25,7 +25,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Final
 
-SCHEMA_VERSION: Final[int] = 5
+SCHEMA_VERSION: Final[int] = 6
 _SCHEMA_FILE: Final[Path] = Path(__file__).with_name("schema.sql")
 
 #: Migration 2 — tabelas do servidor local (Fase 3).
@@ -279,6 +279,90 @@ CREATE INDEX IF NOT EXISTS idx_auth_throttle_locked
     ON auth_throttle (locked_until);
 """
 
+#: Migration 6 — colunas novas, adicionadas uma a uma e só se faltarem.
+#:
+#: A migration 4 fez isto como um script de `ALTER TABLE` e pagou o preço: o
+#: `ALTER TABLE ADD COLUMN` do SQLite não tem `IF NOT EXISTS`, então rodar duas
+#: vezes — ou rodar sobre uma base que já recebeu a coluna por outro caminho —
+#: aborta com `duplicate column name` no meio da inicialização do PDV. Conferir
+#: o `table_info` antes custa uma consulta por coluna, uma vez na vida da base,
+#: e devolve a idempotência que o resto do arquivo tem.
+_MIGRATION_6_COLUMNS: Final[tuple[tuple[str, str, str], ...]] = (
+    # A gorjeta é do atendimento, não do produto: entra na comanda quando o
+    # caixa recebe, e fica FORA do total de venda. Somá-la ao `total_cents`
+    # inflaria o faturamento com dinheiro que é da equipe — e o imposto seria
+    # calculado sobre ele.
+    ("orders", "tip_cents", "INTEGER NOT NULL DEFAULT 0"),
+    # Quem lançou o item. A comanda já diz quem a abriu (`operator_id`), mas
+    # mesa grande costuma ser atendida por mais de uma pessoa, e sem isto o
+    # segundo garçom some da trilha.
+    ("order_items", "created_by_user_id", "TEXT"),
+)
+
+#: Migration 6 — sessão de garçom no app (Fase 3.8).
+_MIGRATION_6_STAFF: Final[str] = """
+-- ===========================================================================
+-- Fase 3.8 — O garçom entra com a credencial dele
+-- ===========================================================================
+
+-- Até aqui o app tinha **uma** identidade: o aparelho pareado. O pedido era
+-- atribuído ao celular, e por isso não havia como fechar resultado nem gorjeta
+-- por pessoa — três garçons revezando o mesmo tablet produziam uma coluna só.
+--
+-- Esta tabela guarda a sessão da **pessoa**, em cima do pareamento do
+-- aparelho. As duas continuam existindo e respondem a perguntas diferentes:
+-- o token do aparelho diz *de onde* veio o lançamento, o da sessão diz *quem*
+-- lançou. Um celular roubado sem o PIN de ninguém não lança nada; um PIN
+-- vazado sem aparelho pareado também não.
+--
+-- Por que em disco, ao contrário da concessão de gerente
+-- ------------------------------------------------------
+-- `edge/manager.py` guarda a concessão só em memória, e de propósito: ela é
+-- **poder** (cancelar comanda), e poder que sobrevive a um restart sobrevive
+-- também a um restart provocado. Esta sessão é **identidade**, e não concede
+-- nada que o aparelho pareado já não pudesse fazer — só nomeia quem age. Se
+-- ela evaporasse a cada reinício do PDV, a loja inteira teria de redigitar PIN
+-- no meio do serviço, e o caminho de menor resistência viraria deixar um
+-- login só aberto para todos: exatamente o problema que isto veio resolver.
+CREATE TABLE IF NOT EXISTS edge_staff_sessions (
+    token_hash    TEXT PRIMARY KEY,
+    tenant_id     TEXT NOT NULL,
+    device_id     TEXT NOT NULL,
+    user_id       TEXT NOT NULL,
+    user_name     TEXT NOT NULL,
+    user_login    TEXT NOT NULL,
+    role          TEXT NOT NULL,
+    created_at    TEXT NOT NULL,
+    expires_at    TEXT NOT NULL,
+    last_seen_at  TEXT,
+    revoked_at    TEXT,
+    FOREIGN KEY (device_id) REFERENCES edge_devices (id)
+);
+
+-- A consulta quente é "existe sessão viva neste aparelho?", feita a cada
+-- requisição do app.
+CREATE INDEX IF NOT EXISTS idx_edge_staff_sessions_device
+    ON edge_staff_sessions (device_id, revoked_at, expires_at);
+"""
+
+
+def _add_column(
+    connection: sqlite3.Connection, table: str, column: str, declaration: str
+) -> None:
+    """Acrescenta a coluna se ela ainda não existir.
+
+    Os nomes vêm de `_MIGRATION_6_COLUMNS`, constante deste módulo, e nunca de
+    entrada — não há interpolação de dado externo aqui. O SQLite não aceita
+    parâmetro em DDL, então a interpolação é a única forma.
+    """
+    existing = {
+        str(row["name"])
+        for row in connection.execute(f"PRAGMA table_info({table})").fetchall()
+    }
+    if column in existing:
+        return
+    connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {declaration}")
+
 
 class Database:
     """Dona da conexão. Uma instância por processo."""
@@ -376,6 +460,11 @@ class Database:
 
         if current < 5:
             connection.executescript(_MIGRATION_5_THROTTLE)
+
+        if current < 6:
+            for table, column, declaration in _MIGRATION_6_COLUMNS:
+                _add_column(connection, table, column, declaration)
+            connection.executescript(_MIGRATION_6_STAFF)
 
         if current < SCHEMA_VERSION:
             connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")

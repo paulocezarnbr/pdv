@@ -120,6 +120,9 @@ CREATE TABLE IF NOT EXISTS orders (
     subtotal_cents         INTEGER NOT NULL DEFAULT 0,
     discount_cents         INTEGER NOT NULL DEFAULT 0,
     total_cents            INTEGER NOT NULL DEFAULT 0,
+    -- A gorjeta é do atendimento, não do produto, e fica FORA do total: somá-la
+    -- ao faturamento cobraria imposto sobre dinheiro que é da equipe.
+    tip_cents              INTEGER NOT NULL DEFAULT 0,
     discount_tier_id       TEXT,
     authorized_by_user_id  TEXT,
     opened_at              TEXT NOT NULL,
@@ -153,6 +156,9 @@ CREATE TABLE IF NOT EXISTS order_items (
     canceled_at           TEXT,
     canceled_by_user_id   TEXT,
     cancel_reason         TEXT,
+    -- Quem lançou. A comanda diz quem a abriu; mesa grande costuma ser
+    -- atendida por mais de uma pessoa, e sem isto o segundo garçom some.
+    created_by_user_id    TEXT,
     created_at            TEXT NOT NULL,
     client_uuid           TEXT NOT NULL UNIQUE,
     is_synced             INTEGER NOT NULL DEFAULT 0,
@@ -491,3 +497,44 @@ CREATE TABLE IF NOT EXISTS auth_throttle (
 
 CREATE INDEX IF NOT EXISTS idx_auth_throttle_locked
     ON auth_throttle (locked_until);
+
+-- ===========================================================================
+-- Fase 3.8 — O garçom entra com a credencial dele
+-- ===========================================================================
+
+-- Até aqui o app tinha **uma** identidade: o aparelho pareado. O pedido era
+-- atribuído ao celular, e por isso não havia como fechar resultado nem gorjeta
+-- por pessoa — três garçons revezando o mesmo tablet produziam uma coluna só.
+--
+-- Esta tabela guarda a sessão da **pessoa**, em cima do pareamento do
+-- aparelho. As duas continuam existindo e respondem a perguntas diferentes:
+-- o token do aparelho diz *de onde* veio o lançamento, o da sessão diz *quem*
+-- lançou. Um celular roubado sem o PIN de ninguém não lança nada; um PIN
+-- vazado sem aparelho pareado também não.
+--
+-- Por que em disco, ao contrário da concessão de gerente
+-- ------------------------------------------------------
+-- `edge/manager.py` guarda a concessão só em memória, e de propósito: ela é
+-- **poder** (cancelar comanda), e poder que sobrevive a um restart sobrevive
+-- também a um restart provocado. Esta sessão é **identidade**, e não concede
+-- nada que o aparelho pareado já não pudesse fazer — só nomeia quem age. Se
+-- ela evaporasse a cada reinício do PDV, a loja inteira teria de redigitar PIN
+-- no meio do serviço, e o caminho de menor resistência viraria deixar um
+-- login só aberto para todos: exatamente o problema que isto veio resolver.
+CREATE TABLE IF NOT EXISTS edge_staff_sessions (
+    token_hash    TEXT PRIMARY KEY,
+    tenant_id     TEXT NOT NULL,
+    device_id     TEXT NOT NULL,
+    user_id       TEXT NOT NULL,
+    user_name     TEXT NOT NULL,
+    user_login    TEXT NOT NULL,
+    role          TEXT NOT NULL,
+    created_at    TEXT NOT NULL,
+    expires_at    TEXT NOT NULL,
+    last_seen_at  TEXT,
+    revoked_at    TEXT,
+    FOREIGN KEY (device_id) REFERENCES edge_devices (id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_edge_staff_sessions_device
+    ON edge_staff_sessions (device_id, revoked_at, expires_at);

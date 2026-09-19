@@ -4,7 +4,7 @@ Princípios de UI de PDV que o layout respeita:
 
 * **Teclado acima do mouse.** O operador não tira a mão do teclado numa fila.
   F2 registra o pesado, F3 lança o unitário, F4 cancela item, F6 desconta,
-  F8 abre o salão, F10 finaliza.
+  F8 abre o salão, F9 as mesas, F10 finaliza.
 * **O peso é o maior elemento da tela.** É o número que o cliente confere de pé
   do outro lado do balcão.
 * **Estado de conexão sempre visível.** O operador precisa saber que está
@@ -65,6 +65,7 @@ from pdv.services.checkout import CheckoutService
 from pdv.ui import theme
 from pdv.ui.dialogs import ManagerAuthDialog, PaymentDialog
 from pdv.ui.salon_panel import SalonPanel
+from pdv.ui.tables_dialog import TablesDialog
 
 #: Rótulo e cor de cada estado da balança. As três cores semânticas do tema
 #: vivem aqui e **só** aqui: é o que permite ao operador ler o estado pela cor,
@@ -92,6 +93,8 @@ class CounterWindow(QMainWindow):
         *,
         operator: Identity,
         edge_port: int | None = None,
+        edge_scheme: str = "http",
+        edge_tls=None,  # noqa: ANN001 - TlsMaterial | None
     ) -> None:
         super().__init__()
         self._operator = operator
@@ -101,6 +104,8 @@ class CounterWindow(QMainWindow):
         self._config = config
         self._database = database
         self._edge_port = edge_port
+        self._edge_scheme = edge_scheme
+        self._edge_tls = edge_tls
         self._authorization = AuthorizationService(database, config.tenant_id)
         self._operator_id = EntityId(str(operator.id))
 
@@ -288,6 +293,9 @@ class CounterWindow(QMainWindow):
         self._salon_button = _secondary_button("F8   Salão", self._open_salon)
         buttons.addWidget(self._salon_button)
 
+        self._tables_button = _secondary_button("F9   Mesas", self._open_tables)
+        buttons.addWidget(self._tables_button)
+
         self._finish_button = QPushButton("F10   Receber")
         self._finish_button.setObjectName("primary")
         self._finish_button.setMinimumHeight(54)
@@ -431,6 +439,7 @@ class CounterWindow(QMainWindow):
         QShortcut(QKeySequence("F4"), self, self._cancel_item)
         QShortcut(QKeySequence("F6"), self, self._apply_discount)
         QShortcut(QKeySequence("F8"), self, self._open_salon)
+        QShortcut(QKeySequence("F9"), self, self._open_tables)
         QShortcut(QKeySequence("F10"), self, self._finalize_sale)
 
     def _wire_scale(self) -> None:
@@ -769,7 +778,28 @@ class CounterWindow(QMainWindow):
 
     def _open_salon(self) -> None:
         SalonPanel(
-            self._database, self._config, port=self._edge_port, parent=self
+            self._database,
+            self._config,
+            port=self._edge_port,
+            scheme=self._edge_scheme,
+            tls=self._edge_tls,
+            parent=self,
+        ).exec()
+
+    def _open_tables(self) -> None:
+        """O salão inteiro, com busca, e o recebimento da conta.
+
+        Tecla própria, separada do painel do salão (F8): são dois trabalhos
+        diferentes. O painel é do gerente — parear aparelho, destravar a
+        cozinha, ver quem está em turno. Esta tela é do caixa, e é onde a
+        mesa vira dinheiro.
+        """
+        TablesDialog(
+            self._database,
+            self._config,
+            operator=self._operator,
+            on_receipt=self._printer.submit,
+            parent=self,
         ).exec()
 
     def _finalize_sale(self) -> None:

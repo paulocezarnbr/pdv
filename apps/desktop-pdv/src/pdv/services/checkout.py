@@ -54,6 +54,7 @@ from pdv.domain.models import (
 )
 from pdv.hardware.printer.layout import ReceiptContext, build_sale_receipt
 from pdv.services.audit import AuditService
+from pdv.services.payments import record_payments, settle_payments
 from pdv.services.pricing import net_weight, price_for_weight
 from pdv.services.stock import StockService, explode_recipe, total_cost_cents
 
@@ -393,7 +394,7 @@ class CheckoutService:
         if sale is None or not sale.items:
             raise InvalidWeightError("Não há venda aberta com itens para finalizar")
 
-        payments = self._settle_payments(payments, sale.total_cents)
+        payments = settle_payments(payments, sale.total_cents)
 
         with self._db.transaction() as connection:
             SaleRepository(connection, self._outbox).close_order(
@@ -405,6 +406,18 @@ class CheckoutService:
                 subtotal=sale.subtotal_cents,
                 discount=sale.discount_cents,
                 total=sale.total_cents,
+            )
+
+            # Na mesma transação que fecha o pedido. Até aqui a tabela
+            # `payments` existia no schema e nunca recebia linha: o sistema
+            # sabia quanto entrou e não sabia como, e o fechamento de caixa por
+            # forma de pagamento não tinha de onde sair.
+            record_payments(
+                connection,
+                self._outbox,
+                order_id=sale.id,
+                tenant_id=EntityId(self._config.tenant_id),
+                payments=payments,
             )
 
             self._audit().append(
@@ -569,52 +582,11 @@ class CheckoutService:
 
     # -- internos ------------------------------------------------------------- #
 
-    @staticmethod
-    def _settle_payments(
-        payments: tuple[Payment, ...], total_cents: Cents
-    ) -> tuple[Payment, ...]:
-        """Valida a quitação e calcula o troco.
-
-        Duas regras que o caixa não pode violar:
-
-        * **Pagamento insuficiente não fecha venda.** Sem esta checagem, um
-          pedido sai pela porta parcialmente pago e a diferença só aparece na
-          conciliação — quando já não há a quem cobrar.
-        * **Troco só existe em espécie.** Sobra em cartão ou PIX significa
-          valor digitado errado na maquininha, não troco a devolver. Devolver
-          dinheiro vivo contra um pagamento eletrônico é o golpe do troco.
-        """
-        if not payments:
-            raise InsufficientPaymentError(int(total_cents), 0)
-
-        paid = sum(int(p.amount_cents) for p in payments)
-        if paid < int(total_cents):
-            raise InsufficientPaymentError(int(total_cents), paid)
-
-        change = paid - int(total_cents)
-        if change == 0:
-            return tuple(
-                Payment(p.method, p.amount_cents, Cents(0)) for p in payments
-            )
-
-        cash_index = next(
-            (i for i, p in enumerate(payments) if p.method.opens_drawer), None
-        )
-        if cash_index is None:
-            raise InsufficientPaymentError(
-                int(total_cents),
-                paid,
-                detail=(
-                    f"Pagamento eletrônico excede o total em "
-                    f"R$ {change / 100:.2f}. Corrija o valor: não há troco "
-                    "para cartão ou PIX."
-                ),
-            )
-
-        return tuple(
-            Payment(p.method, p.amount_cents, Cents(change if i == cash_index else 0))
-            for i, p in enumerate(payments)
-        )
+    #: A quitacao vive em `services/payments.py` e nao aqui: o recebimento
+    #: de mesa (`edge/orders.settle`) precisa exatamente das mesmas duas
+    #: regras, e duas copias da regra de troco divergem na primeira
+    #: alteracao. O alias existe para quem ja chamava por este nome.
+    _settle_payments = staticmethod(settle_payments)
 
     def _audit(self) -> AuditService:
         return AuditService(

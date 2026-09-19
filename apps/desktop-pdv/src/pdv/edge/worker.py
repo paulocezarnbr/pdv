@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import threading
 
 from pdv.config import AppConfig
@@ -20,6 +21,7 @@ from pdv.data.database import Database
 from pdv.edge.discovery import ServiceAnnouncer, ServiceInfoData
 from pdv.edge.hub import EventHub
 from pdv.edge.server import DEFAULT_PORT, create_app
+from pdv.edge.tls import TlsMaterial, default_hosts, ensure_certificate
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +48,7 @@ class EdgeServer:
         self._server = None
         self._announcer: ServiceAnnouncer | None = None
         self._ready = threading.Event()
+        self._tls: TlsMaterial | None = None
 
     @property
     def hub(self) -> EventHub:
@@ -54,6 +57,16 @@ class EdgeServer:
     @property
     def port(self) -> int:
         return self._port
+
+    @property
+    def tls(self) -> TlsMaterial | None:
+        """O certificado em uso, ou `None` se o salão subiu em claro."""
+        return self._tls
+
+    @property
+    def scheme(self) -> str:
+        """`https` ou `http` — o que o painel do caixa dita para o celular."""
+        return "https" if self._tls is not None else "http"
 
     @property
     def is_running(self) -> bool:
@@ -75,6 +88,8 @@ class EdgeServer:
             logger.error("uvicorn ausente: servidor local indisponível")
             return False
 
+        self._tls = self._build_tls()
+
         app = create_app(self._database, self._config, self._hub)
         server_config = uvicorn.Config(
             app,
@@ -84,6 +99,8 @@ class EdgeServer:
             port=self._port,
             log_level="warning",
             access_log=False,
+            ssl_certfile=str(self._tls.certificate_path) if self._tls else None,
+            ssl_keyfile=str(self._tls.key_path) if self._tls else None,
         )
         self._server = uvicorn.Server(server_config)
         self._server.install_signal_handlers = False
@@ -105,12 +122,36 @@ class EdgeServer:
                     store_name=self._config.store_name,
                     device_id=self._config.device_id,
                     port=self._port,
+                    scheme=self.scheme,
                 )
             )
             self._announcer.start()
 
-        logger.info("Servidor local ouvindo na porta %d", self._port)
+        logger.info(
+            "Servidor local ouvindo em %s na porta %d", self.scheme, self._port
+        )
         return True
+
+    def _build_tls(self) -> TlsMaterial | None:
+        """Prepara o certificado, salvo se a loja tiver pedido para não usar.
+
+        `PDV_EDGE_TLS=0` existe para diagnóstico — capturar o tráfego com um
+        analisador de rede quando o app do garçom não conecta — e não para uso
+        normal. Por isso o aviso é explícito no log: quem desligar isto e
+        esquecer deixa o token do aparelho e o PIN em claro na rede da loja.
+        """
+        if os.getenv("PDV_EDGE_TLS", "1") == "0":
+            logger.warning(
+                "PDV_EDGE_TLS=0: o salão sobe em HTTP. "
+                "Token de aparelho e PIN trafegam em claro na rede da loja."
+            )
+            return None
+
+        return ensure_certificate(
+            self._config.database_path.parent / "tls",
+            store_name=self._config.store_name,
+            hosts=default_hosts(),
+        )
 
     def stop(self, timeout: float = 5.0) -> None:
         if self._announcer is not None:
@@ -125,6 +166,7 @@ class EdgeServer:
             self._thread = None
 
         self._server = None
+        self._tls = None
         logger.info("Servidor local encerrado")
 
     def _run(self) -> None:

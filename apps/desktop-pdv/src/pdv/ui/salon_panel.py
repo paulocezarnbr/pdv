@@ -41,6 +41,8 @@ from pdv.edge.auth import EdgeAuth
 from pdv.edge.discovery import local_ip_address
 from pdv.edge.kds import KdsService
 from pdv.edge.orders import TableOrderService
+from pdv.edge.staff import StaffSessions
+from pdv.edge.tls import TlsMaterial
 from pdv.hardware.printer.escpos import format_cents
 from pdv.ui import theme
 
@@ -48,6 +50,10 @@ from pdv.ui import theme
 #: WebSocket a mais por janela aberta pagaria um custo que uma consulta a cada
 #: dois segundos no SQLite local não cobra.
 REFRESH_MS = 2000
+
+#: O espaço reservado do código, com a largura de oito dígitos: sem ele o
+#: painel encolhe quando o código vence e o resto da linha dá um pulo.
+_PLACEHOLDER = "———— ————"
 
 #: Os estados do ticket viajam em inglês no protocolo (o app do garçom e o KDS
 #: leem o mesmo JSON) e são traduzidos só na hora de aparecer. Traduzir no
@@ -69,16 +75,24 @@ class SalonPanel(QDialog):
         config: AppConfig,
         *,
         port: int | None,
+        scheme: str = "http",
+        tls: TlsMaterial | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self._auth = EdgeAuth(database, config.tenant_id, config.store_id)
         self._orders = TableOrderService(database, config)
         self._kds = KdsService(database, config)
+        self._staff = StaffSessions(database, config.tenant_id)
         self._port = port
+        self._scheme = scheme
+        self._tls = tls
+        #: O código em texto só existe aqui, entre gerá-lo e ele vencer. O
+        #: banco guarda apenas o hash — relê-lo é impossível por construção.
+        self._code_text = ""
 
         self.setWindowTitle("Salão — garçom e cozinha")
-        self.resize(980, 680)
+        self.resize(980, 720)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(
@@ -102,7 +116,16 @@ class SalonPanel(QDialog):
         self._timer = QTimer(self)
         self._timer.timeout.connect(self.refresh)
         self._timer.start(REFRESH_MS)
+
+        # Relógio próprio para o código: os dois segundos do refresh geral
+        # fariam a contagem pular de 4:58 para 4:56, que é o tipo de detalhe
+        # que faz o operador desconfiar do número que está lendo.
+        self._code_timer = QTimer(self)
+        self._code_timer.timeout.connect(self._tick_code)
+        self._code_timer.start(1000)
+
         self.refresh()
+        self._tick_code()
 
     # -- construção ------------------------------------------------------------ #
 
@@ -125,7 +148,7 @@ class SalonPanel(QDialog):
 
         middle = QVBoxLayout()
         middle.addWidget(_title("CÓDIGO DE PAREAMENTO"))
-        self._code_label = QLabel("— — — — — —")
+        self._code_label = QLabel(_PLACEHOLDER)
         self._code_label.setFont(
             theme.font(
                 theme.SIZE_TOTAL, theme.WEIGHT_BOLD, mono=True, tracking=6.0
@@ -147,6 +170,15 @@ class SalonPanel(QDialog):
         generate.clicked.connect(self._generate_code)
         right.addWidget(generate)
 
+        # Revogar o código é diferente de revogar o aparelho, e os dois botões
+        # ficam lado a lado porque o operador decide entre eles no mesmo
+        # instante: "alguém leu o código da minha tela" e "o celular sumiu".
+        self._revoke_code = QPushButton("Revogar código")
+        self._revoke_code.setMinimumHeight(40)
+        self._revoke_code.setEnabled(False)
+        self._revoke_code.clicked.connect(self._revoke_pairing_code)
+        right.addWidget(self._revoke_code)
+
         revoke = QPushButton("Revogar aparelho")
         revoke.setMinimumHeight(40)
         revoke.clicked.connect(self._revoke_device)
@@ -166,18 +198,30 @@ class SalonPanel(QDialog):
         layout.setSpacing(theme.SPACE_2)
 
         layout.addWidget(_title("MESAS ABERTAS"))
-        self._orders_table = QTableWidget(0, 5)
+        self._orders_table = QTableWidget(0, 6)
         self._orders_table.setHorizontalHeaderLabels(
-            ["Mesa", "Nº", "Itens", "Total", "Situação"]
+            ["Mesa", "Garçom", "Nº", "Itens", "Total", "Situação"]
         )
         _configure(self._orders_table, stretch_column=0)
         layout.addWidget(self._orders_table, stretch=1)
+
+        layout.addWidget(_title("EM TURNO"))
+        self._staff_table = QTableWidget(0, 3)
+        self._staff_table.setHorizontalHeaderLabels(["Pessoa", "Perfil", "Situação"])
+        _configure(self._staff_table, stretch_column=0)
+        self._staff_table.setMaximumHeight(120)
+        layout.addWidget(self._staff_table)
+
+        end_shift = QPushButton("Encerrar turno de quem está selecionado")
+        end_shift.setMinimumHeight(36)
+        end_shift.clicked.connect(self._end_shift)
+        layout.addWidget(end_shift)
 
         layout.addWidget(_title("APARELHOS PAREADOS"))
         self._devices_table = QTableWidget(0, 3)
         self._devices_table.setHorizontalHeaderLabels(["Aparelho", "Tipo", "Situação"])
         _configure(self._devices_table, stretch_column=0)
-        self._devices_table.setMaximumHeight(160)
+        self._devices_table.setMaximumHeight(140)
         layout.addWidget(self._devices_table)
 
         return box
@@ -222,16 +266,57 @@ class SalonPanel(QDialog):
 
     def _generate_code(self) -> None:
         try:
-            code = self._auth.create_pairing_code()
+            code, _ = self._auth.create_pairing_code()
         except PdvError as exc:
             QMessageBox.critical(self, "Pareamento", str(exc))
             return
-        # Agrupado de três em três: o garçom lê da tela e digita no celular a
-        # dois metros de distância, geralmente de pé.
-        self._code_label.setText(f"{code[:3]} {code[3:]}")
+        # Agrupado de quatro em quatro: o garçom lê da tela e digita no celular
+        # a dois metros de distância, geralmente de pé. Com oito dígitos, dois
+        # grupos de quatro é o formato que as pessoas já leem sem contar.
+        self._code_text = f"{code[:4]} {code[4:]}"
+        self._tick_code()
+
+    def _revoke_pairing_code(self) -> None:
+        """Mata o código antes do prazo, sem esperar os cinco minutos."""
+        if self._auth.revoke_pairing_codes():
+            self._code_hint.setText(
+                "Código revogado. Ninguém mais pareia com ele — gere outro."
+            )
+        self._code_text = ""
+        self._tick_code()
+
+    def _tick_code(self) -> None:
+        """Atualiza a contagem regressiva do código a cada segundo.
+
+        Sem isto, o operador olhava para um código na tela sem saber se ainda
+        valia, e a única forma de descobrir era o garçom errar no celular. A
+        contagem também é o que dá sentido ao botão de revogar: dá para ver
+        quanto tempo de exposição ainda resta.
+        """
+        active = self._auth.active_pairing_code()
+        self._revoke_code.setEnabled(active is not None)
+
+        if active is None or not self._code_text:
+            # Código vencido, revogado, ou gerado noutra janela: o texto não
+            # está mais em mãos, e mostrar dígitos que já não pareiam seria
+            # pior que não mostrar nada.
+            self._code_label.setText(_PLACEHOLDER)
+            if active is not None:
+                self._code_hint.setText(
+                    f"Há um código vivo, gerado em outra tela "
+                    f"({_mmss(active.remaining_seconds)} restantes). "
+                    "Gerar outro invalida aquele."
+                )
+            elif not self._code_hint.text().startswith("Código revogado"):
+                self._code_hint.setText(
+                    "Gere um código e digite-o no aplicativo do garçom."
+                )
+            return
+
+        self._code_label.setText(self._code_text)
         self._code_hint.setText(
-            "Válido por 5 minutos e por um único aparelho. "
-            "Gerar outro código não invalida este."
+            f"Vence em {_mmss(active.remaining_seconds)} · vale para um único "
+            "aparelho. Gerar outro código invalida este."
         )
 
     def _revoke_device(self) -> None:
@@ -282,6 +367,7 @@ class SalonPanel(QDialog):
         self._refresh_address()
         self._refresh_orders()
         self._refresh_devices()
+        self._refresh_staff()
         self._refresh_kds()
 
     def _refresh_address(self) -> None:
@@ -291,13 +377,77 @@ class SalonPanel(QDialog):
             )
             self._address_label.setStyleSheet(f"color: {theme.DANGER};")
             return
+
         # O endereço deixou de ser só diagnóstico: é o app do garçom. Quem está
         # no caixa precisa saber o que ditar para o celular, sem procurar.
-        self._address_label.setText(
-            f"App do garçom: http://{local_ip_address()}:{self._port}\n"
-            "Abra no navegador do celular e pareie com o código acima."
+        lines = [
+            f"App do garçom: {self._scheme}://{local_ip_address()}:{self._port}",
+            "Abra no navegador do celular e pareie com o código ao lado.",
+        ]
+        if self._tls is not None:
+            # A digital fica na tela porque é ela que transforma o certificado
+            # autoassinado em algo conferível: o celular mostra o aviso, e quem
+            # está no balcão compara estes quatro blocos antes de aceitar. Ver
+            # o cabeçalho de `edge/tls.py`.
+            lines.append(
+                f"O celular vai avisar que o certificado é da própria loja. "
+                f"Confira a digital: {self._tls.short_fingerprint}"
+            )
+        else:
+            lines.append(
+                "SEM CRIPTOGRAFIA: o PIN e o token trafegam em claro na rede."
+            )
+
+        self._address_label.setText("\n".join(lines))
+        self._address_label.setStyleSheet(
+            f"color: {theme.OK if self._tls is not None else theme.WARN};"
         )
-        self._address_label.setStyleSheet(f"color: {theme.OK};")
+
+    def _refresh_staff(self) -> None:
+        """Quem está em turno no salão, e por quanto tempo ainda.
+
+        É a coluna que faltava para o caixa saber de quem é cada comanda sem
+        perguntar — e o lugar de onde se derruba a sessão de quem foi embora
+        sem sair do app.
+        """
+        selected = _selected_key(self._staff_table)
+        self._staff_table.setRowCount(0)
+        for session in self._staff.list_active():
+            row = self._staff_table.rowCount()
+            self._staff_table.insertRow(row)
+            cells = [
+                str(session.get("user_name") or "—"),
+                str(session.get("role") or "—"),
+                _last_seen(session.get("last_seen_at")),
+            ]
+            for column, value in enumerate(cells):
+                self._staff_table.setItem(row, column, QTableWidgetItem(value))
+            self._staff_table.item(row, 0).setData(
+                Qt.ItemDataRole.UserRole, str(session.get("user_id"))
+            )
+        _restore_key(self._staff_table, selected)
+
+    def _end_shift(self) -> None:
+        row = self._staff_table.currentRow()
+        if row < 0:
+            QMessageBox.information(
+                self, "Encerrar turno", "Selecione quem está em turno na lista."
+            )
+            return
+
+        item = self._staff_table.item(row, 0)
+        user_id = str(item.data(Qt.ItemDataRole.UserRole))
+        confirm = QMessageBox.question(
+            self,
+            "Encerrar turno",
+            f"Encerrar a sessão de {item.text()} em todos os aparelhos?\n\n"
+            "As comandas já lançadas continuam no nome dela.",
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+
+        self._staff.revoke_user(EntityId(user_id))
+        self.refresh()
 
     def _refresh_orders(self) -> None:
         orders = self._orders.list_open_orders()
@@ -308,6 +458,7 @@ class SalonPanel(QDialog):
             self._orders_table.insertRow(row)
             cells = [
                 order.table_label,
+                order.waiter_name.split()[0] if order.waiter_name else "—",
                 f"{order.local_number:05d}",
                 str(order.item_count),
                 f"R$ {format_cents(Cents(int(order.total_cents)))}",
@@ -317,8 +468,9 @@ class SalonPanel(QDialog):
                 cell = QTableWidgetItem(value)
                 # A coluna de situação é texto, não número: alinhá-la à direita
                 # e em monoespaçada junto com o dinheiro faria a fila de
-                # "pedindo a conta" parecer mais uma coluna de valores.
-                if column and column < 4:
+                # "pedindo a conta" parecer mais uma coluna de valores. O nome
+                # do garçom também fica à esquerda, pelo mesmo motivo.
+                if 1 < column < 5:
                     cell.setTextAlignment(
                         Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
                     )
@@ -393,6 +545,12 @@ class SalonPanel(QDialog):
 # --------------------------------------------------------------------------- #
 # Auxiliares de tabela
 # --------------------------------------------------------------------------- #
+
+
+def _mmss(seconds: int) -> str:
+    """Contagem regressiva no formato de um relógio de parede."""
+    minutes, remainder = divmod(max(0, seconds), 60)
+    return f"{minutes}:{remainder:02d}"
 
 
 def _format_wait(seconds: int) -> str:

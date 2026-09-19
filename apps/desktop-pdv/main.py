@@ -182,6 +182,8 @@ def main() -> int:
         database,
         operator=operator,
         edge_port=edge.port if edge is not None else None,
+        edge_scheme=edge.scheme if edge is not None else "http",
+        edge_tls=edge.tls if edge is not None else None,
     )
     window.show()
     scale.start()

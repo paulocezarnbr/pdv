@@ -35,6 +35,11 @@ class ServiceInfoData:
     store_name: str
     device_id: str
     port: int
+    #: `https` quando o terminal tem certificado. Anunciado para que o app
+    #: descoberto por mDNS monte a URL certa em vez de tentar HTTP numa
+    #: porta que so fala TLS — falha que o celular reporta como
+    #: "servidor nao encontrado", mandando procurar a rede pelo lado errado.
+    scheme: str = "http"
 
 
 def local_ip_address() -> str:
@@ -90,6 +95,7 @@ class ServiceAnnouncer:
                     "store_name": self._info.store_name,
                     "device_id": self._info.device_id,
                     "version": "1.0.0",
+                    "scheme": self._info.scheme,
                 },
                 server=f"pdv-{self._info.device_id[:8]}.local.",
             )

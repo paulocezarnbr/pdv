@@ -57,9 +57,11 @@ from pdv.edge.orders import (
     TableOccupiedError,
     TableOrderService,
 )
+from pdv.edge.staff import StaffAuthError, StaffSession, StaffSessions
 from pdv.edge.tables import TableError, TableService
 from pdv.edge.webapp import WEBAPP_DIR, index_html
 from pdv.services.authorization import AuthorizationService
+from pdv.services.staff_report import StaffReport
 
 logger = logging.getLogger(__name__)
 
@@ -99,7 +101,7 @@ def create_app(
             WebSocketDisconnect,
             status,
         )
-        from fastapi.responses import HTMLResponse
+        from fastapi.responses import HTMLResponse, Response
         from pydantic import BaseModel, Field
     except ImportError as exc:  # pragma: no cover
         raise PdvError(
@@ -112,6 +114,8 @@ def create_app(
     kds = KdsService(database, config, event_hub)
     tables = TableService(database, config)
     managers = ManagerSessions(AuthorizationService(database, config.tenant_id))
+    staff = StaffSessions(database, config.tenant_id)
+    staff_report = StaffReport(database, config)
 
     app = FastAPI(
         title="PDV Balcão — servidor local",
@@ -136,12 +140,21 @@ def create_app(
 
     class OpenOrderRequest(BaseModel):
         client_uuid: str = Field(min_length=8, max_length=64)
-        operator_id: str = Field(min_length=1, max_length=64)
-        # Um dos dois. O `table_id` é o caminho normal (o app mostra o mapa e o
-        # garçom toca na mesa); o rótulo fica aceito para aparelho antigo ainda
-        # não atualizado, e é resolvido contra o cadastro do mesmo jeito.
+        # `operator_id` **saiu** do corpo. Quem abre a comanda é a sessão que
+        # assina a requisição, não um campo que o cliente preenche: enquanto
+        # veio do corpo, o app mandava o id do próprio aparelho e qualquer
+        # cliente podia lançar no nome de quem quisesse.
+        #
+        # Um dos dois abaixo. O `table_id` é o caminho normal (o app mostra o
+        # mapa e o garçom toca na mesa); o rótulo fica aceito para aparelho
+        # antigo ainda não atualizado, e é resolvido contra o cadastro do
+        # mesmo jeito.
         table_id: str = Field(default="", max_length=64)
         table_label: str = Field(default="", max_length=32)
+
+    class StaffLoginRequest(BaseModel):
+        login: str = Field(min_length=1, max_length=64)
+        pin: str = Field(min_length=1, max_length=64)
 
     class ReasonRequest(BaseModel):
         reason: str = Field(min_length=3, max_length=200)
@@ -217,10 +230,41 @@ def create_app(
             return managers.require(x_manager_token, EntityId(device.id))
         except AuthorizationRequiredError as exc:
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=str(exc),
+                # Duas credenciais diferentes recusam com o mesmo 403, e o app
+                # precisa saber **qual** pedir de novo. Sem este cabeçalho ele
+                # teria de adivinhar pelo texto da mensagem — que muda.
+                headers={"X-Auth-Scope": "manager"},
             ) from exc
 
     Manager = Annotated[Any, Depends(current_manager)]
+
+    def current_staff(
+        device: Device,
+        x_staff_token: Annotated[str | None, Header()] = None,
+    ) -> StaffSession:
+        """Quem está atendendo neste aparelho.
+
+        Cabeçalho próprio, pelo mesmo motivo do gerente: o aparelho e a pessoa
+        são identidades diferentes. O `Authorization` continua sendo do
+        aparelho — é ele que o caixa revoga quando o celular some.
+
+        Todas as rotas que **escrevem** na comanda passam por aqui. As de
+        leitura (mapa, cardápio) não: um aparelho pareado pode olhar o salão
+        antes de alguém entrar, e exigir sessão para ver o mapa daria uma tela
+        de login em cima de uma tela vazia.
+        """
+        try:
+            return staff.require(x_staff_token, EntityId(device.id))
+        except StaffAuthError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=str(exc),
+                headers={"X-Auth-Scope": "staff"},
+            ) from exc
+
+    Staff = Annotated[StaffSession, Depends(current_staff)]
 
     def _as_order(order: Any) -> OrderResponse:
         return OrderResponse(
@@ -247,6 +291,36 @@ def create_app(
         por que isto existe ao lado do app nativo, e não no lugar dele.
         """
         return HTMLResponse(index_html())
+
+    @app.get("/vendor/{filename}", include_in_schema=False)
+    async def vendor(filename: str) -> Any:
+        """Bibliotecas de terceiros, servidas pelo próprio PDV.
+
+        **Não** vêm de CDN, e o motivo é o de sempre: a loja opera sem
+        internet. Uma tag apontando para jsdelivr transformaria "a internet
+        caiu" em "o app do garçom não mostra mais nenhum aviso" — justamente no
+        momento em que os avisos importam. O arquivo vem junto do PDV e
+        atualiza com ele.
+
+        Só nomes do diretório `vendor/`, resolvidos e conferidos contra ele: o
+        `filename` vem da URL, e concatená-lo sem checar deixaria `../` ler
+        qualquer arquivo da máquina do caixa.
+        """
+        target = (WEBAPP_DIR / "vendor" / filename).resolve()
+        root = (WEBAPP_DIR / "vendor").resolve()
+        if root not in target.parents or not target.is_file():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Arquivo inexistente."
+            )
+
+        media = "text/css" if target.suffix == ".css" else "application/javascript"
+        return Response(
+            target.read_bytes(),
+            media_type=media,
+            # Versionado pelo nome do arquivo e trocado só no update do PDV:
+            # cache longo economiza o Wi-Fi da loja a cada abertura do app.
+            headers={"Cache-Control": "public, max-age=604800"},
+        )
 
     @app.get("/manifest.webmanifest", include_in_schema=False)
     async def manifest() -> Any:
@@ -324,11 +398,13 @@ def create_app(
         return [_as_order(o) for o in orders.list_open_orders()]
 
     @app.post("/orders", response_model=OrderResponse)
-    async def open_order(request: OpenOrderRequest, device: Device) -> OrderResponse:
+    async def open_order(
+        request: OpenOrderRequest, device: Device, session: Staff
+    ) -> OrderResponse:
         try:
             order = orders.open_order(
                 client_uuid=EntityId(request.client_uuid),
-                operator_id=EntityId(request.operator_id),
+                operator_id=session.user_id,
                 table_id=EntityId(request.table_id) if request.table_id else None,
                 table_label=request.table_label,
                 origin_device_id=device.id,
@@ -361,7 +437,9 @@ def create_app(
         return {**order.to_json(), "items": orders.list_items(EntityId(order_id))}
 
     @app.post("/orders/{order_id}/bill", response_model=OrderResponse)
-    async def request_bill(order_id: str, device: Device) -> OrderResponse:
+    async def request_bill(
+        order_id: str, device: Device, session: Staff
+    ) -> OrderResponse:
         """Pedir a conta. Quem **recebe** é o caixa — ver `orders.request_bill`."""
         try:
             return _as_order(orders.request_bill(EntityId(order_id)))
@@ -373,7 +451,9 @@ def create_app(
             raise _conflict(exc) from exc
 
     @app.delete("/orders/{order_id}/bill", response_model=OrderResponse)
-    async def clear_bill(order_id: str, device: Device) -> OrderResponse:
+    async def clear_bill(
+        order_id: str, device: Device, session: Staff
+    ) -> OrderResponse:
         """A mesa desistiu de fechar e pediu sobremesa."""
         try:
             return _as_order(orders.clear_bill_request(EntityId(order_id)))
@@ -384,7 +464,8 @@ def create_app(
 
     @app.post("/orders/{order_id}/cancel", response_model=OrderResponse)
     async def cancel_order(
-        order_id: str, request: ReasonRequest, device: Device, manager: Manager
+        order_id: str, request: ReasonRequest, device: Device,
+        session: Staff, manager: Manager,
     ) -> OrderResponse:
         """Cancelar a comanda inteira — **só com gerente**."""
         try:
@@ -404,7 +485,8 @@ def create_app(
 
     @app.post("/orders/{order_id}/transfer", response_model=OrderResponse)
     async def transfer_order(
-        order_id: str, request: TransferRequest, device: Device, manager: Manager
+        order_id: str, request: TransferRequest, device: Device,
+        session: Staff, manager: Manager,
     ) -> OrderResponse:
         try:
             order = orders.transfer(
@@ -428,7 +510,7 @@ def create_app(
 
     @app.post("/orders/{order_id}/items", response_model=OrderResponse)
     async def add_item(
-        order_id: str, request: AddItemRequest, device: Device
+        order_id: str, request: AddItemRequest, device: Device, session: Staff
     ) -> OrderResponse:
         try:
             quantity = Decimal(request.quantity)
@@ -446,6 +528,7 @@ def create_app(
                 quantity=quantity,
                 notes=request.notes,
                 station=request.station,
+                created_by_user_id=session.user_id,
             )
         except OrderNotFoundError as exc:
             raise HTTPException(
@@ -528,6 +611,50 @@ def create_app(
         except TableError as exc:
             raise _conflict(exc) from exc
         return {"created": created, "tables": [t.to_json() for t in tables.list_tables()]}
+
+    # -- garçom -------------------------------------------------------------- #
+
+    @app.post("/staff/session")
+    async def staff_login(
+        request: StaffLoginRequest, device: Device
+    ) -> dict[str, Any]:
+        """O garçom entra com a credencial dele, no aparelho já pareado.
+
+        Sem sessão na entrada — é esta rota que a emite. Exige o token do
+        **aparelho**: um PIN vazado não vale em celular de fora da loja, e um
+        celular perdido não vale sem o PIN de alguém.
+        """
+        try:
+            session = staff.login(
+                login=request.login, pin=request.pin, device_id=EntityId(device.id)
+            )
+        except AuthorizationRequiredError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)
+            ) from exc
+        return session.to_json(with_token=True)
+
+    @app.get("/staff/session")
+    async def staff_check(session: Staff) -> dict[str, Any]:
+        """Quem está em turno neste aparelho. O app confirma ao abrir."""
+        return session.to_json()
+
+    @app.delete("/staff/session")
+    async def staff_logout(
+        device: Device,
+        x_staff_token: Annotated[str | None, Header()] = None,
+    ) -> dict[str, Any]:
+        return {"ended": staff.logout(x_staff_token)}
+
+    @app.get("/staff/summary")
+    async def staff_summary(session: Staff) -> dict[str, Any]:
+        """O resultado do próprio turno.
+
+        Só os números de quem está autenticado — nunca os do colega. Ver quanto
+        o outro fez de gorjeta não é informação de trabalho, é o começo de uma
+        conversa que o gerente é quem tem de ter.
+        """
+        return staff_report.for_user(session.user_id)
 
     # -- gerente ------------------------------------------------------------ #
 

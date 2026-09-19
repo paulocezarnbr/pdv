@@ -5,6 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0e1116">
 <title>Salão — PDV</title>
+<!-- SweetAlert2 servido pelo próprio PDV, nunca de CDN: a loja opera sem
+     internet, e uma tag apontando para fora transformaria "a internet caiu"
+     em "o app parou de mostrar avisos" — no momento em que eles importam. -->
+<link rel="stylesheet" href="/vendor/sweetalert2.min.css">
 <style>
 /* As cores são as mesmas de ui/theme.py. O garçom e o caixa olham para o mesmo
    sistema a dois metros de distância; duas paletas diferentes dariam a
@@ -116,6 +120,34 @@ label{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase
 /* -- aviso de conexão --------------------------------------------------- */
 #offline{background:var(--danger);color:#fff;text-align:center;padding:var(--s2);
   font-size:13px;font-weight:600}
+
+/* -- SweetAlert2 no tema da casa ---------------------------------------- */
+/* A biblioteca vem com visual claro. Sem isto, todo aviso apareceria branco
+   no meio de um app escuro — e à noite, no salão, isso cega quem está lendo. */
+.swal2-popup{background:var(--surface);color:var(--text);border:1px solid var(--line-strong);
+  border-radius:var(--r-panel);font-family:var(--ui)}
+.swal2-title{color:var(--text);font-family:var(--display);font-size:18px}
+.swal2-html-container{color:var(--muted);font-size:14px}
+.swal2-container.swal2-backdrop-show{background:rgba(6,8,11,.72)}
+.swal2-actions{gap:var(--s2)}
+.swal2-styled.swal2-confirm{background:var(--accent);color:var(--on-accent);
+  border-radius:var(--r-control);font-weight:600;min-height:44px}
+.swal2-styled.swal2-confirm.danger,.swal2-styled.swal2-deny{background:var(--danger);
+  color:#fff;border-radius:var(--r-control);min-height:44px}
+.swal2-styled.swal2-cancel{background:var(--raised);color:var(--text);
+  border:1px solid var(--line-strong);border-radius:var(--r-control);min-height:44px}
+.swal2-styled:focus{box-shadow:0 0 0 2px var(--selection)}
+.swal2-icon.swal2-success [class^=swal2-success-line]{background:var(--ok)}
+.swal2-icon.swal2-success .swal2-success-ring{border-color:var(--ok)}
+.swal2-icon.swal2-error{border-color:var(--danger);color:var(--danger)}
+.swal2-icon.swal2-warning{border-color:var(--warn);color:var(--warn)}
+.swal2-icon.swal2-question{border-color:var(--accent);color:var(--accent)}
+.swal2-timer-progress-bar{background:var(--accent)}
+/* O toast sobe pelo topo, longe do polegar: ele não é para ser tocado, e um
+   aviso passando por cima do botão "Lançar item" rouba o toque do garçom. */
+.swal2-toast{background:var(--raised) !important;border:1px solid var(--line-strong);
+  box-shadow:0 8px 24px rgba(0,0,0,.45)}
+.swal2-toast .swal2-title{font-size:14px;color:var(--text)}
 </style>
 </head>
 <body>
@@ -124,6 +156,7 @@ label{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase
   <header>
     <button id="back" class="ghost hidden" style="min-width:44px;padding:0 var(--s2)">&#8592;</button>
     <h1 id="title">Salão<span class="sub" id="subtitle">conectando…</span></h1>
+    <button id="staffBtnTop" class="ghost hidden" style="min-width:44px;padding:0 var(--s2)" title="Meu turno">&#128100;</button>
     <button id="managerBtn" class="ghost" style="min-width:44px;padding:0 var(--s2)" title="Gerente">&#9881;</button>
   </header>
   <main id="main"></main>
@@ -139,6 +172,7 @@ label{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase
   </div>
 </dialog>
 
+<script src="/vendor/sweetalert2.min.js"></script>
 <script>
 "use strict";
 /* ==========================================================================
@@ -148,10 +182,12 @@ label{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase
    ========================================================================== */
 
 const S = {           // estado da sessão
+  // -- o APARELHO: sai do pareamento presencial no caixa, revogável de lá --
   token:   localStorage.getItem("pdv.token") || "",
   device:  localStorage.getItem("pdv.device") || "",
   store:   localStorage.getItem("pdv.store") || "",
-  operator:localStorage.getItem("pdv.operator") || "",
+  // -- a PESSOA: sai do login dela, dura o turno, também revogável do caixa --
+  staff:   readStaff(),
   manager: null,      // {token, name, expires_at} — NUNCA em localStorage
   view:    "map",
   order:   null,
@@ -163,9 +199,30 @@ const S = {           // estado da sessão
   timer:   null,
 };
 
-/* A concessão de gerente fica só em memória. Guardá-la em localStorage faria
-   o celular esquecido no balcão continuar sendo gerente depois de recarregar
-   a página — que é exatamente o que o prazo curto existe para impedir. */
+/* Três credenciais, três durações, e as diferenças não são arbitrárias:
+
+   - O APARELHO fica em localStorage para sempre. Pareia uma vez e pronto: a
+     loja não pode depender de alguém achar o caixa toda manhã.
+   - A PESSOA fica em localStorage pelo turno. É **identidade**, não poder:
+     ela não concede nada que o aparelho pareado já não pudesse fazer, só diz
+     quem está agindo. Se sumisse a cada recarga de página — o que acontece
+     quando o celular cai no chão e o navegador reabre —, o caminho de menor
+     resistência viraria deixar um login só aberto para todo mundo, que é o
+     problema que ela veio resolver.
+   - O GERENTE fica só em memória. É **poder** (cancelar comanda), e o celular
+     esquecido no balcão não pode continuar sendo gerente depois de recarregar
+     a página. Esse é o ponto do prazo curto. */
+
+function readStaff() {
+  try { return JSON.parse(localStorage.getItem("pdv.staff") || "null"); }
+  catch (e) { return null; }
+}
+
+function rememberStaff(session) {
+  S.staff = session;
+  if (session) localStorage.setItem("pdv.staff", JSON.stringify(session));
+  else localStorage.removeItem("pdv.staff");
+}
 
 const $ = (id) => document.getElementById(id);
 const money = (c) => (c / 100).toLocaleString("pt-BR", {minimumFractionDigits: 2, maximumFractionDigits: 2});
@@ -177,11 +234,48 @@ const uuid = () => (crypto.randomUUID ? crypto.randomUUID()
       return (c === "x" ? r : (r & 0x3 | 0x8)).toString(16);
     }));
 
+/* -- avisos -------------------------------------------------------------- */
+
+/* Três formas, e a escolha entre elas não é estética:
+
+   `toast` é para o que deu certo. Some sozinho e não pede toque, porque parar
+   o garçom para confirmar que o item entrou é gastar o tempo dele num fato que
+   ele já vai ver na tela.
+
+   `warn` é para o que deu errado. Fica até alguém fechar: um erro que some
+   sozinho é um erro que ninguém leu, e no salão isso vira item não lançado.
+
+   `confirm` é para o que não tem volta. Cancelar comanda e sair do turno
+   pedem um segundo gesto deliberado. */
+
+const toast = (title, icon = "success") => Swal.fire({
+  toast: true, position: "top", icon, title,
+  showConfirmButton: false, timer: 2200, timerProgressBar: true,
+});
+
+const warn = (message, title = "Não deu") => Swal.fire({
+  icon: "error", title, text: message, confirmButtonText: "Entendi",
+});
+
+const confirmAction = async ({title, text, ok = "Confirmar", danger = false}) => {
+  const r = await Swal.fire({
+    icon: danger ? "warning" : "question",
+    title, text,
+    showCancelButton: true,
+    confirmButtonText: ok,
+    cancelButtonText: "Voltar",
+    customClass: danger ? {confirmButton: "danger"} : {},
+    reverseButtons: true,
+  });
+  return r.isConfirmed;
+};
+
 /* -- rede ---------------------------------------------------------------- */
 
 async function api(path, options = {}) {
   const headers = {"Content-Type": "application/json"};
   if (S.token) headers["Authorization"] = "Bearer " + S.token;
+  if (S.staff) headers["X-Staff-Token"] = S.staff.token;
   if (S.manager) headers["X-Manager-Token"] = S.manager.token;
 
   let response;
@@ -194,10 +288,22 @@ async function api(path, options = {}) {
   $("offline").classList.add("hidden");
 
   if (response.status === 401) { forget(); render(); throw new Error("Aparelho não pareado."); }
-  if (response.status === 403 && S.manager) {
-    // A concessão venceu enquanto o gerente navegava. Esquecer aqui evita que
-    // a próxima tela mostre botões que já não funcionam.
-    S.manager = null;
+  if (response.status === 403) {
+    /* Duas credenciais diferentes recusam com o mesmo 403. O servidor diz qual
+       foi em `X-Auth-Scope`; adivinhar pelo texto da mensagem quebraria na
+       primeira vez que alguém reescrevesse a frase. */
+    const scope = response.headers.get("X-Auth-Scope");
+    if (scope === "staff") {
+      // Turno vencido, ou o caixa encerrou a sessão. Volta para o login sem
+      // derrubar o pareamento: o aparelho continua sendo desta loja.
+      rememberStaff(null);
+      S.view = "map"; S.order = null;
+      render();
+    } else if (scope === "manager" || S.manager) {
+      // A concessão venceu enquanto o gerente navegava. Esquecer aqui evita
+      // que a próxima tela mostre botões que já não funcionam.
+      S.manager = null;
+    }
   }
   if (!response.ok) {
     let detail = "Erro " + response.status;
@@ -216,6 +322,7 @@ async function api(path, options = {}) {
 
 function forget() {
   S.token = S.device = S.store = ""; S.manager = null;
+  rememberStaff(null);
   ["pdv.token", "pdv.device", "pdv.store"].forEach((k) => localStorage.removeItem(k));
 }
 
@@ -237,7 +344,7 @@ function ask({title, body, ok = "Confirmar", cancel = "Cancelar", onOk, danger =
       $("dlgOk").disabled = true;
       if (await onOk($("dlgBody")) !== false) $("dlg").close();
     } catch (e) {
-      if (error) error.textContent = e.message; else alert(e.message);
+      if (error) error.textContent = e.message; else warn(e.message);
     } finally { $("dlgOk").disabled = false; }
   };
   $("dlg").showModal();
@@ -250,7 +357,7 @@ $("dlgCancel").onclick = () => $("dlg").close();
 
 function renderPairing() {
   $("title").firstChild.textContent = "Parear aparelho";
-  $("subtitle").textContent = "código de 6 dígitos no caixa";
+  $("subtitle").textContent = "código de 8 dígitos no caixa";
   $("managerBtn").classList.add("hidden");
   $("footer").classList.add("hidden");
   $("main").innerHTML = `
@@ -260,7 +367,7 @@ function renderPairing() {
     </div>
     <div style="display:flex;flex-direction:column;gap:var(--s3);max-width:360px;margin:0 auto">
       <div><label for="code">Código de pareamento</label>
-        <input id="code" inputmode="numeric" autocomplete="off" maxlength="16" placeholder="000000"></div>
+        <input id="code" inputmode="numeric" autocomplete="off" maxlength="16" placeholder="0000 0000"></div>
       <div><label for="name">Nome deste aparelho</label>
         <input id="name" maxlength="64" placeholder="Celular do João"></div>
       <div class="err" id="pairErr"></div>
@@ -272,14 +379,113 @@ function renderPairing() {
     if (!code) { $("pairErr").textContent = "Digite o código que aparece no caixa."; return; }
     try {
       $("pairBtn").disabled = true;
-      const r = await api("/pair", {method: "POST", body: {code, device_name: name, kind: "waiter"}});
+      // Espaços e traços saem antes de enviar: o código aparece na tela do
+      // caixa agrupado em dois blocos, e quem digita copia o que vê.
+      const r = await api("/pair", {method: "POST",
+        body: {code: code.replace(/\D/g, ""), device_name: name, kind: "waiter"}});
       S.token = r.token; S.device = r.device_id; S.store = r.store_name;
       localStorage.setItem("pdv.token", r.token);
       localStorage.setItem("pdv.device", r.device_id);
       localStorage.setItem("pdv.store", r.store_name);
-      S.view = "map"; await refresh(); render();
+      S.view = "map"; render();
+      toast("Aparelho pareado");
     } catch (e) { $("pairErr").textContent = e.message; }
     finally { $("pairBtn").disabled = false; }
+  };
+}
+
+/* -- login do garçom ------------------------------------------------------ */
+
+/* O aparelho é da loja; o turno é da pessoa. Enquanto o pedido saía atribuído
+   ao celular, não havia como fechar resultado nem gorjeta por funcionário —
+   três garçons revezando o mesmo tablet viravam uma coluna só no relatório. */
+
+function renderStaffLogin() {
+  $("title").firstChild.textContent = S.store || "Salão";
+  $("subtitle").textContent = "entre para começar o turno";
+  $("back").classList.add("hidden");
+  $("managerBtn").classList.add("hidden");
+  $("footer").classList.add("hidden");
+  $("main").innerHTML = `
+    <div class="empty">
+      <strong>Quem vai atender?</strong>
+      Use o seu login e PIN. Os pedidos que você lançar ficam no seu nome.
+    </div>
+    <div style="display:flex;flex-direction:column;gap:var(--s3);max-width:360px;margin:0 auto">
+      <div><label for="slogin">Login</label>
+        <input id="slogin" autocomplete="off" autocapitalize="none" maxlength="64"></div>
+      <div><label for="spin">PIN</label>
+        <input id="spin" type="password" inputmode="numeric" autocomplete="off" maxlength="12"></div>
+      <div class="err" id="staffErr"></div>
+      <button class="primary" id="staffBtn">Entrar</button>
+      <div class="hint">Seu turno fica aberto neste aparelho até você sair.
+        Quem está no caixa pode encerrá-lo a qualquer momento.</div>
+    </div>`;
+
+  const submit = async () => {
+    const login = $("slogin").value.trim();
+    const pin = $("spin").value;
+    if (!login || !pin) { $("staffErr").textContent = "Informe o login e o PIN."; return; }
+    try {
+      $("staffBtn").disabled = true;
+      const session = await api("/staff/session", {method: "POST", body: {login, pin}});
+      rememberStaff(session);
+      S.view = "map";
+      await refresh();
+      render();
+      toast(`Bom turno, ${session.first_name}`);
+    } catch (e) {
+      // O PIN errado nunca fica no campo: o próximo Enter tentaria o mesmo
+      // valor e gastaria mais uma tentativa do freio.
+      $("spin").value = "";
+      $("spin").focus();
+      $("staffErr").textContent = e.message;
+    } finally { $("staffBtn").disabled = false; }
+  };
+
+  $("staffBtn").onclick = submit;
+  $("slogin").onkeydown = (e) => { if (e.key === "Enter") $("spin").focus(); };
+  $("spin").onkeydown = (e) => { if (e.key === "Enter") submit(); };
+}
+
+async function staffMenu() {
+  let summary = null;
+  try { summary = await api("/staff/summary"); } catch (e) { /* mostra o menu mesmo assim */ }
+
+  const numbers = summary
+    ? `<div class="row"><span class="grow">
+         <span class="name">${summary.orders} ${summary.orders === 1 ? "mesa fechada" : "mesas fechadas"}
+           · ${summary.items} ${summary.items === 1 ? "item" : "itens"}</span>
+         <span class="sub">${summary.open_orders} em aberto agora</span></span>
+       </div>
+       <div class="row"><span class="grow"><span class="name">Vendido no turno</span></span>
+         <span class="money">R$ ${money(summary.total_cents)}</span></div>
+       <div class="row"><span class="grow"><span class="name">Gorjeta no turno</span>
+         <span class="sub">registrada no caixa, a cada conta recebida</span></span>
+         <span class="money">R$ ${money(summary.tip_cents)}</span></div>`
+    : `<div class="hint">Não foi possível ler o seu resultado agora.</div>`;
+
+  ask({
+    title: esc(S.staff.name),
+    ok: null, cancel: "Fechar",
+    body: numbers + `
+      <button class="row" data-act="logout"><span class="grow">
+        <span class="name">Encerrar meu turno</span>
+        <span class="sub">o próximo garçom entra com o login dele</span></span></button>`,
+  });
+
+  $("dlgBody").querySelector("[data-act=logout]").onclick = async () => {
+    $("dlg").close();
+    if (!await confirmAction({
+      title: "Encerrar o turno?",
+      text: "As comandas que você lançou continuam no seu nome.",
+      ok: "Encerrar", danger: true,
+    })) return;
+    await api("/staff/session", {method: "DELETE"}).catch(() => {});
+    rememberStaff(null);
+    S.view = "map"; S.order = null;
+    render();
+    toast("Turno encerrado", "info");
   };
 }
 
@@ -289,9 +495,13 @@ function renderMap() {
   $("title").firstChild.textContent = S.store || "Salão";
   const busy = S.tables.filter((t) => t.status !== "free").length;
   const billing = S.tables.filter((t) => t.status === "billing").length;
-  $("subtitle").textContent = S.tables.length
+  // Quem está em turno aparece no subtítulo do mapa, não só atrás de um ícone:
+  // é a primeira coisa a conferir antes de lançar, e num aparelho compartilhado
+  // lançar no nome do colega é o erro que ninguém percebe na hora.
+  const who = S.staff ? `${S.staff.first_name} · ` : "";
+  $("subtitle").textContent = who + (S.tables.length
     ? `${busy} de ${S.tables.length} ocupadas` + (billing ? ` · ${billing} pedindo a conta` : "")
-    : (S.loaded ? "nenhuma mesa cadastrada" : "sem resposta do caixa");
+    : (S.loaded ? "nenhuma mesa cadastrada" : "sem resposta do caixa"));
   $("back").classList.add("hidden");
   $("managerBtn").classList.remove("hidden");
   $("footer").classList.add("hidden");
@@ -337,7 +547,7 @@ function card(t) {
 async function openTable(tableId) {
   const table = S.tables.find((t) => t.id === tableId);
   if (!table) return;
-  if (!table.is_active) { alert("Mesa fora do mapa do salão."); return; }
+  if (!table.is_active) { warn("Esta mesa está fora do mapa do salão."); return; }
 
   if (table.order_id) { await loadOrder(table.order_id); return; }
 
@@ -345,8 +555,11 @@ async function openTable(tableId) {
   // que impede a mesma comanda de ser faturada duas vezes se a resposta se
   // perder e o app reenviar.
   try {
+    // `operator_id` não vai mais no corpo: quem abre a comanda é a sessão que
+    // assina a requisição. Enquanto vinha daqui, o app mandava o id do próprio
+    // aparelho — e era por isso que não existia resultado por funcionário.
     const order = await api("/orders", {method: "POST", body: {
-      client_uuid: uuid(), operator_id: S.operator || S.device, table_id: tableId,
+      client_uuid: uuid(), table_id: tableId,
     }});
     await loadOrder(order.order_id);
   } catch (e) {
@@ -356,7 +569,7 @@ async function openTable(tableId) {
       await loadOrder(e.payload.order.order_id);
       return;
     }
-    alert(e.message);
+    warn(e.message);
   }
 }
 
@@ -371,7 +584,9 @@ async function loadOrder(orderId) {
 function renderOrder() {
   const o = S.order;
   $("title").firstChild.textContent = o.table_label || "Comanda";
-  $("subtitle").textContent = `comanda ${o.local_number}` + (o.bill_requested_at ? " · conta pedida" : "");
+  $("subtitle").textContent = `comanda ${o.local_number}`
+    + (o.waiter_name ? ` · ${esc(o.waiter_name.split(" ")[0])}` : "")
+    + (o.bill_requested_at ? " · conta pedida" : "");
   $("back").classList.remove("hidden");
   $("managerBtn").classList.remove("hidden");
 
@@ -429,7 +644,8 @@ async function addItem(productId) {
       client_uuid: uuid(), product_id: productId, quantity: "1", station: "cozinha",
     }});
     await loadOrder(S.order.order_id);
-  } catch (e) { alert(e.message); }
+    toast("Item lançado");
+  } catch (e) { warn(e.message); }
 }
 
 async function toggleBill() {
@@ -441,7 +657,8 @@ async function toggleBill() {
       await api(`/orders/${encodeURIComponent(o.order_id)}/bill`, {method: "POST"});
     }
     await loadOrder(o.order_id);
-  } catch (e) { alert(e.message); }
+    toast(o.bill_requested_at ? "Conta desfeita" : "Conta pedida ao caixa", "info");
+  } catch (e) { warn(e.message); }
 }
 
 /* -- gerente -------------------------------------------------------------- */
@@ -519,8 +736,11 @@ async function tablesAdmin() {
   });
   $("dlgBody").querySelector("[data-seed]").onclick = async () => {
     $("dlg").close();
-    try { await api("/tables/seed", {method: "POST", body: {count: 12}}); await refresh(); render(); }
-    catch (e) { alert(e.message); }
+    try {
+      const r = await api("/tables/seed", {method: "POST", body: {count: 12}});
+      await refresh(); render();
+      toast(r.created ? `${r.created} mesas criadas` : "Todas já existiam", "info");
+    } catch (e) { warn(e.message); }
   };
 }
 
@@ -591,6 +811,7 @@ function cancelOrderDialog() {
         {method: "POST", body: {reason}});
       S.view = "map"; S.order = null;
       await refresh(); render();
+      toast("Comanda cancelada", "info");
     },
   });
 }
@@ -613,11 +834,18 @@ async function refresh() {
 }
 
 function render() {
+  // A ordem é a das credenciais: sem aparelho não há loja, sem pessoa não há
+  // a quem atribuir o pedido. Inverter deixaria alguém digitar o PIN numa tela
+  // que ainda não sabe com qual PDV está falando.
+  $("staffBtnTop").classList.toggle("hidden", !S.staff);
   if (!S.token) return renderPairing();
+  if (!S.staff) return renderStaffLogin();
   if (S.view === "order" && S.order) return renderOrder();
   S.view = "map";
   renderMap();
 }
+
+$("staffBtnTop").onclick = () => { if (S.staff) staffMenu(); };
 
 /* Recarrega o mapa a cada 5 s. Não é tempo real e não precisa ser: o garçom
    olha para o mapa entre um atendimento e outro, e um WebSocket por celular
@@ -632,22 +860,34 @@ function startPolling() {
        parear. O defeito nasceu de o tique reimplementar o roteamento em vez de
        reusar o de `render()` — por isso agora ele repete a mesma condição, e
        só repinta a tela que acabou de recarregar. */
-    if (!S.token || document.hidden || $("dlg").open) return;
+    /* O `!S.token` **não** é redundante com o guarda dentro de `refresh()`.
+       Ver o comentário acima. O `!S.staff` está aqui pelo mesmo motivo, e o
+       defeito que ele previne é o mesmo: sem ele o tique repintaria o mapa
+       por cima do formulário de login cinco segundos depois de abrir. */
+    if (!S.token || !S.staff || document.hidden || $("dlg").open || Swal.isVisible()) return;
     await refresh();
     if (S.view === "map") renderMap();
   }, 5000);
 }
 
 (async function boot() {
-  S.operator = S.operator || S.device;
   if (S.token) {
     try {
       const health = await fetch("/health").then((r) => r.json());
       S.store = health.store_name || S.store;
       localStorage.setItem("pdv.store", S.store);
     } catch (e) { $("offline").classList.remove("hidden"); }
-    await refresh();
   }
+  if (S.token && S.staff) {
+    /* O turno guardado pode já ter vencido, ou ter sido encerrado do caixa
+       enquanto o celular estava desligado. Confirmar na abertura evita a pior
+       das telas: o mapa carregado, o garçom lançando, e o primeiro POST
+       falhando com a mesa do cliente já na mão. */
+    try {
+      rememberStaff({...S.staff, ...await api("/staff/session")});
+    } catch (e) { /* o 403 já devolveu o app para o login */ }
+  }
+  if (S.token && S.staff) await refresh();
   render();
   startPolling();
 })();

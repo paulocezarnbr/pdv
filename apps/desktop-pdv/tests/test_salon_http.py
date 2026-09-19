@@ -22,6 +22,9 @@ from pdv.data.seed import (
     DEMO_MANAGER_PIN,
     DEMO_OPERATOR_ID,
     DEMO_OPERATOR_PIN,
+    DEMO_WAITER_ID,
+    DEMO_WAITER_LOGIN,
+    DEMO_WAITER_PIN,
     seed_demo_data,
 )
 from pdv.domain.models import new_id
@@ -62,21 +65,38 @@ def phone(client):  # noqa: ANN001, ANN201
     auth = EdgeAuth(client.pdv_database, TENANT, STORE)
     response = client.post(
         "/pair",
-        json={"code": auth.create_pairing_code(), "device_name": "Celular do João"},
+        json={"code": auth.create_pairing_code()[0], "device_name": "Celular do João"},
     )
     assert response.status_code == 200, response.text
     return {"Authorization": f"Bearer {response.json()['token']}"}
 
 
 @pytest.fixture()
-def manager(client, phone):  # noqa: ANN001, ANN201
+def waiter(client, phone):  # noqa: ANN001, ANN201
+    """O celular pareado **com alguém dentro**.
+
+    Desde a Fase 3.8 o aparelho sozinho não lança pedido: ele diz de onde veio
+    a requisição, e a sessão diz quem a fez. As rotas que escrevem na comanda
+    exigem as duas.
+    """
+    response = client.post(
+        "/staff/session",
+        json={"login": DEMO_WAITER_LOGIN, "pin": DEMO_WAITER_PIN},
+        headers=phone,
+    )
+    assert response.status_code == 200, response.text
+    return {**phone, "X-Staff-Token": response.json()["token"]}
+
+
+@pytest.fixture()
+def manager(client, phone, waiter):  # noqa: ANN001, ANN201
     response = client.post(
         "/manager/session",
         json={"login": DEMO_MANAGER_LOGIN, "pin": DEMO_MANAGER_PIN},
         headers=phone,
     )
     assert response.status_code == 200, response.text
-    return {**phone, "X-Manager-Token": response.json()["token"]}
+    return {**waiter, "X-Manager-Token": response.json()["token"]}
 
 
 def _table(client, phone, label: str) -> dict:  # noqa: ANN001
@@ -89,7 +109,6 @@ def _open(client, phone, label: str) -> dict:  # noqa: ANN001
         "/orders",
         json={
             "client_uuid": new_id(),
-            "operator_id": DEMO_OPERATOR_ID,
             "table_id": _table(client, phone, label)["id"],
         },
         headers=phone,
@@ -138,40 +157,39 @@ def test_the_app_itself_needs_no_token(client) -> None:  # noqa: ANN001
 # --------------------------------------------------------------------------- #
 
 
-def test_the_map_comes_with_occupancy_in_one_call(client, phone) -> None:  # noqa: ANN001
+def test_the_map_comes_with_occupancy_in_one_call(client, waiter) -> None:  # noqa: ANN001
     """Uma chamada por mesa faria o celular disparar trinta a cada refresh."""
-    _open(client, phone, "Mesa 2")
+    _open(client, waiter, "Mesa 2")
 
-    tables = client.get("/tables", headers=phone).json()["tables"]
+    tables = client.get("/tables", headers=waiter).json()["tables"]
 
     assert len(tables) == 10
     assert next(t for t in tables if t["label"] == "Mesa 2")["status"] == "busy"
     assert next(t for t in tables if t["label"] == "Mesa 3")["status"] == "free"
 
 
-def test_opening_an_occupied_table_returns_the_existing_order(client, phone) -> None:  # noqa: ANN001
+def test_opening_an_occupied_table_returns_the_existing_order(client, waiter) -> None:  # noqa: ANN001
     """O bug relatado, pela rota.
 
     O 409 traz a comanda no corpo justamente para o app abrir **essa** — tocar
     numa mesa ocupada é querer lançar nela, não receber um erro.
     """
-    first = _open(client, phone, "Mesa 4").json()
+    first = _open(client, waiter, "Mesa 4").json()
 
-    conflict = _open(client, phone, "Mesa 4")
+    conflict = _open(client, waiter, "Mesa 4")
 
     assert conflict.status_code == 409
     assert conflict.json()["detail"]["order"]["order_id"] == first["order_id"]
 
 
-def test_an_unknown_table_is_a_404_not_a_new_table(client, phone) -> None:  # noqa: ANN001
+def test_an_unknown_table_is_a_404_not_a_new_table(client, waiter) -> None:  # noqa: ANN001
     response = client.post(
         "/orders",
         json={
             "client_uuid": new_id(),
-            "operator_id": DEMO_OPERATOR_ID,
             "table_label": "Mesa do fundo",
         },
-        headers=phone,
+        headers=waiter,
     )
 
     assert response.status_code == 404
@@ -182,40 +200,40 @@ def test_an_unknown_table_is_a_404_not_a_new_table(client, phone) -> None:  # no
 # --------------------------------------------------------------------------- #
 
 
-def test_the_waiter_asks_for_the_bill_and_the_map_shows_it(client, phone) -> None:  # noqa: ANN001
-    order = _open(client, phone, "Mesa 5").json()
+def test_the_waiter_asks_for_the_bill_and_the_map_shows_it(client, waiter) -> None:  # noqa: ANN001
+    order = _open(client, waiter, "Mesa 5").json()
 
-    response = client.post(f"/orders/{order['order_id']}/bill", headers=phone)
+    response = client.post(f"/orders/{order['order_id']}/bill", headers=waiter)
 
     assert response.status_code == 200
     assert response.json()["status"] == "open", "pedir a conta não fecha a venda"
-    assert _table(client, phone, "Mesa 5")["status"] == "billing"
+    assert _table(client, waiter, "Mesa 5")["status"] == "billing"
 
 
-def test_the_bill_request_can_be_undone(client, phone) -> None:  # noqa: ANN001
-    order = _open(client, phone, "Mesa 5").json()
-    client.post(f"/orders/{order['order_id']}/bill", headers=phone)
+def test_the_bill_request_can_be_undone(client, waiter) -> None:  # noqa: ANN001
+    order = _open(client, waiter, "Mesa 5").json()
+    client.post(f"/orders/{order['order_id']}/bill", headers=waiter)
 
-    client.delete(f"/orders/{order['order_id']}/bill", headers=phone)
+    client.delete(f"/orders/{order['order_id']}/bill", headers=waiter)
 
-    assert _table(client, phone, "Mesa 5")["status"] == "busy"
+    assert _table(client, waiter, "Mesa 5")["status"] == "busy"
 
 
-def test_the_order_detail_lists_the_items(client, phone) -> None:  # noqa: ANN001
+def test_the_order_detail_lists_the_items(client, waiter) -> None:  # noqa: ANN001
     """A tela da comanda precisa dos itens, não só do total."""
-    order = _open(client, phone, "Mesa 6").json()
+    order = _open(client, waiter, "Mesa 6").json()
     product = next(
         p
-        for p in client.get("/menu", headers=phone).json()["products"]
+        for p in client.get("/menu", headers=waiter).json()["products"]
         if p["sellable_by_waiter"]
     )
     client.post(
         f"/orders/{order['order_id']}/items",
         json={"client_uuid": new_id(), "product_id": product["id"], "quantity": "2"},
-        headers=phone,
+        headers=waiter,
     )
 
-    detail = client.get(f"/orders/{order['order_id']}", headers=phone).json()
+    detail = client.get(f"/orders/{order['order_id']}", headers=waiter).json()
 
     assert len(detail["items"]) == 1
     assert detail["items"][0]["product_name"] == product["name"]
@@ -242,17 +260,54 @@ def test_the_phone_alone_cannot_configure_the_floor_plan(client, phone) -> None:
         assert response.status_code == 403, f"{path} respondeu {response.status_code}"
 
 
-def test_the_phone_alone_cannot_cancel_an_order(client, phone) -> None:  # noqa: ANN001
-    """A comida sai, a comanda some. É o vetor de furto do salão."""
-    order = _open(client, phone, "Mesa 7").json()
+def test_the_waiter_alone_cannot_cancel_an_order(client, waiter) -> None:  # noqa: ANN001
+    """A comida sai, a comanda some. É o vetor de furto do salão.
+
+    Estar identificado não basta: cancelar comanda com item lançado continua
+    exigindo gerente. Autenticação responde "quem é você"; autorização responde
+    "você pode liberar isto", e juntar as duas seria deixar cada garçom liberar
+    o próprio cancelamento.
+    """
+    order = _open(client, waiter, "Mesa 7").json()
 
     response = client.post(
         f"/orders/{order['order_id']}/cancel",
         json={"reason": "sumiu"},
+        headers=waiter,
+    )
+
+    assert response.status_code == 403
+    assert response.headers.get("X-Auth-Scope") == "manager"
+
+
+def test_the_phone_alone_cannot_open_an_order(client, phone) -> None:  # noqa: ANN001
+    """O aparelho diz de ONDE veio; a sessão diz QUEM lançou.
+
+    Enquanto o `operator_id` vinha no corpo da requisição, o app mandava o id
+    do próprio celular — e era por isso que resultado por funcionário não
+    existia. Agora a comanda não abre sem alguém identificado por trás dela.
+    """
+    table = _table(client, phone, "Mesa 8")
+
+    response = client.post(
+        "/orders",
+        json={"client_uuid": new_id(), "table_id": table["id"]},
         headers=phone,
     )
 
     assert response.status_code == 403
+    assert response.headers.get("X-Auth-Scope") == "staff"
+
+
+def test_the_map_is_readable_before_anyone_logs_in(client, phone) -> None:  # noqa: ANN001
+    """Ler o salão não exige sessão, e isso é deliberado.
+
+    Exigir login para **ver** o mapa poria uma tela de senha em cima de uma
+    tela vazia, sem proteger nada: quem já tem o aparelho pareado chegaria à
+    mesma informação abrindo o app do lado. O que a sessão protege é escrever.
+    """
+    assert client.get("/tables", headers=phone).status_code == 200
+    assert client.get("/menu", headers=phone).status_code == 200
 
 
 def test_the_cashier_pin_does_not_unlock_the_manager_options(client, phone) -> None:  # noqa: ANN001
@@ -380,7 +435,7 @@ def test_a_grant_does_not_travel_to_another_phone(client, manager) -> None:  # n
     auth = EdgeAuth(client.pdv_database, TENANT, STORE)
     other = client.post(
         "/pair",
-        json={"code": auth.create_pairing_code(), "device_name": "Celular da Ana"},
+        json={"code": auth.create_pairing_code()[0], "device_name": "Celular da Ana"},
     ).json()
 
     response = client.post(
