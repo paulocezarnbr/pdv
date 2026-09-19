@@ -412,3 +412,48 @@ def test_the_style_is_fusion(qtbot) -> None:  # noqa: ANN001
         assert app.style().name() == "fusion"
     finally:
         app.setStyleSheet(installed)
+
+
+# --------------------------------------------------------------------------- #
+# Comandos do painel
+# --------------------------------------------------------------------------- #
+
+
+def test_the_command_badge_stays_out_of_the_way_when_idle(window) -> None:  # noqa: ANN001
+    """Selo permanente dizendo "0 comandos" gastaria atenção todo dia."""
+    widget, _checkout, _database, _config = window
+
+    widget._refresh_sync_badge()
+
+    assert widget._command_label.isVisibleTo(widget) is False
+
+
+def test_the_counter_is_told_a_remote_command_is_waiting(window) -> None:  # noqa: ANN001
+    """Sem o aviso, o total mudaria sozinho no meio do atendimento.
+
+    O operador ficaria olhando para um número que não bate com o que ele
+    digitou, sem nada na tela explicando por quê.
+    """
+    from pdv.remote.inbox import InboxRepository
+    from pdv.remote.protocol import CommandKind, RemoteCommand
+
+    widget, _checkout, database, _config = window
+    InboxRepository(database).accept(
+        RemoteCommand(
+            command_uuid=new_id(),
+            tenant_id=TENANT,
+            store_id=STORE,
+            device_id=DEVICE,
+            kind=CommandKind.APPLY_DISCOUNT,
+            payload={"order_id": "x", "percent": "10", "reason": "y"},
+            issued_by_user_id="gerente",
+            issued_by_name="Bruno Gerente",
+            issued_at="2026-09-19T12:00:00+00:00",
+            signature="nao-importa-aqui",
+        )
+    )
+
+    widget._refresh_sync_badge()
+
+    assert widget._command_label.isVisibleTo(widget) is True
+    assert "1 comando" in widget._command_label.text()

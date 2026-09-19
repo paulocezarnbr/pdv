@@ -48,6 +48,8 @@ class SyncWorker(QObject):
     cycle_finished = Signal(SyncReport)
     pending_changed = Signal(int)
     connection_changed = Signal(bool)
+    #: Quantos comandos do painel ainda não foram aplicados neste terminal.
+    commands_changed = Signal(int)
 
     def __init__(self, engine: SyncEngine) -> None:
         super().__init__()
@@ -99,6 +101,8 @@ class SyncWorker(QObject):
         if report.error is not None:
             return ERROR_INTERVAL_SECONDS
 
+        self._run_commands()
+
         if self._cycle % PULL_EVERY_N_CYCLES == 0:
             try:
                 self._engine.pull_once()
@@ -106,6 +110,35 @@ class SyncWorker(QObject):
                 logger.exception("Falha no pull de cadastros")
 
         return BUSY_INTERVAL_SECONDS if pending > 0 else IDLE_INTERVAL_SECONDS
+
+    def _run_commands(self) -> None:
+        """Busca e aplica comandos do painel, **depois** de o push ter ido.
+
+        A ordem entre os dois não é arbitrária. O comando quase sempre mira uma
+        venda que já está aberta aqui, e é o push que conta ao painel o que
+        existe neste terminal. Buscar comando antes de empurrar o estado faria o
+        gerente decidir sobre um salão desatualizado.
+
+        Roda em todo ciclo, e não a cada N como o pull de cadastro: preço novo
+        pode esperar quinze minutos; o cliente parado no balcão esperando o
+        desconto que o gerente acabou de conceder, não.
+        """
+        if not self._engine.speaks_commands:
+            return
+
+        try:
+            report = self._engine.command_cycle()
+        except Exception:  # noqa: BLE001 - nem comando derruba o worker
+            logger.exception("Erro inesperado no ciclo de comandos")
+            return
+
+        if report.applied or report.refused:
+            logger.info(
+                "Comandos do painel: %d aplicado(s), %d recusado(s)",
+                report.applied,
+                report.refused,
+            )
+        self.commands_changed.emit(self._engine.pending_commands())
 
     def _set_online(self, online: bool) -> None:
         if online != self._online:
@@ -119,6 +152,7 @@ class SyncService(QObject):
     cycle_finished = Signal(SyncReport)
     pending_changed = Signal(int)
     connection_changed = Signal(bool)
+    commands_changed = Signal(int)
 
     def __init__(self, engine: SyncEngine) -> None:
         super().__init__()
@@ -131,6 +165,7 @@ class SyncService(QObject):
         self._worker.cycle_finished.connect(self.cycle_finished)
         self._worker.pending_changed.connect(self.pending_changed)
         self._worker.connection_changed.connect(self.connection_changed)
+        self._worker.commands_changed.connect(self.commands_changed)
 
     def start(self) -> None:
         self._thread.start()

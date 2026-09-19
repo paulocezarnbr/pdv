@@ -252,14 +252,32 @@ desconto, cancelar um item — sem precisar estar na loja.
       conferida no terminal contra o `device_secret`, com janela de validade de
       12 h e tolerância de 5 min de drift — o PDV não obedece a quem não prova
       quem é. **Falta** o 2FA no lado da nuvem, que é onde ele mora.
-- [~] **Rate limit e kill switch:** a chave de desligamento local existe
-      (`remote.commands_enabled`, ausente = ligado) e o terminal para de
-      obedecer sem depender de a nuvem cooperar — que é justamente o que não se
-      pode supor quando o painel é o que foi comprometido. **Falta** o teto de
-      comandos por minuto, que também pertence à nuvem.
-- [ ] **Transporte:** `fetch_commands` / `report_commands` no `sync/engine.py` e
-      o roteador correspondente na API. O serviço que aplica está pronto e
-      testado; o que falta é o cano que entrega.
+- [x] **Rate limit e kill switch.** Duas travas, em lados opostos e de
+      propósito: a chave local (`remote.commands_enabled`, ausente = ligado)
+      não depende de a nuvem cooperar — que é justamente o que não se pode
+      supor quando o painel é o que foi comprometido; e o teto por operador na
+      nuvem (60 em 10 min) limita o estrago de uma credencial vazada ao que dá
+      para reverter numa manhã, em vez de uma noite inteira de descontos em
+      todas as lojas.
+- [x] **Transporte.** `fetch_commands` / `report_commands` no `sync/`, o
+      roteador `commands/` na API e a fiação no `main.py`. Três decisões que
+      ficam registradas:
+
+      * **A entrega não consome.** A nuvem reentrega até o terminal relatar.
+        Consumir na entrega perderia o comando de vez se o terminal morresse
+        entre receber e gravar — e perder em silêncio é pior que entregar duas
+        vezes, porque a segunda colide no `command_uuid` e vira no-op.
+      * **Aplicar vem antes de relatar, sempre.** Relatar primeiro deixaria o
+        painel dizendo "aplicado" para um desconto que o terminal ainda pode
+        recusar, e o gerente iria embora confiando no que leu.
+      * **Só sai da fila de relato o que a nuvem nomear.** Um "ok" genérico
+        esconderia gravação parcial, e o painel mostraria `pendente` num
+        comando já aplicado — que é o estado em que alguém reemite o desconto
+        na mão.
+
+      O canal é **opcional nos dois sentidos**: nuvem antiga que não fala de
+      comando continua servindo terminal novo, e terminal montado sem o serviço
+      só envia. Em nenhum dos casos a venda deixa de subir.
 
 **Aceite:** ✅ com o terminal **offline**, o gerente concede um desconto pelo
 painel; o comando fica `pendente`. Ao reconectar, é aplicado **uma vez só**
@@ -271,6 +289,25 @@ Reproduzido verbatim em `tests/test_remote_commands.py` (22 testes), incluindo
 as recusas: assinatura forjada, payload alterado depois de assinado, comando
 endereçado a outro terminal, comando vencido, pedido já fechado e caixa
 tentando autorizar o que só gerente autoriza.
+
+E percorrido **ponta a ponta sobre HTTP real**, contra um dublê da nuvem numa
+porta de verdade: offline → `pendente`; reconecta → aplica uma vez (R$ 28,00 −
+25% = R$ 21,00); reentrega o mesmo comando → `accepted=0, applied=0` e o total
+não se move; o cupom sai com `Desconto -7,00`; a auditoria grava
+`discount_applied` nomeando Bruno Gerente **e** o `device_id`; e os 80% acima do
+teto voltam para a nuvem como `refused` **com o motivo**, porque "recusado" sem
+motivo faz o gerente tentar de novo igual.
+
+Cobertura por camada: 22 testes de aplicação, 14 de transporte e ciclo
+(`test_remote_transport.py`), 9 de formato do fio contra servidor real
+(`test_remote_http.py`) e 5 de fiação do `main.py` (`test_bootstrap.py`).
+
+> **Nota de contrato.** A nuvem assina e o terminal confere, com o mesmo
+> HMAC implementado nos dois repositórios. Duas versões do mesmo cálculo
+> divergem em algum detalhe de serialização, e a divergência aparece como "o
+> painel parou de funcionar" numa sexta à noite.
+> `test_both_sides_compute_the_same_signature` compara as duas byte a byte —
+> quem mexer numa quebra o CI, não a loja.
 
 ### Fase 3.6 — Salão de verdade: mesas, conta e gerente no celular (Sprint 11)
 

@@ -22,15 +22,21 @@ from dataclasses import replace
 
 from pdv.config import AppConfig
 from pdv.data.database import Database
+from pdv.remote.commands import RemoteCommandService
+from pdv.remote.inbox import InboxRepository
 from pdv.sync.outbox import CursorStore, OutboxReader
 from pdv.sync.protocol import (
     AuthError,
+    CommandCycleReport,
+    CommandFetch,
+    CommandReport,
     ItemStatus,
     PullRequest,
     PushBatch,
     SyncReport,
     Transport,
     TransportError,
+    speaks_commands,
 )
 
 logger = logging.getLogger(__name__)
@@ -54,11 +60,23 @@ class SyncEngine:
         transport: Transport,
         config: AppConfig,
         batch_size: int = 200,
+        *,
+        commands: RemoteCommandService | None = None,
     ) -> None:
+        """
+        Args:
+            commands: o serviço que aplica comando do painel. Opcional em dois
+                sentidos, e os dois importam: sem ele o terminal só **envia**
+                dados, como era até a Fase 3.5; e um transporte que não fala de
+                comando (nuvem antiga) simplesmente não dispara o ciclo. Em
+                nenhum dos casos a venda deixa de subir — que é a única coisa
+                aqui que não pode parar.
+        """
         self._db = database
         self._transport = transport
         self._config = config
         self._batch_size = batch_size
+        self._commands = commands
         self._reader = OutboxReader(database)
         self._cursors = CursorStore(database)
 
@@ -215,6 +233,92 @@ class SyncEngine:
 
         return applied
 
+    # -- comandos do painel --------------------------------------------------- #
+
+    @property
+    def speaks_commands(self) -> bool:
+        """Há canal de comando **e** alguém para aplicá-los?"""
+        return self._commands is not None and speaks_commands(self._transport)
+
+    def command_cycle(self, limit: int = 50) -> CommandCycleReport:
+        """Busca, aplica e relata os comandos do painel.
+
+        A ordem é fixa e cada passo falha para o lado seguro:
+
+        1. **Buscar.** Falha de rede aborta o ciclo sem efeito nenhum.
+        2. **Gravar na inbox.** `command_uuid` repetido é no-op — a reentrega é
+           o caso normal de uma rede instável, não erro.
+        3. **Aplicar.** Cada comando na sua transação, com o status saindo de
+           `pending` junto do efeito (ver `remote/inbox.py`).
+        4. **Relatar.** Só depois. Se o relato falhar, o resultado continua na
+           fila de relato e o terminal reavisa — mas **nunca** reaplica, porque
+           o status já saiu de `pending`.
+
+        Aplicar antes de relatar é o ponto que não se inverte. Relatar primeiro
+        deixaria o painel dizendo "aplicado" para um desconto que o terminal
+        ainda pode recusar — e o gerente iria embora confiando no que leu.
+        """
+        if not self.speaks_commands:
+            return CommandCycleReport()
+
+        try:
+            delivery = self._transport.fetch_commands(
+                CommandFetch(
+                    tenant_id=self._config.tenant_id,
+                    store_id=self._config.store_id,
+                    device_id=self._config.device_id,
+                    limit=limit,
+                )
+            )
+        except (TransportError, AuthError) as exc:
+            logger.warning("Busca de comandos falhou: %s", exc)
+            return CommandCycleReport(error=str(exc))
+
+        inbox = InboxRepository(self._db)
+        accepted = sum(1 for command in delivery.commands if inbox.accept(command))
+
+        report = self._commands.apply_pending(limit)
+
+        reported, error = self._report_results(limit)
+
+        return CommandCycleReport(
+            fetched=len(delivery.commands),
+            accepted=accepted,
+            applied=report.applied,
+            refused=report.refused,
+            reported=reported,
+            error=error,
+        )
+
+    def _report_results(self, limit: int) -> tuple[int, str | None]:
+        """Avisa a nuvem do que foi decidido. Falhar aqui não desfaz nada."""
+        inbox = InboxRepository(self._db)
+        results = inbox.unreported(limit)
+        if not results:
+            return 0, None
+
+        try:
+            accepted = self._transport.report_commands(
+                CommandReport(
+                    tenant_id=self._config.tenant_id,
+                    store_id=self._config.store_id,
+                    device_id=self._config.device_id,
+                    results=tuple(results),
+                )
+            )
+        except (TransportError, AuthError) as exc:
+            logger.warning("Relato de comandos falhou: %s", exc)
+            return 0, str(exc)
+
+        # Só o que a nuvem nomeou. Marcar tudo como relatado porque a chamada
+        # não deu erro esconderia uma resposta parcial, e o painel ficaria
+        # mostrando `pendente` num comando já aplicado — que é o estado em que
+        # alguém reemite o desconto na mão.
+        known = {result.command_uuid for result in results}
+        confirmed = [uuid for uuid in accepted if uuid in known]
+        inbox.mark_reported(confirmed)
+        return len(confirmed), None
+
     # -- estado --------------------------------------------------------------- #
 
     def pending_count(self) -> int:
@@ -222,3 +326,6 @@ class SyncEngine:
 
     def quarantined_count(self) -> int:
         return self._reader.dead_letter_count()
+
+    def pending_commands(self) -> int:
+        return InboxRepository(self._db).pending_count()

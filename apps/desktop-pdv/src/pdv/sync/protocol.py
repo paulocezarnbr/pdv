@@ -144,6 +144,103 @@ class Transport(Protocol):
         ...
 
 
+# --------------------------------------------------------------------------- #
+# Comandos do painel (Fase 3.5.b)
+# --------------------------------------------------------------------------- #
+#
+# Protocolo **separado** do `Transport`, e não métodos novos nele, por dois
+# motivos práticos:
+#
+# * uma nuvem antiga que ainda não fala de comando continua servindo o terminal
+#   novo — o ciclo de comando simplesmente não roda, e a venda continua subindo,
+#   que é o que não pode parar;
+# * o `Transport` falso dos testes de sincronização não precisa aprender a
+#   responder comando para continuar testando push e pull.
+
+
+@dataclass(frozen=True, slots=True)
+class CommandFetch:
+    """Pedido de comandos endereçados a **este** terminal."""
+
+    tenant_id: str
+    store_id: str
+    device_id: str
+    limit: int = 50
+
+
+@dataclass(frozen=True, slots=True)
+class CommandDelivery:
+    """O que a nuvem entregou.
+
+    A entrega **não** consome o comando na nuvem: ele continua sendo entregue
+    até o terminal relatar o que fez com ele. Consumir na entrega perderia o
+    comando de vez se o terminal morresse entre receber e gravar na inbox — e
+    perder um comando em silêncio é pior que entregá-lo duas vezes, porque a
+    segunda entrega colide no `command_uuid` e vira no-op.
+    """
+
+    commands: tuple[Any, ...] = ()
+    """Cada item é um `pdv.remote.protocol.RemoteCommand`, **não verificado**.
+
+    O transporte carrega bytes; quem confere assinatura, validade e teto é o
+    `RemoteCommandService`. Verificar aqui espalharia a decisão de segurança
+    por duas camadas, e a camada que fala com a rede é a errada para tê-la.
+    """
+
+
+@dataclass(frozen=True, slots=True)
+class CommandReport:
+    """O que o terminal fez com os comandos que recebeu."""
+
+    tenant_id: str
+    store_id: str
+    device_id: str
+    results: tuple[Any, ...] = ()
+    """Cada item é um `pdv.remote.inbox.CommandResult`."""
+
+
+class CommandTransport(Protocol):
+    """Canal de comandos. Opcional: nem toda nuvem o implementa."""
+
+    def fetch_commands(self, request: CommandFetch) -> CommandDelivery:
+        """Busca os comandos pendentes para este terminal."""
+        ...
+
+    def report_commands(self, report: CommandReport) -> tuple[str, ...]:
+        """Relata os resultados. Devolve os `command_uuid` que a nuvem aceitou.
+
+        Só o que a nuvem confirmar sai da fila de relato. Assumir que ela
+        recebeu faria o painel ficar mostrando `pendente` para sempre num
+        comando que o terminal já aplicou — e é exatamente nesse estado que
+        alguém reemite o desconto na mão.
+        """
+        ...
+
+
+def speaks_commands(transport: object) -> bool:
+    """O transporte sabe falar de comando?
+
+    Checagem estrutural, e não `isinstance`: `Protocol` sem `runtime_checkable`
+    não suporta `isinstance`, e marcá-lo assim só verificaria a existência dos
+    nomes — exatamente o que estas duas linhas fazem, sem a cerimônia.
+    """
+    return callable(getattr(transport, "fetch_commands", None)) and callable(
+        getattr(transport, "report_commands", None)
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class CommandCycleReport:
+    """Resultado de um ciclo de comandos."""
+
+    fetched: int = 0
+    accepted: int = 0
+    applied: int = 0
+    refused: int = 0
+    reported: int = 0
+    error: str | None = None
+
+
 @dataclass(frozen=True, slots=True)
 class SyncReport:
     """Resultado de um ciclo de sincronização."""

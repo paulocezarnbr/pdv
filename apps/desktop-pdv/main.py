@@ -9,12 +9,20 @@ Ordem de inicialização (importa):
 4. Servidor local — o PDV vira o servidor do salão para o app do garçom e
    o KDS. Sobe ANTES da UI e, se falhar, apenas registra: o salão fica sem
    servidor, mas o balcão continua vendendo.
-5. UI — por último, já com tudo pronto.
+5. Sincronização — sobe **depois** da janela, em thread própria. Só é montada
+   se o terminal estiver ativado; sem token, a fila continua enchendo em disco
+   e sobe inteira no primeiro ciclo depois da ativação.
+6. UI — por último, já com tudo pronto.
+
+Tudo entre os passos 3 e 5 é opcional por construção. Nenhum deles pode
+impedir a abertura do caixa: periférico, rede e nuvem falham em loja o tempo
+todo, e a venda é a única coisa que não pode parar.
 
 Uso::
 
     python main.py                                   # balança simulada
     PDV_EDGE=0 python main.py                        # sem servidor do salão
+    PDV_SYNC=0 python main.py                        # sem sincronização
     PDV_SCALE_PROTOCOL=toledo_prix3 PDV_SCALE_PORT=COM3 \\
     PDV_PRINTER_BACKEND=win32raw python main.py      # hardware real
 """
@@ -37,8 +45,14 @@ from pdv.edge.worker import EdgeServer
 from pdv.hardware.printer.backends import PrintService, build_printer
 from pdv.hardware.scale.serial_scale import build_scale
 from pdv.hardware.scale.worker import ScaleService
+from pdv.provisioning.activation import load_sync_token
+from pdv.provisioning.secrets import SecretVault
+from pdv.remote.commands import RemoteCommandService
 from pdv.services.audit import AuditService
 from pdv.services.checkout import CheckoutService
+from pdv.sync.engine import SyncEngine
+from pdv.sync.transport import HttpTransport
+from pdv.sync.worker import SyncService
 from pdv.ui.counter_window import CounterWindow
 from pdv.ui.theme import apply_theme
 
@@ -59,6 +73,44 @@ def verify_audit_integrity(database: Database, config: AppConfig) -> str | None:
     except AuditChainError as exc:
         return str(exc)
     return None
+
+
+def build_sync(
+    database: Database, config: AppConfig, checkout: CheckoutService
+) -> SyncService | None:
+    """Monta o serviço de sincronização, se o terminal estiver ativado.
+
+    Sem token não há o que montar: um terminal recém-instalado e ainda não
+    ativado não tem para onde enviar. A fila continua enchendo em disco e sobe
+    inteira no primeiro ciclo depois da ativação — é para isso que o outbox é
+    durável.
+
+    Devolve `None` em qualquer falha de montagem. O motivo é o de sempre nesta
+    base: **o balcão continua vendendo**. Sincronização é o que protege a venda
+    de ser adulterada depois, não o que permite fazê-la.
+    """
+    if os.getenv("PDV_SYNC", "1") == "0":
+        return None
+
+    try:
+        token = load_sync_token(SecretVault(config.database_path.parent / "secrets"))
+    except Exception:  # noqa: BLE001
+        logger.exception("Não foi possível ler o token de sincronização")
+        return None
+
+    if not token:
+        logger.info("Terminal ainda não ativado — a fila sobe após a ativação.")
+        return None
+
+    engine = SyncEngine(
+        database,
+        HttpTransport(config.cloud_base_url, token),
+        config,
+        # É esta linha que liga o canal de comando do painel. Sem ela o
+        # terminal só envia, como era até a Fase 3.5 — e continua funcionando.
+        commands=RemoteCommandService(database, config, checkout=checkout),
+    )
+    return SyncService(engine)
 
 
 def main() -> int:
@@ -105,6 +157,8 @@ def main() -> int:
             logger.error("Servidor do salão indisponível; o balcão segue operando")
             edge = None
 
+    sync = build_sync(database, config, checkout)
+
     window = CounterWindow(
         checkout,
         scale,
@@ -115,10 +169,17 @@ def main() -> int:
     )
     window.show()
     scale.start()
+    if sync is not None:
+        sync.start()
 
     try:
         return app.exec()
     finally:
+        # Ordem do encerramento: primeiro o que fala com a rede, depois o
+        # banco. Fechar o banco com o worker de sync ainda vivo faria a última
+        # thread escrever num arquivo fechado.
+        if sync is not None:
+            sync.shutdown()
         if edge is not None:
             edge.stop()
         database.close()

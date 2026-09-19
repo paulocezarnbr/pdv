@@ -60,6 +60,7 @@ from pdv.domain.models import (
 from pdv.hardware.printer.backends import PrintService
 from pdv.hardware.printer.escpos import format_cents, format_grams
 from pdv.hardware.scale.worker import ScaleService
+from pdv.remote.inbox import InboxRepository
 from pdv.services.authorization import AuthorizationService
 from pdv.services.checkout import CheckoutService
 from pdv.ui import theme
@@ -138,11 +139,23 @@ class CounterWindow(QMainWindow):
         self._salon_label = QLabel(
             "Salão: ligado" if self._edge_port else "Salão: desligado"
         )
-        for label in (self._connection_label, self._salon_label, self._sync_label):
+        # Só aparece quando há o que aplicar. Um selo permanente dizendo "0
+        # comandos" gastaria atenção do operador todo dia por um evento que
+        # acontece uma vez por semana.
+        self._command_label = QLabel("")
+        self._command_label.setStyleSheet(f"color: {theme.WARN};")
+        self._command_label.setVisible(False)
+        for label in (
+            self._connection_label,
+            self._salon_label,
+            self._sync_label,
+            self._command_label,
+        ):
             label.setFont(theme.font(theme.SIZE_MICRO))
         self.statusBar().addPermanentWidget(self._connection_label)
         self.statusBar().addPermanentWidget(self._salon_label)
         self.statusBar().addPermanentWidget(self._sync_label)
+        self.statusBar().addPermanentWidget(self._command_label)
 
     def _build_left_panel(self) -> QWidget:
         panel = QFrame()
@@ -803,6 +816,28 @@ class CounterWindow(QMainWindow):
         self._sync_label.setText(
             "Sincronização: em dia" if pending == 0 else f"Sincronização: {pending} pendente(s)"
         )
+        self._refresh_command_badge()
+
+    def _refresh_command_badge(self) -> None:
+        """Avisa o caixa que há ordem do painel esperando.
+
+        Sem isto, o desconto que o gerente concedeu de longe mudaria o total na
+        tela **sozinho**, no meio do atendimento, sem nada explicando por quê —
+        e o operador ficaria olhando para um número que não bate com o que ele
+        digitou. O aviso não pede permissão; só dá nome ao que vai acontecer.
+        """
+        try:
+            waiting = InboxRepository(self._database).pending_count()
+        except Exception:  # noqa: BLE001 - um selo não derruba o caixa
+            return
+
+        self._command_label.setVisible(waiting > 0)
+        if waiting:
+            self._command_label.setText(
+                f"Painel: {waiting} comando(s) a aplicar"
+                if waiting > 1
+                else "Painel: 1 comando a aplicar"
+            )
 
     # -- encerramento --------------------------------------------------------- #
 

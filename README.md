@@ -29,8 +29,7 @@ commit** da mudança de código.
 
 ## Estado atual
 
-✅ **Fases 1, 2, 2.5, 3 e 3.6** implementadas, **3.5.b** no terminal — 271
-testes passando.
+✅ **Fases 1, 2, 2.5, 3, 3.5.b e 3.6** implementadas — 301 testes passando.
 
 O que já funciona ponta a ponta, sem internet:
 
@@ -50,14 +49,15 @@ O que já funciona ponta a ponta, sem internet:
    garçom e do KDS, com idempotência ponta a ponta por `client_uuid`.
 9. **App do garçom em web**, servido pelo próprio PDV — mapa de mesas, comanda,
    pedido de conta e opções de gerente. Ver a seção abaixo.
-10. **Inbox de comandos remotos**: desconto e cancelamento vindos do painel são
-    aplicados **uma vez só**, dentro dos tetos do perfil de quem emitiu.
+10. **Comandos remotos do painel**, ponta a ponta: desconto e cancelamento
+    vindos da nuvem são aplicados **uma vez só**, dentro dos tetos do perfil de
+    quem emitiu, e o resultado volta para o painel com o motivo da recusa.
 11. Instalador único com provisionamento automático de periféricos, ativação do
     terminal e atualização in-place.
 
-🔜 Próximo: o transporte dos comandos remotos (`fetch`/`report` no motor de
-sync) e o painel web da Fase 3.5.a. O app nativo do garçom segue no roteiro —
-o web **não** o substitui, resolve o que ele não resolve.
+🔜 Próximo: o painel web da Fase 3.5.a (telemetria ao vivo) e a Fase 4
+(financeiro e anti-furto). O app nativo do garçom segue no roteiro — o web
+**não** o substitui, resolve o que ele não resolve.
 
 ---
 

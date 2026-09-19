@@ -14,10 +14,15 @@ Duas decisões que definem o comportamento sob falha:
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 
+from pdv.remote.protocol import CommandKind, RemoteCommand
 from pdv.sync.protocol import (
     AuthError,
+    CommandDelivery,
+    CommandFetch,
+    CommandReport,
     ItemAck,
     ItemStatus,
     PullRequest,
@@ -29,6 +34,8 @@ from pdv.sync.protocol import (
 
 if TYPE_CHECKING:  # pragma: no cover
     import httpx
+
+logger = logging.getLogger(__name__)
 
 
 class HttpTransport:
@@ -158,6 +165,110 @@ class HttpTransport:
             last_server_seq=int(body.get("last_server_seq", request.since_server_seq)),
             has_more=bool(body.get("has_more", False)),
         )
+
+
+    # -- comandos do painel --------------------------------------------------- #
+
+    def fetch_commands(self, request: CommandFetch) -> CommandDelivery:
+        """Busca comandos endereçados a este terminal.
+
+        Um comando malformado na resposta é **descartado**, não fatal: uma
+        entrada estranha no meio do lote não pode impedir que os outros
+        comandos legítimos cheguem. O que ela perde é a chance de ser aplicada,
+        e isso é o resultado certo — comando que não se consegue nem ler não se
+        obedece.
+        """
+        client = self._get_client()
+
+        try:
+            response = client.get(
+                "/commands/pending",
+                params={
+                    "tenant_id": request.tenant_id,
+                    "store_id": request.store_id,
+                    "device_id": request.device_id,
+                    "limit": request.limit,
+                },
+            )
+        except Exception as exc:
+            raise TransportError(f"Falha de rede: {exc}") from exc
+
+        body = self._body(response)
+        commands = []
+        for entry in body.get("commands", []):
+            parsed = _parse_command(entry)
+            if parsed is None:
+                logger.warning("Comando ilegível descartado: %r", entry)
+                continue
+            commands.append(parsed)
+
+        return CommandDelivery(commands=tuple(commands))
+
+    def report_commands(self, report: CommandReport) -> tuple[str, ...]:
+        client = self._get_client()
+
+        try:
+            response = client.post(
+                "/commands/results",
+                json={
+                    "tenant_id": report.tenant_id,
+                    "store_id": report.store_id,
+                    "device_id": report.device_id,
+                    "results": [
+                        {
+                            "command_uuid": result.command_uuid,
+                            "status": result.status.value,
+                            "message": result.message,
+                            "settled_at": result.settled_at,
+                        }
+                        for result in report.results
+                    ],
+                },
+            )
+        except Exception as exc:
+            raise TransportError(f"Falha de rede: {exc}") from exc
+
+        body = self._body(response)
+        # Só o que a nuvem nomear sai da fila de relato. Uma resposta vazia
+        # significa "não confirmei nada", e o terminal relata de novo.
+        return tuple(str(uuid) for uuid in body.get("accepted", []))
+
+    # -- interno -------------------------------------------------------------- #
+
+    def _body(self, response: Any) -> dict[str, Any]:
+        """Trata os códigos de erro do mesmo jeito em toda rota."""
+        if response.status_code in (401, 403):
+            raise AuthError(f"Terminal não autorizado (HTTP {response.status_code})")
+        if response.status_code >= 400:
+            raise TransportError(f"HTTP {response.status_code}: {response.text[:200]}")
+        try:
+            return dict(response.json())
+        except Exception as exc:
+            raise TransportError(f"Resposta ilegível do servidor: {exc}") from exc
+
+
+def _parse_command(entry: dict[str, Any]) -> RemoteCommand | None:
+    """Monta o comando sem conferir nada além da forma.
+
+    Um `kind` que este terminal não conhece vira `None` em vez de exceção: a
+    nuvem pode ser mais nova que o PDV, e o comportamento seguro diante de uma
+    ordem que não se entende é não obedecer — nunca adivinhar.
+    """
+    try:
+        return RemoteCommand(
+            command_uuid=str(entry["command_uuid"]),
+            tenant_id=str(entry["tenant_id"]),
+            store_id=str(entry["store_id"]),
+            device_id=str(entry["device_id"]),
+            kind=CommandKind(str(entry["kind"])),
+            payload=dict(entry.get("payload") or {}),
+            issued_by_user_id=str(entry["issued_by_user_id"]),
+            issued_by_name=str(entry.get("issued_by_name") or ""),
+            issued_at=str(entry["issued_at"]),
+            signature=str(entry["signature"]),
+        )
+    except (KeyError, TypeError, ValueError):
+        return None
 
 
 def _parse_status(value: str | None) -> ItemStatus:
