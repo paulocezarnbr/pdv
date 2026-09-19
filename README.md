@@ -29,21 +29,29 @@ commit** da mudança de código.
 
 ## Estado atual
 
-✅ **Fase 1 — PDV Balcão Offline** implementada e testada (33 testes passando).
+✅ **Fases 1, 2, 2.5 e 3** implementadas — 192 testes passando.
 
 O que já funciona ponta a ponta, sem internet:
 
 1. Leitura da balança via porta serial (Toledo Prix 3 · Filizola · Urano), com
    detecção de peso estável em thread separada.
-2. Cálculo de preço por peso com tara descontada e `ROUND_HALF_UP` em `Decimal`.
+2. Cálculo de preço por peso com tara descontada e `ROUND_HALF_UP` em `Decimal`,
+   além de venda por unidade (café, fatia, bebida).
 3. **Baixa fracionada** de insumos pela ficha técnica, em miligramas inteiros,
    com fator de rendimento e percentual de perda.
-4. Ledger de auditoria **imutável encadeado por SHA-256** (anti-furto).
+4. Ledger de auditoria **imutável encadeado por HMAC-SHA256** (anti-furto), com
+   cancelamento e desconto exigindo credencial de gerente validada offline.
 5. Impressão **ESC/POS bruta** para Epson TM-T20X (80 mm) com guilhotina e
    acionamento de gaveta.
-6. Tudo isso numa **única transação SQLite** + enfileiramento no outbox de sync.
+6. Recebimento com dinheiro, débito, crédito, PIX ou pagamento dividido.
+7. Tudo isso numa **única transação SQLite** + enfileiramento no outbox de sync.
+8. **Servidor local do salão** (`_pdvedge._tcp`): o PDV é o servidor do app do
+   garçom e do KDS, com idempotência ponta a ponta por `client_uuid`.
+9. Instalador único com provisionamento automático de periféricos, ativação do
+   terminal e atualização in-place.
 
-🔜 Próximo: Fase 2 — worker de sincronização com o PostgreSQL da nuvem.
+🔜 Próximo: o aplicativo do garçom em si (o contrato do servidor está pronto e
+testado) e a Fase 3.5 — painel administrativo remoto.
 
 ---
 
@@ -100,6 +108,41 @@ local de `users.pin_hash`, e cada tentativa recusada vira evento de auditoria.
 A base de demonstração traz `bruno` / `1234` como gerente (teto de 30%) e
 `ana` / `1111` como caixa — que tem PIN válido e, de propósito, **não** pode
 autorizar: liberar o próprio cancelamento é o furto inteiro em um passo.
+
+---
+
+## Sistema visual
+
+Tudo que a interface desenha sai de [`ui/theme.py`](apps/desktop-pdv/src/pdv/ui/theme.py):
+cor, escala tipográfica, espaçamento, raio e a folha de estilo. Nenhum widget
+escolhe hexadecimal por conta própria.
+
+**O tema é fixado, não herdado.** `apply_theme` chama `setStyle("Fusion")` e
+instala uma paleta explícita. Sem isso o Qt segue o tema do Windows: o mesmo
+PDV ficaria escuro numa máquina e claro na outra, e o contraste calculado para
+ler o peso de pé, a um metro do balcão, sob lâmpada fria, valeria só na máquina
+que foi testada.
+
+Decisões que valem registro:
+
+| Decisão | Motivo |
+|---|---|
+| Um único acento (azul-aço) | Verde, âmbar e vermelho já são os estados da balança. Acento que também é status faz botão parecer aviso. |
+| Preto que não é `#000000` | Preto absoluto num monitor de balcão espelha a luminária do teto. |
+| Algarismos tabulares (`tnum`) em tudo | Coluna de dinheiro em fonte proporcional não alinha na vírgula: conferir a venda vira leitura dígito a dígito. |
+| Peso em corte *display*, não monoespaçada | `tnum` já impede o número de dançar enquanto a balança oscila; a monoespaçada daria o mesmo e ainda abriria um vão do tamanho de um dígito em volta da vírgula. |
+| `Segoe UI Variable` com cadeia de fallback | Pesos intermediários reais e eixo óptico, sem embarcar fonte no instalador. Em Windows 10 a cadeia cai para `Segoe UI`. |
+| Estado vazio desenhado | A tela sem itens é o estado mais frequente do dia. Retângulo em branco com cabeçalho de coluna não diz "está tudo certo", diz "algo não carregou". |
+
+Três recomendações comuns de design de web foram **recusadas** de propósito,
+porque um PDV não é uma landing page:
+
+* **Macro-whitespace.** Dobrar o respiro custa linhas visíveis da venda.
+* **Animação de entrada e rolagem.** Meio segundo de transição entre "peso
+  estável" e "item registrado" é tempo em que o operador não sabe se pode
+  tirar a mercadoria da balança. Só há movimento em resposta a toque.
+* **Assimetria e grid quebrado.** O olho do operador precisa cair no mesmo
+  lugar milhares de vezes por dia.
 
 ---
 

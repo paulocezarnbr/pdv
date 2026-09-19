@@ -18,7 +18,7 @@ regra de negócio aqui.
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QColor, QFont
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QDialog,
     QFrame,
@@ -42,6 +42,7 @@ from pdv.edge.discovery import local_ip_address
 from pdv.edge.kds import KdsService
 from pdv.edge.orders import TableOrderService
 from pdv.hardware.printer.escpos import format_cents
+from pdv.ui import theme
 
 #: O painel não recebe eventos do hub: ele é do caixa, não da cozinha, e um
 #: WebSocket a mais por janela aberta pagaria um custo que uma consulta a cada
@@ -80,16 +81,21 @@ class SalonPanel(QDialog):
         self.resize(980, 680)
 
         layout = QVBoxLayout(self)
-        layout.setSpacing(12)
+        layout.setContentsMargins(
+            theme.SPACE_4, theme.SPACE_4, theme.SPACE_4, theme.SPACE_4
+        )
+        layout.setSpacing(theme.SPACE_3)
         layout.addWidget(self._build_pairing_box())
 
         columns = QHBoxLayout()
+        columns.setSpacing(theme.SPACE_3)
         columns.addWidget(self._build_orders_box(), stretch=4)
         columns.addWidget(self._build_kds_box(), stretch=6)
         layout.addLayout(columns)
 
-        close = QPushButton("Fechar (ESC)")
+        close = QPushButton("Fechar   ·   ESC")
         close.setMinimumHeight(40)
+        close.setFont(theme.font(theme.SIZE_BODY, theme.WEIGHT_MEDIUM))
         close.clicked.connect(self.reject)
         layout.addWidget(close)
 
@@ -102,32 +108,42 @@ class SalonPanel(QDialog):
 
     def _build_pairing_box(self) -> QWidget:
         box = QFrame()
-        box.setFrameShape(QFrame.Shape.StyledPanel)
+        box.setObjectName("panel")
         layout = QHBoxLayout(box)
+        layout.setContentsMargins(
+            theme.SPACE_4, theme.SPACE_3, theme.SPACE_4, theme.SPACE_3
+        )
+        layout.setSpacing(theme.SPACE_4)
 
         left = QVBoxLayout()
+        left.setSpacing(theme.SPACE_1)
         left.addWidget(_title("SERVIDOR DO SALÃO"))
         self._address_label = QLabel("—")
-        self._address_label.setFont(QFont("Consolas", 12))
+        self._address_label.setFont(theme.font(theme.SIZE_BODY, mono=True))
         left.addWidget(self._address_label)
         layout.addLayout(left, stretch=3)
 
         middle = QVBoxLayout()
         middle.addWidget(_title("CÓDIGO DE PAREAMENTO"))
         self._code_label = QLabel("— — — — — —")
-        self._code_label.setFont(QFont("Consolas", 30, QFont.Weight.Bold))
+        self._code_label.setFont(
+            theme.font(
+                theme.SIZE_TOTAL, theme.WEIGHT_BOLD, mono=True, tracking=6.0
+            )
+        )
         self._code_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         middle.addWidget(self._code_label)
         self._code_hint = QLabel("Gere um código e digite-o no aplicativo do garçom.")
-        self._code_hint.setStyleSheet("color: #666;")
+        self._code_hint.setObjectName("hint")
         self._code_hint.setWordWrap(True)
         middle.addWidget(self._code_hint)
         layout.addLayout(middle, stretch=4)
 
         right = QVBoxLayout()
         generate = QPushButton("Gerar código")
+        generate.setObjectName("primary")
         generate.setMinimumHeight(44)
-        generate.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
+        generate.setFont(theme.font(theme.SIZE_BODY, theme.WEIGHT_SEMIBOLD))
         generate.clicked.connect(self._generate_code)
         right.addWidget(generate)
 
@@ -141,8 +157,13 @@ class SalonPanel(QDialog):
 
     def _build_orders_box(self) -> QWidget:
         box = QFrame()
-        box.setFrameShape(QFrame.Shape.StyledPanel)
+        box.setObjectName("panel")
         layout = QVBoxLayout(box)
+
+        layout.setContentsMargins(
+            theme.SPACE_3, theme.SPACE_3, theme.SPACE_3, theme.SPACE_3
+        )
+        layout.setSpacing(theme.SPACE_2)
 
         layout.addWidget(_title("MESAS ABERTAS"))
         self._orders_table = QTableWidget(0, 4)
@@ -163,8 +184,13 @@ class SalonPanel(QDialog):
 
     def _build_kds_box(self) -> QWidget:
         box = QFrame()
-        box.setFrameShape(QFrame.Shape.StyledPanel)
+        box.setObjectName("panel")
         layout = QVBoxLayout(box)
+
+        layout.setContentsMargins(
+            theme.SPACE_3, theme.SPACE_3, theme.SPACE_3, theme.SPACE_3
+        )
+        layout.setSpacing(theme.SPACE_2)
 
         layout.addWidget(_title("FILA DA COZINHA"))
         self._kds_table = QTableWidget(0, 5)
@@ -175,13 +201,17 @@ class SalonPanel(QDialog):
         layout.addWidget(self._kds_table, stretch=1)
 
         buttons = QHBoxLayout()
-        advance = QPushButton("Avançar (bump)")
+        buttons.setSpacing(theme.SPACE_2)
+        advance = QPushButton("Avançar   ·   bump")
+        advance.setObjectName("primary")
         advance.setMinimumHeight(44)
+        advance.setFont(theme.font(theme.SIZE_BODY, theme.WEIGHT_SEMIBOLD))
         advance.clicked.connect(self._bump)
         buttons.addWidget(advance)
 
-        back = QPushButton("Voltar (recall)")
+        back = QPushButton("Voltar   ·   recall")
         back.setMinimumHeight(44)
+        back.setFont(theme.font(theme.SIZE_BODY, theme.WEIGHT_MEDIUM))
         back.clicked.connect(self._recall)
         buttons.addWidget(back)
         layout.addLayout(buttons)
@@ -259,13 +289,13 @@ class SalonPanel(QDialog):
             self._address_label.setText(
                 "Servidor do salão DESLIGADO — o balcão segue vendendo."
             )
-            self._address_label.setStyleSheet("color: #b00020;")
+            self._address_label.setStyleSheet(f"color: {theme.DANGER};")
             return
         self._address_label.setText(
             f"http://{local_ip_address()}:{self._port}\n"
             "Descoberta automática: _pdvedge._tcp"
         )
-        self._address_label.setStyleSheet("color: #1b7f3b;")
+        self._address_label.setStyleSheet(f"color: {theme.OK};")
 
     def _refresh_orders(self) -> None:
         orders = self._orders.list_open_orders()
@@ -281,7 +311,13 @@ class SalonPanel(QDialog):
                 f"R$ {format_cents(Cents(int(order.total_cents)))}",
             ]
             for column, value in enumerate(cells):
-                self._orders_table.setItem(row, column, QTableWidgetItem(value))
+                cell = QTableWidgetItem(value)
+                if column:
+                    cell.setTextAlignment(
+                        Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+                    )
+                    cell.setFont(theme.font(theme.SIZE_BODY, mono=True))
+                self._orders_table.setItem(row, column, cell)
             self._orders_table.item(row, 0).setData(
                 Qt.ItemDataRole.UserRole, order.id
             )
@@ -302,7 +338,7 @@ class SalonPanel(QDialog):
             for column, value in enumerate(cells):
                 cell = QTableWidgetItem(value)
                 if revoked:
-                    cell.setForeground(QColor("#b00020"))
+                    cell.setForeground(QColor(theme.DANGER))
                 self._devices_table.setItem(row, column, cell)
             self._devices_table.item(row, 0).setData(
                 Qt.ItemDataRole.UserRole, str(device.get("id"))
@@ -315,18 +351,24 @@ class SalonPanel(QDialog):
         for ticket in self._kds.list_active():
             row = self._kds_table.rowCount()
             self._kds_table.insertRow(row)
-            minutes, seconds = divmod(ticket.waiting_seconds, 60)
             cells = [
                 ticket.table_label,
                 ticket.product_name,
                 ticket.quantity,
                 _STATUS_LABELS.get(ticket.status, ticket.status),
-                f"{minutes:02d}:{seconds:02d}",
+                _format_wait(ticket.waiting_seconds),
             ]
             for column, value in enumerate(cells):
                 cell = QTableWidgetItem(value)
+                if column in (2, 4):
+                    cell.setTextAlignment(
+                        Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+                    )
+                    cell.setFont(theme.font(theme.SIZE_BODY, mono=True))
                 if ticket.is_late:
-                    cell.setForeground(QColor("#b00020"))
+                    # Atraso é a única informação da fila que precisa gritar: o
+                    # prato parado há 15 minutos já está custando a mesa.
+                    cell.setForeground(QColor(theme.DANGER))
                 self._kds_table.setItem(row, column, cell)
             self._kds_table.item(row, 0).setData(Qt.ItemDataRole.UserRole, ticket.id)
         _restore_key(self._kds_table, selected)
@@ -335,6 +377,21 @@ class SalonPanel(QDialog):
 # --------------------------------------------------------------------------- #
 # Auxiliares de tabela
 # --------------------------------------------------------------------------- #
+
+
+def _format_wait(seconds: int) -> str:
+    """Tempo de espera do ticket.
+
+    `MM:SS` só faz sentido até uma hora. Passando disso o minuto acumulado
+    vira um número que ninguém lê — um ticket esquecido no fim do expediente
+    aparecia como "377:23", que não comunica "seis horas parado", comunica
+    "tem coisa errada nesta tela".
+    """
+    if seconds < 3600:
+        minutes, remainder = divmod(seconds, 60)
+        return f"{minutes:02d}:{remainder:02d}"
+    hours, remainder = divmod(seconds, 3600)
+    return f"{hours}h{remainder // 60:02d}"
 
 
 def _last_seen(value: object) -> str:
@@ -354,8 +411,8 @@ def _last_seen(value: object) -> str:
 
 def _title(text: str) -> QLabel:
     label = QLabel(text)
-    label.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
-    label.setStyleSheet("color: #666;")
+    label.setObjectName("sectionTitle")
+    label.setFont(theme.font(theme.SIZE_MICRO, theme.WEIGHT_SEMIBOLD, tracking=1.6))
     return label
 
 
@@ -372,6 +429,11 @@ def _configure(table: QTableWidget, *, stretch_column: int) -> None:
             if column == stretch_column
             else QHeaderView.ResizeMode.ResizeToContents,
         )
+    header.setFont(theme.font(theme.SIZE_MICRO, theme.WEIGHT_MEDIUM, tracking=0.6))
+    table.verticalHeader().setVisible(False)
+    table.setAlternatingRowColors(True)
+    table.setShowGrid(False)
+    table.setFont(theme.font(theme.SIZE_BODY))
     table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
     table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
     table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)

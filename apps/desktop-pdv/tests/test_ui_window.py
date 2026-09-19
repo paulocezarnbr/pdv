@@ -319,3 +319,61 @@ def test_the_panel_says_so_when_the_salon_server_is_off(qtbot, env) -> None:  # 
     panel._timer.stop()
 
     assert "DESLIGADO" in panel._address_label.text()
+
+
+# --------------------------------------------------------------------------- #
+# Tema e formatação
+# --------------------------------------------------------------------------- #
+
+
+def test_the_waiting_time_stays_readable_past_an_hour() -> None:
+    """"377:23" não comunica "seis horas parado" — comunica tela quebrada."""
+    from pdv.ui.salon_panel import _format_wait
+
+    assert _format_wait(0) == "00:00"
+    assert _format_wait(83) == "01:23"
+    assert _format_wait(3599) == "59:59"
+    assert _format_wait(3600) == "1h00"
+    assert _format_wait(22643) == "6h17"
+
+
+def test_the_theme_is_pinned_not_inherited_from_windows(qtbot) -> None:  # noqa: ANN001
+    """Dois terminais da mesma loja têm de mostrar a mesma tela.
+
+    Sem paleta e folha de estilo explícitas o Qt segue o tema do Windows, e o
+    contraste calculado para o balcão — ler o peso de pé, a um metro, sob
+    lâmpada fria — valeria só na máquina que foi testada.
+    """
+    from PySide6.QtWidgets import QApplication
+
+    from pdv.ui import theme
+
+    app = QApplication.instance()
+    theme.apply_theme(app)
+
+    assert app.palette().window().color().name() == theme.CANVAS
+    assert app.palette().windowText().color().name() == theme.TEXT
+    assert "QPushButton#primary" in app.styleSheet()
+    assert app.font().families()[0] == theme.FAMILY_UI[0]
+
+
+def test_the_style_is_fusion(qtbot) -> None:  # noqa: ANN001
+    """O estilo nativo do Windows ignora boa parte do QSS e segue o tema do SO.
+
+    Ler o estilo depois de `apply_theme` devolve vazio: a folha de estilo
+    embrulha o estilo base num `QStyleSheetStyle`, e o PySide não expõe
+    `baseStyle()`. Limpar a folha desembrulha — é o único jeito de conferir o
+    que está por baixo.
+    """
+    from PySide6.QtWidgets import QApplication
+
+    from pdv.ui import theme
+
+    app = QApplication.instance()
+    theme.apply_theme(app)
+    installed = app.styleSheet()
+    try:
+        app.setStyleSheet("")
+        assert app.style().name() == "fusion"
+    finally:
+        app.setStyleSheet(installed)

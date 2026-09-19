@@ -22,7 +22,7 @@ from __future__ import annotations
 from decimal import Decimal, InvalidOperation
 
 from PySide6.QtCore import Qt, QTimer, Slot
-from PySide6.QtGui import QFont, QKeySequence, QShortcut
+from PySide6.QtGui import QColor, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
@@ -37,6 +37,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QStackedWidget,
     QStatusBar,
     QTableWidget,
     QTableWidgetItem,
@@ -61,16 +62,20 @@ from pdv.hardware.printer.escpos import format_cents, format_grams
 from pdv.hardware.scale.worker import ScaleService
 from pdv.services.authorization import AuthorizationService
 from pdv.services.checkout import CheckoutService
+from pdv.ui import theme
 from pdv.ui.dialogs import ManagerAuthDialog, PaymentDialog
 from pdv.ui.salon_panel import SalonPanel
 
+#: Rótulo e cor de cada estado da balança. As três cores semânticas do tema
+#: vivem aqui e **só** aqui: é o que permite ao operador ler o estado pela cor,
+#: de longe, sem processar a palavra.
 _STATUS_LABELS: dict[ScaleStatus, tuple[str, str]] = {
-    ScaleStatus.STABLE: ("ESTAVEL", "#1b7f3b"),
-    ScaleStatus.UNSTABLE: ("INSTAVEL", "#b8860b"),
-    ScaleStatus.OVERLOAD: ("SOBRECARGA", "#b00020"),
-    ScaleStatus.NEGATIVE: ("PESO NEGATIVO", "#b00020"),
-    ScaleStatus.ZERO: ("VAZIA", "#555555"),
-    ScaleStatus.ERROR: ("ERRO", "#b00020"),
+    ScaleStatus.STABLE: ("ESTÁVEL", theme.OK),
+    ScaleStatus.UNSTABLE: ("INSTÁVEL", theme.WARN),
+    ScaleStatus.OVERLOAD: ("SOBRECARGA", theme.DANGER),
+    ScaleStatus.NEGATIVE: ("PESO NEGATIVO", theme.DANGER),
+    ScaleStatus.ZERO: ("VAZIA", theme.TEXT_FAINT),
+    ScaleStatus.ERROR: ("ERRO", theme.DANGER),
 }
 
 
@@ -119,8 +124,10 @@ class CounterWindow(QMainWindow):
     def _build_ui(self) -> None:
         root = QWidget()
         layout = QHBoxLayout(root)
-        layout.setContentsMargins(16, 16, 16, 16)
-        layout.setSpacing(16)
+        layout.setContentsMargins(
+            theme.SPACE_4, theme.SPACE_4, theme.SPACE_4, theme.SPACE_4
+        )
+        layout.setSpacing(theme.SPACE_3)
         layout.addWidget(self._build_left_panel(), stretch=4)
         layout.addWidget(self._build_right_panel(), stretch=6)
         self.setCentralWidget(root)
@@ -131,53 +138,83 @@ class CounterWindow(QMainWindow):
         self._salon_label = QLabel(
             "Salão: ligado" if self._edge_port else "Salão: desligado"
         )
+        for label in (self._connection_label, self._salon_label, self._sync_label):
+            label.setFont(theme.font(theme.SIZE_MICRO))
         self.statusBar().addPermanentWidget(self._connection_label)
         self.statusBar().addPermanentWidget(self._salon_label)
         self.statusBar().addPermanentWidget(self._sync_label)
 
     def _build_left_panel(self) -> QWidget:
         panel = QFrame()
-        panel.setFrameShape(QFrame.Shape.StyledPanel)
+        panel.setObjectName("panel")
         layout = QVBoxLayout(panel)
-        layout.setSpacing(12)
+        layout.setContentsMargins(
+            theme.SPACE_4, theme.SPACE_4, theme.SPACE_4, theme.SPACE_4
+        )
+        layout.setSpacing(theme.SPACE_2)
 
         layout.addWidget(self._section_title("PRODUTO PESÁVEL"))
         self._product_combo = QComboBox()
-        self._product_combo.setFont(QFont("Segoe UI", 12))
+        self._product_combo.setFont(theme.font(theme.SIZE_BODY_LG))
         self._product_combo.setMinimumHeight(44)
         self._product_combo.currentIndexChanged.connect(self._on_product_changed)
         layout.addWidget(self._product_combo)
 
+        price_row = QHBoxLayout()
+        price_row.setSpacing(theme.SPACE_2)
         self._price_label = QLabel("R$ 0,00 / kg")
-        self._price_label.setFont(QFont("Segoe UI", 14, QFont.Weight.Bold))
-        layout.addWidget(self._price_label)
+        self._price_label.setFont(
+            theme.font(theme.SIZE_TITLE, theme.WEIGHT_SEMIBOLD, display=True)
+        )
+        price_row.addWidget(self._price_label)
+        price_row.addStretch()
 
         self._tare_label = QLabel("Tara: 0 g")
-        layout.addWidget(self._tare_label)
+        self._tare_label.setObjectName("hint")
+        self._tare_label.setFont(theme.font(theme.SIZE_BODY))
+        price_row.addWidget(self._tare_label)
+        layout.addLayout(price_row)
 
-        layout.addSpacing(12)
+        layout.addSpacing(theme.SPACE_4)
         layout.addWidget(self._section_title("BALANÇA"))
 
+        # O peso é o único elemento que o cliente lê do outro lado do balcão.
+        # Corte *display* com algarismos tabulares, não monoespaçada: o que se
+        # precisa garantir é que o número não dance na tela enquanto a balança
+        # oscila, e `tnum` já dá isso. A monoespaçada daria o mesmo e ainda
+        # abriria um vão em volta da vírgula do tamanho de um dígito.
         self._weight_label = QLabel("0,000 kg")
         self._weight_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._weight_label.setFont(QFont("Consolas", 52, QFont.Weight.Bold))
+        self._weight_label.setFont(
+            theme.font(
+                theme.SIZE_DISPLAY, theme.WEIGHT_BOLD, display=True, tracking=-2.0
+            )
+        )
         layout.addWidget(self._weight_label)
 
         self._scale_status_label = QLabel("—")
         self._scale_status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._scale_status_label.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
+        self._scale_status_label.setFont(
+            theme.font(theme.SIZE_LABEL, theme.WEIGHT_BOLD, tracking=2.0)
+        )
         layout.addWidget(self._scale_status_label)
 
+        layout.addSpacing(theme.SPACE_2)
         self._item_total_label = QLabel("Total do item: R$ 0,00")
         self._item_total_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._item_total_label.setFont(QFont("Segoe UI", 18, QFont.Weight.Bold))
+        self._item_total_label.setFont(
+            theme.font(theme.SIZE_TITLE, theme.WEIGHT_MEDIUM)
+        )
         layout.addWidget(self._item_total_label)
 
         layout.addStretch()
 
-        self._register_button = QPushButton("F2  Registrar item pesado")
-        self._register_button.setMinimumHeight(56)
-        self._register_button.setFont(QFont("Segoe UI", 13, QFont.Weight.Bold))
+        self._register_button = QPushButton("F2   Registrar item pesado")
+        self._register_button.setObjectName("primary")
+        self._register_button.setMinimumHeight(58)
+        self._register_button.setFont(
+            theme.font(theme.SIZE_BODY_LG, theme.WEIGHT_SEMIBOLD)
+        )
         self._register_button.setEnabled(False)
         self._register_button.clicked.connect(self._register_item)
         layout.addWidget(self._register_button)
@@ -186,61 +223,112 @@ class CounterWindow(QMainWindow):
 
     def _build_right_panel(self) -> QWidget:
         panel = QFrame()
-        panel.setFrameShape(QFrame.Shape.StyledPanel)
+        panel.setObjectName("panel")
         layout = QVBoxLayout(panel)
-        layout.setSpacing(12)
+        layout.setContentsMargins(
+            theme.SPACE_4, theme.SPACE_4, theme.SPACE_4, theme.SPACE_4
+        )
+        layout.setSpacing(theme.SPACE_3)
 
         layout.addWidget(self._build_unit_box())
         layout.addWidget(self._section_title("VENDA ATUAL"))
+        layout.addWidget(self._build_items_view(), stretch=1)
+
+        self._discount_label = QLabel("")
+        self._discount_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+        self._discount_label.setStyleSheet(f"color: {theme.WARN};")
+        self._discount_label.setFont(
+            theme.font(theme.SIZE_BODY_LG, theme.WEIGHT_MEDIUM)
+        )
+        layout.addWidget(self._discount_label)
+
+        self._total_label = QLabel("TOTAL: R$ 0,00")
+        self._total_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+        self._total_label.setFont(
+            theme.font(
+                theme.SIZE_TOTAL, theme.WEIGHT_BOLD, display=True, tracking=-1.0
+            )
+        )
+        layout.addWidget(self._total_label)
+
+        # Uma ação principal e três secundárias. Se os quatro botões tivessem o
+        # mesmo peso visual, o operador procuraria o "Receber" pelo texto em vez
+        # de pela posição e pela cor — e é o botão que ele mais usa no dia.
+        buttons = QHBoxLayout()
+        buttons.setSpacing(theme.SPACE_2)
+        self._cancel_button = _secondary_button("F4   Cancelar item", self._cancel_item)
+        buttons.addWidget(self._cancel_button)
+
+        self._discount_button = _secondary_button("F6   Desconto", self._apply_discount)
+        buttons.addWidget(self._discount_button)
+
+        self._salon_button = _secondary_button("F8   Salão", self._open_salon)
+        buttons.addWidget(self._salon_button)
+
+        self._finish_button = QPushButton("F10   Receber")
+        self._finish_button.setObjectName("primary")
+        self._finish_button.setMinimumHeight(54)
+        self._finish_button.setFont(
+            theme.font(theme.SIZE_BODY_LG, theme.WEIGHT_SEMIBOLD)
+        )
+        self._finish_button.clicked.connect(self._finalize_sale)
+        buttons.addWidget(self._finish_button, stretch=1)
+        layout.addLayout(buttons)
+
+        return panel
+
+    def _build_items_view(self) -> QWidget:
+        """Tabela da venda e o estado vazio que a substitui.
+
+        Um retângulo vazio com cabeçalho de coluna não diz ao operador que está
+        tudo certo — diz que algo não carregou. A tela sem itens é o estado mais
+        frequente do dia (é como o caixa fica entre uma venda e a seguinte),
+        então ela merece ser desenhada, não deixada em branco.
+        """
+        self._items_stack = QStackedWidget()
+
+        empty = QWidget()
+        empty_layout = QVBoxLayout(empty)
+        empty_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        empty_layout.setSpacing(theme.SPACE_2)
+
+        headline = QLabel("Nenhum item na venda")
+        headline.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        headline.setFont(theme.font(theme.SIZE_TITLE, theme.WEIGHT_MEDIUM))
+        headline.setStyleSheet(f"color: {theme.TEXT_MUTED};")
+        empty_layout.addWidget(headline)
+
+        hint = QLabel(
+            "F2 registra o que está na balança   ·   F3 lança item unitário"
+        )
+        hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        hint.setObjectName("hint")
+        hint.setFont(theme.font(theme.SIZE_BODY))
+        empty_layout.addWidget(hint)
 
         self._items_table = QTableWidget(0, 5)
         self._items_table.setHorizontalHeaderLabels(
             ["Produto", "Qtd / Peso líq.", "Unitário", "Total", "Baixa estoque"]
         )
-        self._items_table.horizontalHeader().setSectionResizeMode(
-            0, QHeaderView.ResizeMode.Stretch
-        )
+        header = self._items_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        for column in range(1, 5):
+            header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
+        header.setFont(theme.font(theme.SIZE_MICRO, theme.WEIGHT_MEDIUM, tracking=0.6))
+        self._items_table.verticalHeader().setVisible(False)
+        self._items_table.setAlternatingRowColors(True)
+        self._items_table.setShowGrid(False)
         self._items_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self._items_table.setSelectionBehavior(
             QTableWidget.SelectionBehavior.SelectRows
         )
-        layout.addWidget(self._items_table, stretch=1)
+        self._items_table.setSelectionMode(
+            QTableWidget.SelectionMode.SingleSelection
+        )
 
-        self._discount_label = QLabel("")
-        self._discount_label.setAlignment(Qt.AlignmentFlag.AlignRight)
-        self._discount_label.setStyleSheet("color: #b8860b;")
-        self._discount_label.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
-        layout.addWidget(self._discount_label)
-
-        self._total_label = QLabel("TOTAL: R$ 0,00")
-        self._total_label.setAlignment(Qt.AlignmentFlag.AlignRight)
-        self._total_label.setFont(QFont("Segoe UI", 30, QFont.Weight.Bold))
-        layout.addWidget(self._total_label)
-
-        buttons = QHBoxLayout()
-        self._cancel_button = QPushButton("F4  Cancelar item")
-        self._cancel_button.setMinimumHeight(52)
-        self._cancel_button.clicked.connect(self._cancel_item)
-        buttons.addWidget(self._cancel_button)
-
-        self._discount_button = QPushButton("F6  Desconto")
-        self._discount_button.setMinimumHeight(52)
-        self._discount_button.clicked.connect(self._apply_discount)
-        buttons.addWidget(self._discount_button)
-
-        self._salon_button = QPushButton("F8  Salão")
-        self._salon_button.setMinimumHeight(52)
-        self._salon_button.clicked.connect(self._open_salon)
-        buttons.addWidget(self._salon_button)
-
-        self._finish_button = QPushButton("F10  Receber")
-        self._finish_button.setMinimumHeight(52)
-        self._finish_button.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
-        self._finish_button.clicked.connect(self._finalize_sale)
-        buttons.addWidget(self._finish_button)
-        layout.addLayout(buttons)
-
-        return panel
+        self._items_stack.addWidget(empty)
+        self._items_stack.addWidget(self._items_table)
+        return self._items_stack
 
     def _build_unit_box(self) -> QWidget:
         """Lançamento de item unitário — café, fatia, refrigerante.
@@ -251,39 +339,47 @@ class CounterWindow(QMainWindow):
         destrói o relatório de mix de produtos.
         """
         box = QFrame()
-        box.setFrameShape(QFrame.Shape.StyledPanel)
+        box.setObjectName("inset")
         layout = QVBoxLayout(box)
-        layout.setSpacing(6)
+        layout.setContentsMargins(
+            theme.SPACE_3, theme.SPACE_3, theme.SPACE_3, theme.SPACE_3
+        )
+        layout.setSpacing(theme.SPACE_2)
 
-        layout.addWidget(self._section_title("ITEM UNITÁRIO (F3)"))
+        layout.addWidget(self._section_title("ITEM UNITÁRIO   ·   F3"))
 
         row = QHBoxLayout()
+        row.setSpacing(theme.SPACE_2)
         self._unit_search = QLineEdit()
         self._unit_search.setPlaceholderText("Código ou nome do produto…")
         self._unit_search.setMinimumHeight(40)
-        self._unit_search.setFont(QFont("Segoe UI", 12))
+        self._unit_search.setFont(theme.font(theme.SIZE_BODY_LG))
         self._unit_search.textChanged.connect(self._filter_unit_products)
         self._unit_search.returnPressed.connect(self._register_unit_item)
         row.addWidget(self._unit_search, stretch=5)
 
         self._unit_quantity = QDoubleSpinBox()
-        self._unit_quantity.setPrefix("x ")
+        self._unit_quantity.setPrefix("× ")
         self._unit_quantity.setDecimals(0)
         self._unit_quantity.setMinimum(1)
         self._unit_quantity.setMaximum(999)
         self._unit_quantity.setValue(1)
         self._unit_quantity.setMinimumHeight(40)
-        self._unit_quantity.setFont(QFont("Consolas", 13))
+        self._unit_quantity.setFont(
+            theme.font(theme.SIZE_BODY_LG, theme.WEIGHT_MEDIUM, mono=True)
+        )
         row.addWidget(self._unit_quantity, stretch=1)
 
         add = QPushButton("Lançar")
         add.setMinimumHeight(40)
+        add.setFont(theme.font(theme.SIZE_BODY, theme.WEIGHT_MEDIUM))
         add.clicked.connect(self._register_unit_item)
         row.addWidget(add, stretch=1)
         layout.addLayout(row)
 
         self._unit_list = QListWidget()
-        self._unit_list.setMaximumHeight(96)
+        self._unit_list.setMaximumHeight(104)
+        self._unit_list.setFont(theme.font(theme.SIZE_BODY, mono=True))
         self._unit_list.itemDoubleClicked.connect(
             lambda _item: self._register_unit_item()
         )
@@ -293,9 +389,17 @@ class CounterWindow(QMainWindow):
 
     @staticmethod
     def _section_title(text: str) -> QLabel:
+        """Rótulo de seção: pequeno, caixa alta, muito espaçado.
+
+        Caixa alta sem tracking vira um bloco cinza que o olho pula. Com o
+        espaçamento aberto ela cumpre o papel de placa de corredor — some
+        quando não é procurada, e é achada na hora em que é.
+        """
         label = QLabel(text)
-        label.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
-        label.setStyleSheet("color: #666;")
+        label.setObjectName("sectionTitle")
+        label.setFont(
+            theme.font(theme.SIZE_MICRO, theme.WEIGHT_SEMIBOLD, tracking=1.6)
+        )
         return label
 
     def _wire_shortcuts(self) -> None:
@@ -359,12 +463,13 @@ class CounterWindow(QMainWindow):
 
         self._unit_list.clear()
         for product in self._filtered:
-            self._unit_list.addItem(
-                QListWidgetItem(
-                    f"{product.sku}   {product.name}   "
-                    f"R$ {format_cents(product.price_cents)}"
-                )
+            # SKU em largura fixa e preço alinhado à direita: a lista é lida de
+            # relance, e coluna que serpenteia obriga a ler palavra por palavra.
+            entry = QListWidgetItem(
+                f"{product.sku:<14}{product.name:<40}"
+                f"{'R$ ' + format_cents(product.price_cents):>12}"
             )
+            self._unit_list.addItem(entry)
         if len(self._filtered) == 1:
             self._unit_list.setCurrentRow(0)
 
@@ -524,13 +629,31 @@ class CounterWindow(QMainWindow):
             format_cents(item.total_cents),
             write_off,
         ]
+        numeric = theme.font(theme.SIZE_BODY, mono=True)
+        emphasis = theme.font(theme.SIZE_BODY, theme.WEIGHT_SEMIBOLD, mono=True)
         for column, value in enumerate(cells):
             cell = QTableWidgetItem(value)
             if column in (1, 2, 3):
                 cell.setTextAlignment(
                     Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
                 )
+                # Coluna de dinheiro em fonte proporcional não alinha na
+                # vírgula, e conferir a venda vira leitura dígito a dígito.
+                cell.setFont(emphasis if column == 3 else numeric)
+            elif column == 4:
+                cell.setFont(numeric)
+                cell.setForeground(QColor(theme.TEXT_FAINT))
+            else:
+                cell.setFont(theme.font(theme.SIZE_BODY, theme.WEIGHT_MEDIUM))
             self._items_table.setItem(row, column, cell)
+
+        self._refresh_items_view()
+
+    def _refresh_items_view(self) -> None:
+        """Alterna entre o estado vazio e a tabela."""
+        self._items_stack.setCurrentIndex(
+            1 if self._items_table.rowCount() else 0
+        )
 
     def _cancel_item(self) -> None:
         """Cancelamento exige credencial de gerente — vetor de furto nº 1."""
@@ -568,6 +691,7 @@ class CounterWindow(QMainWindow):
             return
 
         self._items_table.removeRow(row)
+        self._refresh_items_view()
         self._refresh_total()
         self.statusBar().showMessage(
             f"Item cancelado — autorizado por {authorizer.name}", 8000
@@ -652,6 +776,7 @@ class CounterWindow(QMainWindow):
         self._printer.submit(receipt, job_name=f"Venda {local_number:06d}")
 
         self._items_table.setRowCount(0)
+        self._refresh_items_view()
         self._refresh_total()
         self.statusBar().showMessage(
             f"Venda {local_number:06d} finalizada — R$ {format_cents(total)}", 6000
@@ -685,6 +810,20 @@ class CounterWindow(QMainWindow):
         self._scale.shutdown()
         self._printer.shutdown()
         super().closeEvent(event)
+
+
+def _secondary_button(label: str, handler) -> QPushButton:  # noqa: ANN001
+    """Ação secundária: mesma altura da principal, peso visual menor.
+
+    Igualar altura mantém a linha de botões alinhada; o que distingue a ação
+    principal é a cor, não o tamanho — hierarquia por cor sobrevive ao operador
+    que olha a tela de esguelha enquanto embala o pedido.
+    """
+    button = QPushButton(label)
+    button.setMinimumHeight(54)
+    button.setFont(theme.font(theme.SIZE_BODY, theme.WEIGHT_MEDIUM))
+    button.clicked.connect(handler)
+    return button
 
 
 __all__ = ["CounterWindow", "Decimal"]

@@ -246,3 +246,24 @@ def test_only_authorizers_are_listed(qtbot, auth: AuthorizationService) -> None:
     logins = [dialog._login.itemText(i) for i in range(dialog._login.count())]
 
     assert logins == [DEMO_MANAGER_LOGIN]
+
+
+def test_the_standard_buttons_are_in_portuguese(  # noqa: ANN001
+    qtbot, auth: AuthorizationService
+) -> None:
+    """Sem tradutor do Qt carregado, o botão padrão sai "Cancel".
+
+    "Cancel" no meio de um diálogo em português é o detalhe pequeno que faz o
+    operador desconfiar do resto — e o resto é onde está o dinheiro dele.
+    """
+    payment = PaymentDialog(Cents(1000))
+    qtbot.addWidget(payment)
+    manager = ManagerAuthDialog(auth, operation="Cancelar item")
+    qtbot.addWidget(manager)
+
+    def texts(dialog):  # noqa: ANN001, ANN202
+        box = dialog.findChildren(QDialogButtonBox)[0]
+        return sorted(button.text() for button in box.buttons())
+
+    assert texts(payment) == ["Cancelar", "Confirmar"]
+    assert texts(manager) == ["Autorizar", "Cancelar"]

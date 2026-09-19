@@ -15,7 +15,6 @@ from __future__ import annotations
 from decimal import Decimal
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -36,6 +35,7 @@ from pdv.domain.errors import PdvError
 from pdv.domain.models import Cents, Payment, PaymentMethod
 from pdv.hardware.printer.escpos import format_cents
 from pdv.services.authorization import Authorizer, AuthorizationService
+from pdv.ui import theme
 
 #: Rótulos em português para a forma de pagamento. Só os meios que o balcão
 #: opera hoje: `prepaid`, `credit_account` e `cashback` dependem de cadastro de
@@ -73,9 +73,13 @@ class ManagerAuthDialog(QDialog):
         self.setMinimumWidth(420)
 
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(
+            theme.SPACE_5, theme.SPACE_4, theme.SPACE_5, theme.SPACE_4
+        )
+        layout.setSpacing(theme.SPACE_3)
 
         headline = QLabel(operation)
-        headline.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
+        headline.setFont(theme.font(theme.SIZE_BODY_LG, theme.WEIGHT_SEMIBOLD))
         headline.setWordWrap(True)
         layout.addWidget(headline)
 
@@ -90,18 +94,31 @@ class ManagerAuthDialog(QDialog):
         self._pin.setEchoMode(QLineEdit.EchoMode.Password)
         self._pin.setMaxLength(12)
         self._pin.setMinimumHeight(34)
-        self._pin.setFont(QFont("Consolas", 14))
+        self._pin.setFont(
+            theme.font(theme.SIZE_TITLE, theme.WEIGHT_MEDIUM, mono=True, tracking=4.0)
+        )
         form.addRow("PIN:", self._pin)
         layout.addLayout(form)
 
         self._error = QLabel("")
-        self._error.setStyleSheet("color: #b00020;")
+        self._error.setObjectName("error")
+        self._error.setFont(theme.font(theme.SIZE_BODY))
         self._error.setWordWrap(True)
         layout.addWidget(self._error)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
+        ok = buttons.button(QDialogButtonBox.StandardButton.Ok)
+        ok.setObjectName("primary")
+        ok.setText("Autorizar")
+        ok.setMinimumHeight(40)
+        # Sem tradutor do Qt carregado, os botões padrão saem em inglês —
+        # "Cancel" no meio de um diálogo em português é o tipo de detalhe que
+        # faz o operador desconfiar do resto do sistema.
+        cancel = buttons.button(QDialogButtonBox.StandardButton.Cancel)
+        cancel.setText("Cancelar")
+        cancel.setMinimumHeight(40)
         buttons.accepted.connect(self._try_authorize)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -166,13 +183,20 @@ class PaymentDialog(QDialog):
         self.setMinimumWidth(520)
 
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(
+            theme.SPACE_5, theme.SPACE_4, theme.SPACE_5, theme.SPACE_4
+        )
+        layout.setSpacing(theme.SPACE_3)
 
         total_label = QLabel(f"TOTAL: R$ {format_cents(Cents(self._total))}")
-        total_label.setFont(QFont("Segoe UI", 22, QFont.Weight.Bold))
+        total_label.setFont(
+            theme.font(theme.SIZE_TOTAL, theme.WEIGHT_BOLD, display=True, tracking=-1.0)
+        )
         total_label.setAlignment(Qt.AlignmentFlag.AlignRight)
         layout.addWidget(total_label)
 
         entry = QHBoxLayout()
+        entry.setSpacing(theme.SPACE_2)
         self._method = QComboBox()
         for method, label in _METHOD_LABELS:
             self._method.addItem(label, method)
@@ -184,35 +208,52 @@ class PaymentDialog(QDialog):
         self._amount.setDecimals(2)
         self._amount.setMaximum(999_999.99)
         self._amount.setMinimumHeight(38)
-        self._amount.setFont(QFont("Consolas", 14))
+        self._amount.setFont(
+            theme.font(theme.SIZE_TITLE, theme.WEIGHT_MEDIUM, mono=True)
+        )
         self._amount.setValue(self._total / 100)
         entry.addWidget(self._amount, stretch=2)
 
         add = QPushButton("Adicionar")
         add.setMinimumHeight(38)
+        add.setFont(theme.font(theme.SIZE_BODY, theme.WEIGHT_MEDIUM))
         add.clicked.connect(self._add_payment)
         entry.addWidget(add, stretch=1)
         layout.addLayout(entry)
 
         self._list = QListWidget()
         self._list.setMaximumHeight(140)
+        self._list.setFont(theme.font(theme.SIZE_BODY, mono=True))
         layout.addWidget(self._list)
 
+        # Ação terciária: existe para corrigir um engano, não para ser vista.
+        # Do tamanho do "Confirmar" ela disputaria o olho com o botão que
+        # fecha a venda.
         remove = QPushButton("Remover selecionado")
+        remove.setFont(theme.font(theme.SIZE_MICRO))
+        remove.setFixedHeight(28)
         remove.clicked.connect(self._remove_selected)
-        layout.addWidget(remove)
+        remove_row = QHBoxLayout()
+        remove_row.addStretch()
+        remove_row.addWidget(remove)
+        layout.addLayout(remove_row)
 
         self._balance = QLabel("")
-        self._balance.setFont(QFont("Segoe UI", 16, QFont.Weight.Bold))
+        self._balance.setFont(theme.font(theme.SIZE_TITLE, theme.WEIGHT_SEMIBOLD))
         self._balance.setAlignment(Qt.AlignmentFlag.AlignRight)
         layout.addWidget(self._balance)
 
         self._buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
-        self._buttons.button(QDialogButtonBox.StandardButton.Ok).setText(
-            "Confirmar (F10)"
-        )
+        confirm = self._buttons.button(QDialogButtonBox.StandardButton.Ok)
+        confirm.setObjectName("primary")
+        confirm.setText("Confirmar")
+        confirm.setMinimumHeight(44)
+        confirm.setFont(theme.font(theme.SIZE_BODY_LG, theme.WEIGHT_SEMIBOLD))
+        cancel = self._buttons.button(QDialogButtonBox.StandardButton.Cancel)
+        cancel.setText("Cancelar")
+        cancel.setMinimumHeight(44)
         self._buttons.accepted.connect(self.accept)
         self._buttons.rejected.connect(self.reject)
         layout.addWidget(self._buttons)
@@ -262,19 +303,19 @@ class PaymentDialog(QDialog):
 
         if not self._payments:
             self._balance.setText("Informe ao menos uma forma de pagamento")
-            self._balance.setStyleSheet("color: #666;")
+            self._balance.setStyleSheet(f"color: {theme.TEXT_MUTED};")
             ok.setEnabled(False)
             return
 
         if difference < 0:
             self._balance.setText(f"FALTA: R$ {format_cents(Cents(-difference))}")
-            self._balance.setStyleSheet("color: #b00020;")
+            self._balance.setStyleSheet(f"color: {theme.DANGER};")
             ok.setEnabled(False)
             return
 
         if difference == 0:
             self._balance.setText("Valor exato")
-            self._balance.setStyleSheet("color: #1b7f3b;")
+            self._balance.setStyleSheet(f"color: {theme.OK};")
             ok.setEnabled(True)
             return
 
@@ -283,14 +324,14 @@ class PaymentDialog(QDialog):
         # contra pagamento eletrônico é exatamente o golpe do troco.
         if any(p.method.opens_drawer for p in self._payments):
             self._balance.setText(f"TROCO: R$ {format_cents(Cents(difference))}")
-            self._balance.setStyleSheet("color: #1b7f3b;")
+            self._balance.setStyleSheet(f"color: {theme.OK};")
             ok.setEnabled(True)
         else:
             self._balance.setText(
                 f"Excesso de R$ {format_cents(Cents(difference))} sem espécie — "
                 "não há troco para cartão ou PIX"
             )
-            self._balance.setStyleSheet("color: #b00020;")
+            self._balance.setStyleSheet(f"color: {theme.DANGER};")
             ok.setEnabled(False)
 
 

@@ -40,3 +40,9 @@ desktop.ini
 
 # Redistribuiveis de terceiros: baixados pelo CI, nao versionados
 apps/desktop-pdv/packaging/redist/*.exe
+
+# Espelho de symlinks que o `skills add` cria para o Claude Code. O conteúdo
+# canônico fica em `.agents/skills/` e é reconstruído por `skills-lock.json`;
+# versionar os dois guardaria o mesmo arquivo duas vezes — e no Windows, onde
+# o git não materializa symlink, guardaria uma cópia de verdade.
+.claude/skills/

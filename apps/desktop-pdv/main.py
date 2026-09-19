@@ -40,6 +40,7 @@ from pdv.hardware.scale.worker import ScaleService
 from pdv.services.audit import AuditService
 from pdv.services.checkout import CheckoutService
 from pdv.ui.counter_window import CounterWindow
+from pdv.ui.theme import apply_theme
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +72,11 @@ def main() -> int:
 
     app = QApplication(sys.argv)
     app.setApplicationName("PDV Balcão")
+
+    # Antes de qualquer janela: o tema fixa estilo, paleta e fonte. Se viesse
+    # depois, o primeiro diálogo (o aviso de auditoria logo abaixo) apareceria
+    # com o tema do Windows — claro numa máquina, escuro na outra.
+    apply_theme(app)
 
     if integrity_error is not None:
         # Não bloqueia a venda — bloquear o caixa por suspeita de fraude
