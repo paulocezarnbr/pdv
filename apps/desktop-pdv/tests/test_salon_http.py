@@ -401,3 +401,52 @@ def test_the_manager_can_hand_the_grant_back(client, manager) -> None:  # noqa: 
     client.delete("/manager/session", headers=manager)
 
     assert client.get("/manager/session", headers=manager).status_code == 403
+
+
+# --------------------------------------------------------------------------- #
+# Regressões da tela
+# --------------------------------------------------------------------------- #
+
+
+def test_the_polling_tick_never_paints_over_the_pairing_screen(client) -> None:  # noqa: ANN001
+    """O bug relatado em uso.
+
+    O tique de 5 s chamava `renderMap()` olhando só para `S.view`, que nasce
+    como `"map"`. Cinco segundos depois de abrir, o mapa vazio era pintado por
+    cima do formulário de pareamento: os campos sumiam, o aparelho passava a
+    mostrar "o salão ainda não tem mesas" para sempre, e não havia mais como
+    parear nem entrar como gerente.
+
+    Teste de texto porque é onde o defeito mora: o `index.html` não passa por
+    build nenhum, e a condição errada estava a uma linha da certa.
+
+    Os comentários são removidos antes da conferência, e isso **não** é
+    detalhe: a primeira versão deste teste passava lendo a própria explicação
+    da correção, que cita `!S.token` em prosa. Um teste que lê comentário
+    aprova qualquer código.
+    """
+    import re
+
+    page = client.get("/").text
+    tick = page.split("function startPolling()")[1].split("}, 5000)")[0]
+    code = re.sub(r"/\*.*?\*/", "", tick, flags=re.DOTALL)
+    code = re.sub(r"//.*", "", code)
+
+    assert "!S.token" in code, (
+        "o tique precisa do mesmo guarda de `render()`; sem ele a tela de "
+        "pareamento é repintada por cima"
+    )
+
+
+def test_an_empty_map_says_which_kind_of_empty_it_is(client) -> None:  # noqa: ANN001
+    """Salão sem mesas e salão que não carregou pedem ações opostas.
+
+    Um manda chamar o gerente para cadastrar; o outro manda olhar a rede.
+    Mostrar a mesma frase nos dois casos faz o aparelho mentir justamente
+    quando já está com problema.
+    """
+    page = client.get("/").text
+
+    assert "S.loaded" in page
+    assert "Sem resposta do caixa" in page
+    assert "ainda nao tem mesas" in page or "ainda n\u00e3o tem mesas" in page

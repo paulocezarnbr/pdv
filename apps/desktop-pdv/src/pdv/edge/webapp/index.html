@@ -156,6 +156,9 @@ const S = {           // estado da sessão
   view:    "map",
   order:   null,
   tables:  [],
+  //: A última leitura do mapa deu certo? Começa `false`: antes de falar com o
+  //: caixa, o app não sabe se o salão está vazio ou se ele é que não chegou lá.
+  loaded:  false,
   menu:    [],
   timer:   null,
 };
@@ -288,15 +291,23 @@ function renderMap() {
   const billing = S.tables.filter((t) => t.status === "billing").length;
   $("subtitle").textContent = S.tables.length
     ? `${busy} de ${S.tables.length} ocupadas` + (billing ? ` · ${billing} pedindo a conta` : "")
-    : "nenhuma mesa cadastrada";
+    : (S.loaded ? "nenhuma mesa cadastrada" : "sem resposta do caixa");
   $("back").classList.add("hidden");
   $("managerBtn").classList.remove("hidden");
   $("footer").classList.add("hidden");
 
   if (!S.tables.length) {
-    $("main").innerHTML = `<div class="empty">
-      <strong>O salão ainda não tem mesas</strong>
-      Entre como gerente (no ícone acima) para cadastrar.</div>`;
+    /* Salão vazio e salão que não carregou pedem ações opostas do garçom:
+       um manda chamar o gerente para cadastrar, o outro manda olhar a rede.
+       Mostrar a mesma frase nos dois casos faz o aparelho mentir justamente
+       quando já está com problema. */
+    $("main").innerHTML = S.loaded
+      ? `<div class="empty">
+          <strong>O salão ainda não tem mesas</strong>
+          Entre como gerente (no ícone acima) para cadastrar.</div>`
+      : `<div class="empty">
+          <strong>Sem resposta do caixa</strong>
+          Confira se o PDV está aberto e se este aparelho está na rede da loja.</div>`;
     return;
   }
 
@@ -590,7 +601,15 @@ $("back").onclick = async () => { S.view = "map"; S.order = null; await refresh(
 
 async function refresh() {
   if (!S.token) return;
-  try { S.tables = (await api("/tables")).tables; } catch (e) { /* o aviso de offline já apareceu */ }
+  try {
+    S.tables = (await api("/tables")).tables;
+    S.loaded = true;
+  } catch (e) {
+    /* O aviso de offline já apareceu. O que importa aqui é **não** deixar a
+       falha passar por "carregou e não veio nada": lista vazia por erro de
+       rede e salão realmente sem mesas pedem ações opostas do garçom. */
+    S.loaded = false;
+  }
 }
 
 function render() {
@@ -606,7 +625,14 @@ function render() {
 function startPolling() {
   clearInterval(S.timer);
   S.timer = setInterval(async () => {
-    if (document.hidden || $("dlg").open) return;
+    /* O `!S.token` **não** é redundante com o guarda dentro de `refresh()`.
+       Sem ele, o tique repintava o mapa por cima da tela de pareamento cinco
+       segundos depois de abrir: o formulário sumia, o aparelho passava a
+       mostrar "o salão ainda não tem mesas" para sempre, e não havia mais como
+       parear. O defeito nasceu de o tique reimplementar o roteamento em vez de
+       reusar o de `render()` — por isso agora ele repete a mesma condição, e
+       só repinta a tela que acabou de recarregar. */
+    if (!S.token || document.hidden || $("dlg").open) return;
     await refresh();
     if (S.view === "map") renderMap();
   }, 5000);
