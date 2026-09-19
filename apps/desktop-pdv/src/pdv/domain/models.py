@@ -263,6 +263,11 @@ class AuditEventType(Enum):
     SALE_CLOSED = "sale_closed"
     SESSION_CLOSED = "session_closed"
     SCALE_ANOMALY = "scale_anomaly"
+    # Fase 3.5: um comando do painel que o terminal se recusou a obedecer.
+    # Tipo próprio, e não um `price_override` reaproveitado: recusa remota é
+    # sinal de segurança, e misturá-la com evento de operação a esconderia
+    # justamente no relatório onde ela precisa aparecer.
+    REMOTE_COMMAND_REFUSED = "remote_command_refused"
 
 
 class AuditSeverity(Enum):

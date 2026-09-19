@@ -25,7 +25,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Final
 
-SCHEMA_VERSION: Final[int] = 2
+SCHEMA_VERSION: Final[int] = 4
 _SCHEMA_FILE: Final[Path] = Path(__file__).with_name("schema.sql")
 
 #: Migration 2 — tabelas do servidor local (Fase 3).
@@ -89,6 +89,159 @@ CREATE TABLE IF NOT EXISTS kds_tickets (
 );
 CREATE INDEX IF NOT EXISTS idx_kds_tickets_open
     ON kds_tickets (status, queued_at);
+"""
+
+#: Migration 3 — inbox de comandos remotos (Fase 3.5).
+#:
+#: Mesmo raciocínio da migration 2: o DDL vive aqui e em `schema.sql`, e os
+#: dois caminhos convergem porque tudo é `CREATE ... IF NOT EXISTS`. Uma loja
+#: instalada não precisa reinstalar para passar a aceitar comando do painel.
+_MIGRATION_3_INBOX: Final[str] = """
+-- ===========================================================================
+-- Fase 3.5 — Inbox de comandos remotos (painel administrativo)
+-- ===========================================================================
+
+-- Espelho do `sync_outbox`, na direção contrária. Aqui o terminal **recebe**
+-- ordens de fora, o que inverte o modelo de confiança de todo o resto do
+-- sistema: até a Fase 3 o PDV só enviava.
+--
+-- `command_uuid` como PRIMARY KEY é a âncora de idempotência, igual ao
+-- `client_uuid` no outbox: reentregar o mesmo comando — porque a resposta do
+-- terminal se perdeu, ou porque a nuvem reenviou por timeout — colide na
+-- chave e não concede o desconto duas vezes.
+--
+-- `settled_at` e `reported_at` são separados de propósito. O terminal aplica
+-- primeiro e avisa a nuvem depois; se o aviso se perder, ele reavisa — mas
+-- nunca reaplica, porque o status já saiu de `pending`.
+CREATE TABLE IF NOT EXISTS remote_commands (
+    command_uuid      TEXT PRIMARY KEY,
+    tenant_id         TEXT NOT NULL,
+    store_id          TEXT NOT NULL,
+    device_id         TEXT NOT NULL,          -- terminal alvo
+    kind              TEXT NOT NULL,
+    payload_json      TEXT NOT NULL,
+    issued_by_user_id TEXT NOT NULL,
+    issued_by_name    TEXT NOT NULL,
+    issued_at         TEXT NOT NULL,
+    signature         TEXT NOT NULL,
+    status            TEXT NOT NULL DEFAULT 'pending'
+                         CHECK (status IN ('pending','applied','refused')),
+    received_at       TEXT NOT NULL,
+    settled_at        TEXT,
+    result_message    TEXT,
+    reported_at       TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_remote_commands_pending
+    ON remote_commands (status, received_at);
+
+-- Resultados ainda não confirmados pela nuvem.
+CREATE INDEX IF NOT EXISTS idx_remote_commands_unreported
+    ON remote_commands (reported_at, settled_at);
+"""
+
+
+#: Migration 4 — as mesas do salão viram entidade própria.
+#:
+#: Dividida em três pedaços porque só o primeiro é idempotente. O `ALTER`
+#: e o backfill rodam **só** no caminho de upgrade: instalação nova nasce com
+#: as colunas pelo `schema.sql` e sem histórico de mesa a resgatar.
+_MIGRATION_4_TABLES: Final[str] = """
+-- ===========================================================================
+-- Fase 3.6 — Mesas do salão
+-- ===========================================================================
+
+-- Até aqui "mesa" era texto livre enfiado em `orders.customer_id`. Funcionava
+-- para provar o fluxo, e quebra assim que o salão é real:
+--
+--   * dois garçons abriam a "Mesa 5" duas vezes, e a conta saía partida em
+--     duas comandas que ninguém consegue juntar na hora de cobrar;
+--   * "mesa 5", "Mesa 5" e "M5" viravam três mesas diferentes;
+--   * não havia o que configurar — nem quantas mesas a loja tem, nem onde.
+--
+-- A mesa vira entidade própria. O rótulo continua copiado no pedido como
+-- **histórico**: renomear a "Mesa 5" para "Varanda 2" amanhã não pode
+-- reescrever o que saiu impresso no cupom de ontem.
+CREATE TABLE IF NOT EXISTS store_tables (
+    id          TEXT PRIMARY KEY,
+    tenant_id   TEXT NOT NULL,
+    store_id    TEXT NOT NULL,
+    label       TEXT NOT NULL,
+    area        TEXT NOT NULL DEFAULT 'Salão',
+    seats       INTEGER NOT NULL DEFAULT 4,
+    sort_order  INTEGER NOT NULL DEFAULT 0,
+    -- Mesa retirada do mapa **nunca** é apagada: comandas antigas apontam para
+    -- ela, e o relatório de faturamento por mesa perderia o passado.
+    is_active   INTEGER NOT NULL DEFAULT 1,
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL,
+    client_uuid TEXT NOT NULL UNIQUE,
+    is_synced   INTEGER NOT NULL DEFAULT 0,
+    synced_at   TEXT
+);
+
+-- Duas mesas ativas com o mesmo nome é o erro de digitação que vira conta
+-- trocada. `lower(label)` porque o garçom digita como quiser.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_store_tables_label
+    ON store_tables (tenant_id, store_id, lower(label))
+    WHERE is_active = 1;
+
+CREATE INDEX IF NOT EXISTS idx_store_tables_map
+    ON store_tables (tenant_id, store_id, is_active, sort_order);
+
+CREATE INDEX IF NOT EXISTS idx_orders_table
+    ON orders (tenant_id, table_id, status);
+"""
+
+_MIGRATION_4_ORDER_COLUMNS: Final[str] = """
+
+-- `ALTER TABLE ADD COLUMN` não tem `IF NOT EXISTS` no SQLite, então este bloco
+-- é o único do arquivo que **não** é idempotente. Só roda no caminho de
+-- upgrade; numa base nova as colunas já nascem com o `schema.sql`.
+ALTER TABLE orders ADD COLUMN table_id TEXT;
+
+-- O garçom pede a conta; quem recebe é o caixa. Separar o pedido do
+-- recebimento é o que mantém o dinheiro num lugar só — deixar o celular
+-- "fechar" a mesa criaria um segundo ponto de fechamento sem gaveta, sem
+-- impressora e sem conferência de troco.
+ALTER TABLE orders ADD COLUMN bill_requested_at TEXT;
+"""
+
+_SALON_BACKFILL: Final[str] = """
+
+-- Mesas que só existiam como texto viram linhas de verdade, para que o salão
+-- não apareça vazio no dia do update.
+INSERT INTO store_tables
+    (id, tenant_id, store_id, label, area, seats, sort_order, is_active,
+     created_at, updated_at, client_uuid)
+SELECT
+    lower(hex(randomblob(16))),
+    o.tenant_id,
+    o.store_id,
+    trim(o.customer_id),
+    'Salão',
+    4,
+    0,
+    1,
+    min(o.created_at),
+    min(o.created_at),
+    lower(hex(randomblob(16)))
+  FROM orders o
+ WHERE o.channel = 'waiter'
+   AND o.customer_id IS NOT NULL
+   AND trim(o.customer_id) <> ''
+ GROUP BY o.tenant_id, o.store_id, lower(trim(o.customer_id));
+
+UPDATE orders
+   SET table_id = (
+        SELECT t.id FROM store_tables t
+         WHERE t.tenant_id = orders.tenant_id
+           AND t.store_id = orders.store_id
+           AND lower(t.label) = lower(trim(orders.customer_id))
+   )
+ WHERE channel = 'waiter'
+   AND customer_id IS NOT NULL
+   AND trim(customer_id) <> '';
 """
 
 
@@ -175,6 +328,16 @@ class Database:
 
         if current < 2:
             connection.executescript(_MIGRATION_2_EDGE)
+
+        if current < 3:
+            connection.executescript(_MIGRATION_3_INBOX)
+
+        if current < 4:
+            if current > 0:
+                connection.executescript(_MIGRATION_4_ORDER_COLUMNS)
+            connection.executescript(_MIGRATION_4_TABLES)
+            if current > 0:
+                connection.executescript(_SALON_BACKFILL)
 
         if current < SCHEMA_VERSION:
             connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")

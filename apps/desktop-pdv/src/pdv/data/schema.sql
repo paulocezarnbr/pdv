@@ -114,6 +114,8 @@ CREATE TABLE IF NOT EXISTS orders (
     status                 TEXT NOT NULL DEFAULT 'open'
                               CHECK (status IN ('open','paid','canceled')),
     customer_id            TEXT,
+    table_id               TEXT,          -- mesa do salão (ver store_tables)
+    bill_requested_at      TEXT,          -- o garçom pediu a conta; quem recebe é o caixa
     operator_id            TEXT NOT NULL,
     subtotal_cents         INTEGER NOT NULL DEFAULT 0,
     discount_cents         INTEGER NOT NULL DEFAULT 0,
@@ -371,3 +373,90 @@ CREATE TABLE IF NOT EXISTS kds_tickets (
 );
 CREATE INDEX IF NOT EXISTS idx_kds_tickets_open
     ON kds_tickets (status, queued_at);
+
+-- ===========================================================================
+-- Fase 3.5 — Inbox de comandos remotos (painel administrativo)
+-- ===========================================================================
+
+-- Espelho do `sync_outbox`, na direção contrária. Aqui o terminal **recebe**
+-- ordens de fora, o que inverte o modelo de confiança de todo o resto do
+-- sistema: até a Fase 3 o PDV só enviava.
+--
+-- `command_uuid` como PRIMARY KEY é a âncora de idempotência, igual ao
+-- `client_uuid` no outbox: reentregar o mesmo comando — porque a resposta do
+-- terminal se perdeu, ou porque a nuvem reenviou por timeout — colide na
+-- chave e não concede o desconto duas vezes.
+--
+-- `settled_at` e `reported_at` são separados de propósito. O terminal aplica
+-- primeiro e avisa a nuvem depois; se o aviso se perder, ele reavisa — mas
+-- nunca reaplica, porque o status já saiu de `pending`.
+CREATE TABLE IF NOT EXISTS remote_commands (
+    command_uuid      TEXT PRIMARY KEY,
+    tenant_id         TEXT NOT NULL,
+    store_id          TEXT NOT NULL,
+    device_id         TEXT NOT NULL,          -- terminal alvo
+    kind              TEXT NOT NULL,
+    payload_json      TEXT NOT NULL,
+    issued_by_user_id TEXT NOT NULL,
+    issued_by_name    TEXT NOT NULL,
+    issued_at         TEXT NOT NULL,
+    signature         TEXT NOT NULL,
+    status            TEXT NOT NULL DEFAULT 'pending'
+                         CHECK (status IN ('pending','applied','refused')),
+    received_at       TEXT NOT NULL,
+    settled_at        TEXT,
+    result_message    TEXT,
+    reported_at       TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_remote_commands_pending
+    ON remote_commands (status, received_at);
+
+-- Resultados ainda não confirmados pela nuvem.
+CREATE INDEX IF NOT EXISTS idx_remote_commands_unreported
+    ON remote_commands (reported_at, settled_at);
+
+-- ===========================================================================
+-- Fase 3.6 — Mesas do salão
+-- ===========================================================================
+
+-- Até aqui "mesa" era texto livre enfiado em `orders.customer_id`. Funcionava
+-- para provar o fluxo, e quebra assim que o salão é real:
+--
+--   * dois garçons abriam a "Mesa 5" duas vezes, e a conta saía partida em
+--     duas comandas que ninguém consegue juntar na hora de cobrar;
+--   * "mesa 5", "Mesa 5" e "M5" viravam três mesas diferentes;
+--   * não havia o que configurar — nem quantas mesas a loja tem, nem onde.
+--
+-- A mesa vira entidade própria. O rótulo continua copiado no pedido como
+-- **histórico**: renomear a "Mesa 5" para "Varanda 2" amanhã não pode
+-- reescrever o que saiu impresso no cupom de ontem.
+CREATE TABLE IF NOT EXISTS store_tables (
+    id          TEXT PRIMARY KEY,
+    tenant_id   TEXT NOT NULL,
+    store_id    TEXT NOT NULL,
+    label       TEXT NOT NULL,
+    area        TEXT NOT NULL DEFAULT 'Salão',
+    seats       INTEGER NOT NULL DEFAULT 4,
+    sort_order  INTEGER NOT NULL DEFAULT 0,
+    -- Mesa retirada do mapa **nunca** é apagada: comandas antigas apontam para
+    -- ela, e o relatório de faturamento por mesa perderia o passado.
+    is_active   INTEGER NOT NULL DEFAULT 1,
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL,
+    client_uuid TEXT NOT NULL UNIQUE,
+    is_synced   INTEGER NOT NULL DEFAULT 0,
+    synced_at   TEXT
+);
+
+-- Duas mesas ativas com o mesmo nome é o erro de digitação que vira conta
+-- trocada. `lower(label)` porque o garçom digita como quiser.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_store_tables_label
+    ON store_tables (tenant_id, store_id, lower(label))
+    WHERE is_active = 1;
+
+CREATE INDEX IF NOT EXISTS idx_store_tables_map
+    ON store_tables (tenant_id, store_id, is_active, sort_order);
+
+CREATE INDEX IF NOT EXISTS idx_orders_table
+    ON orders (tenant_id, table_id, status);
