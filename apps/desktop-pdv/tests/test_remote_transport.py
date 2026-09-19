@@ -381,82 +381,125 @@ def test_a_command_for_another_terminal_is_refused_and_reported(terminal) -> Non
 # --------------------------------------------------------------------------- #
 
 
+def _ask_the_cloud(payload: dict, *, issued_at: str = "2026-09-19T12:00:00+00:00"):
+    """Executa a assinatura **da nuvem** e devolve o que ela calculou.
+
+    A nuvem virou TypeScript; o terminal continua em Python. Comparar de
+    verdade exige **executar** as duas — reimplementar uma na outra linguagem
+    dentro do teste seria comparar uma cópia com outra cópia, e é justamente a
+    divergência entre as implementações reais que este teste existe para pegar.
+
+    A ponte é `scripts/sign.ts`, que a nuvem mantém para este fim.
+    """
+    import json
+    import shutil
+    import subprocess
+
+    script = (
+        Path(__file__).resolve().parents[2] / "cloud-api" / "scripts" / "sign.ts"
+    )
+    if not script.exists():  # pragma: no cover
+        pytest.skip("cloud-api não está neste checkout")
+
+    node = shutil.which("node")
+    if node is None:  # pragma: no cover - ambiente sem Node
+        pytest.skip("Node não está instalado neste ambiente")
+
+    request = json.dumps(
+        {
+            "secret_hex": SECRET.hex(),
+            "command_uuid": "cmd-1",
+            "device_id": DEVICE,
+            "kind": "apply_discount",
+            "payload": payload,
+            "issued_at": issued_at,
+        },
+        ensure_ascii=False,
+    )
+
+    result = subprocess.run(
+        [node, "--experimental-strip-types", str(script)],
+        input=request.encode("utf-8"),
+        capture_output=True,
+        timeout=60,
+        check=False,
+    )
+    if result.returncode != 0:  # pragma: no cover
+        pytest.fail(
+            "a assinatura da nuvem não rodou:\n"
+            + result.stderr.decode("utf-8", "replace")
+        )
+
+    # O Node escreve avisos no stderr; a resposta é a última linha do stdout.
+    return json.loads(result.stdout.decode("utf-8").strip().splitlines()[-1])
+
+
 def test_both_sides_compute_the_same_signature() -> None:
     """O teste que impede a sexta-feira à noite.
 
-    A nuvem assina e o terminal confere, com implementações separadas em
-    repositórios que evoluem em ritmos diferentes. Duas versões do mesmo HMAC
-    divergem em algum detalhe de serialização — ordem de chave, espaço, acento
-    escapado — e a divergência aparece como "o painel parou de funcionar", sem
-    nada no log dizendo por quê.
+    A nuvem assina e o terminal confere, com implementações separadas — agora
+    em **linguagens diferentes**, o que torna a divergência mais provável, não
+    menos. Duas versões do mesmo HMAC divergem em algum detalhe de
+    serialização — ordem de chave, espaço, acento escapado — e a divergência
+    aparece como "o painel parou de funcionar", sem nada no log dizendo por quê.
 
-    Aqui as duas são comparadas byte a byte. Quem mexer numa quebra o CI, não a
-    loja.
+    Aqui as duas são executadas de verdade e comparadas byte a byte. Quem mexer
+    numa quebra o CI, não a loja.
     """
-    import importlib.util
-    import sys
-
-    cloud_path = (
-        Path(__file__).resolve().parents[2]
-        / "cloud-api" / "src" / "erp" / "modules" / "commands" / "router.py"
-    )
-    if not cloud_path.exists():  # pragma: no cover
-        pytest.skip("cloud-api não está neste checkout")
-
-    # Carregado por caminho: o desktop não depende do pacote da nuvem, e criar
-    # essa dependência só para o teste inverteria a direção certa do acoplamento.
-    spec = importlib.util.spec_from_file_location("_cloud_commands", cloud_path)
-    cloud = importlib.util.module_from_spec(spec)
-    sys.modules["_cloud_commands"] = spec.name and cloud
-    try:
-        spec.loader.exec_module(cloud)
-    except ImportError:  # pragma: no cover - fastapi ausente no ambiente
-        pytest.skip("dependências da cloud-api não instaladas")
-
     # Payloads escolhidos para pegar justamente o que costuma divergir: ordem
-    # das chaves, acento, tipo numérico e string vazia.
+    # das chaves, acento, tipo numérico, string vazia e aninhamento.
     for payload in (
         {},
         {"order_id": "abc", "percent": "12.5", "reason": "Atraso na cozinha"},
         {"z": 1, "a": 2, "m": "ç ã é", "vazio": ""},
         {"aninhado": {"b": 2, "a": [3, 1, 2]}},
     ):
-        common = {
-            "secret": SECRET,
-            "command_uuid": "cmd-1",
-            "device_id": DEVICE,
-            "kind": "apply_discount",
-            "payload": payload,
-            "issued_at": "2026-09-19T12:00:00+00:00",
-        }
-        assert cloud.sign_command(**common) == sign_command(**common), payload
+        cloud = _ask_the_cloud(payload)
+        mine = sign_command(
+            secret=SECRET,
+            command_uuid="cmd-1",
+            device_id=DEVICE,
+            kind="apply_discount",
+            payload=payload,
+            issued_at="2026-09-19T12:00:00+00:00",
+        )
+        assert cloud["signature"] == mine, payload
 
     from pdv.remote.protocol import canonical_payload
 
-    assert cloud.canonical_payload({"b": 1, "a": "ç"}) == canonical_payload(
-        {"b": 1, "a": "ç"}
+    # E o texto canônico também, não só o hash: um hash igual por acaso com
+    # textos diferentes é improvável, mas comparar o texto diz *onde* divergiu
+    # quando a divergência aparecer.
+    nested = {"b": 1, "a": "ç"}
+    assert _ask_the_cloud(nested)["canonical_payload"] == canonical_payload(nested)
+
+
+def test_the_arrays_keep_their_order_on_both_sides() -> None:
+    """Ordenar chave é canonização; ordenar array é perder informação.
+
+    `[3,1,2]` e `[1,2,3]` são payloads diferentes e precisam assinar diferente.
+    Um lado que "ordenasse tudo" faria os dois colidirem — e um comando
+    adulterado passaria pela verificação do outro.
+    """
+    subida = _ask_the_cloud({"itens": [1, 2, 3]})["signature"]
+    descida = _ask_the_cloud({"itens": [3, 2, 1]})["signature"]
+
+    assert subida != descida
+    assert subida == sign_command(
+        secret=SECRET,
+        command_uuid="cmd-1",
+        device_id=DEVICE,
+        kind="apply_discount",
+        payload={"itens": [1, 2, 3]},
+        issued_at="2026-09-19T12:00:00+00:00",
     )
 
 
 def test_the_cloud_only_issues_what_the_terminal_accepts() -> None:
     """Emitir um `kind` que o terminal não conhece é emitir para o lixo."""
-    import importlib.util
+    kinds = _ask_the_cloud({})["kinds"]
 
-    cloud_path = (
-        Path(__file__).resolve().parents[2]
-        / "cloud-api" / "src" / "erp" / "modules" / "commands" / "router.py"
-    )
-    if not cloud_path.exists():  # pragma: no cover
-        pytest.skip("cloud-api não está neste checkout")
-
-    spec = importlib.util.spec_from_file_location("_cloud_commands2", cloud_path)
-    cloud = importlib.util.module_from_spec(spec)
-    try:
-        spec.loader.exec_module(cloud)
-    except ImportError:  # pragma: no cover
-        pytest.skip("dependências da cloud-api não instaladas")
-
-    assert cloud.KINDS == {kind.value for kind in CommandKind}
+    assert set(kinds) == {kind.value for kind in CommandKind}
 
 
 def test_the_pending_count_is_visible_to_the_ui(terminal) -> None:  # noqa: ANN001

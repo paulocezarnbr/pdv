@@ -115,8 +115,9 @@ apps/mobile-waiter ──> packages/ts-types <── packages/contracts
 
 1. `packages/domain-py` **não importa** nada de `apps/`. É puro: sem Qt, sem I/O,
    sem SQL. Assim a regra de preço roda igual nos dois lados.
-2. Um módulo de `apps/cloud-api/src/erp/modules/X` só conversa com outro módulo
-   pela camada de serviço — nunca pelo repositório alheio.
+2. Em `apps/cloud-api` (Next.js), as rotas de `src/app/api/` não conversam
+   entre si: elas chamam `src/lib/`. Uma rota que importa outra rota acopla
+   dois contratos HTTP que deveriam poder mudar separado.
 3. `hardware/` no desktop não conhece `ui/`. A UI assina sinais; o driver não
    sabe que existe tela.
 4. `contracts/` gera os tipos TS. Ninguém escreve DTO à mão duas vezes.

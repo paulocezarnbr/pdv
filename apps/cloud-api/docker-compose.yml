@@ -1,0 +1,26 @@
+# Postgres local para desenvolvimento.
+#
+# NAO e o arquivo do Coolify: la o Postgres e um recurso proprio, gerenciado
+# pela plataforma, com backup e rede interna. Subir um banco pelo compose no
+# servidor de producao significaria cuidar de backup na mao — e descobrir que
+# ninguem cuidou no dia em que ele for preciso.
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: erp
+      POSTGRES_PASSWORD: erp
+      POSTGRES_DB: erp
+    ports:
+      - "5432:5432"
+    volumes:
+      - erp_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U erp -d erp"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  erp_pgdata:

@@ -1,0 +1,21 @@
+# O que NAO entra na imagem. Cada linha aqui e uma camada menor e um deploy
+# mais rapido — e, no caso dos segredos, um vazamento a menos.
+node_modules
+.next
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+npm-debug.log*
+*.log
+coverage
+.vscode
+.idea
+README.md
+COOLIFY.md
+tests
+vitest.config.ts
+docker-compose.yml
+Dockerfile
+.dockerignore

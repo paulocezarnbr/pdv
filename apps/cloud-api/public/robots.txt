@@ -1,0 +1,5 @@
+# A retaguarda de um cliente nao tem o que ser indexado. Alem de inutil, um
+# indice publico de /api/... e um mapa pronto da superficie para quem for
+# sondar.
+User-agent: *
+Disallow: /
