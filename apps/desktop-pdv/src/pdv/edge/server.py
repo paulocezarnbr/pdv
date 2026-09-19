@@ -44,17 +44,22 @@ from typing import Annotated, Any
 from pdv.config import AppConfig
 from pdv.data.database import Database
 from pdv.data.repositories import ProductRepository
-from pdv.domain.errors import PdvError
+from pdv.domain.errors import AuthorizationRequiredError, PdvError
 from pdv.domain.models import EntityId
 from pdv.edge.auth import DeviceAuthError, EdgeAuth, PairedDevice, PairingError
 from pdv.edge.hub import EventHub
 from pdv.edge.kds import InvalidTransitionError, KdsService, TicketNotFoundError
+from pdv.edge.manager import ManagerSessions
 from pdv.edge.orders import (
     OrderClosedError,
     OrderNotFoundError,
     ProductNotSellableError,
+    TableOccupiedError,
     TableOrderService,
 )
+from pdv.edge.tables import TableError, TableService
+from pdv.edge.webapp import WEBAPP_DIR, index_html
+from pdv.services.authorization import AuthorizationService
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +99,7 @@ def create_app(
             WebSocketDisconnect,
             status,
         )
+        from fastapi.responses import HTMLResponse
         from pydantic import BaseModel, Field
     except ImportError as exc:  # pragma: no cover
         raise PdvError(
@@ -104,6 +110,8 @@ def create_app(
     auth = EdgeAuth(database, config.tenant_id, config.store_id)
     orders = TableOrderService(database, config, event_hub)
     kds = KdsService(database, config, event_hub)
+    tables = TableService(database, config)
+    managers = ManagerSessions(AuthorizationService(database, config.tenant_id))
 
     app = FastAPI(
         title="PDV Balcão — servidor local",
@@ -128,8 +136,39 @@ def create_app(
 
     class OpenOrderRequest(BaseModel):
         client_uuid: str = Field(min_length=8, max_length=64)
-        table_label: str = Field(min_length=1, max_length=32)
         operator_id: str = Field(min_length=1, max_length=64)
+        # Um dos dois. O `table_id` é o caminho normal (o app mostra o mapa e o
+        # garçom toca na mesa); o rótulo fica aceito para aparelho antigo ainda
+        # não atualizado, e é resolvido contra o cadastro do mesmo jeito.
+        table_id: str = Field(default="", max_length=64)
+        table_label: str = Field(default="", max_length=32)
+
+    class ReasonRequest(BaseModel):
+        reason: str = Field(min_length=3, max_length=200)
+
+    class TransferRequest(BaseModel):
+        table_id: str = Field(min_length=1, max_length=64)
+
+    class ManagerLoginRequest(BaseModel):
+        login: str = Field(min_length=1, max_length=64)
+        pin: str = Field(min_length=1, max_length=64)
+
+    class TableRequest(BaseModel):
+        label: str = Field(min_length=1, max_length=32)
+        area: str = Field(default="Salão", min_length=1, max_length=32)
+        seats: int = Field(default=4, ge=1, le=99)
+        sort_order: int | None = Field(default=None, ge=0, le=9999)
+
+    class TablePatchRequest(BaseModel):
+        label: str | None = Field(default=None, min_length=1, max_length=32)
+        area: str | None = Field(default=None, min_length=1, max_length=32)
+        seats: int | None = Field(default=None, ge=1, le=99)
+        sort_order: int | None = Field(default=None, ge=0, le=9999)
+        is_active: bool | None = None
+
+    class SeedTablesRequest(BaseModel):
+        count: int = Field(default=12, ge=1, le=100)
+        area: str = Field(default="Salão", min_length=1, max_length=32)
 
     class AddItemRequest(BaseModel):
         client_uuid: str = Field(min_length=8, max_length=64)
@@ -164,6 +203,25 @@ def create_app(
 
     Device = Annotated[PairedDevice, Depends(current_device)]
 
+    def current_manager(
+        device: Device,
+        x_manager_token: Annotated[str | None, Header()] = None,
+    ) -> Any:
+        """A concessão de gerente, conferida contra **este** aparelho.
+
+        Cabeçalho próprio, separado do `Authorization`: são duas identidades
+        diferentes — o aparelho e a pessoa. Empilhar as duas no mesmo cabeçalho
+        faria o app ter de esquecer a do aparelho para usar a da pessoa.
+        """
+        try:
+            return managers.require(x_manager_token, EntityId(device.id))
+        except AuthorizationRequiredError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)
+            ) from exc
+
+    Manager = Annotated[Any, Depends(current_manager)]
+
     def _as_order(order: Any) -> OrderResponse:
         return OrderResponse(
             order_id=order.id,
@@ -175,7 +233,38 @@ def create_app(
             item_count=order.item_count,
         )
 
+    def _conflict(exc: Exception) -> HTTPException:
+        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+
     # -- rotas ------------------------------------------------------------- #
+
+    @app.get("/", include_in_schema=False)
+    async def waiter_app() -> Any:
+        """O app do garçom. Servido pelo mesmo processo que tem a comanda.
+
+        Sem loja de aplicativo e sem etapa de instalação: o garçom aponta a
+        câmera para o QR do caixa e está dentro. Ver `webapp/__init__.py` para
+        por que isto existe ao lado do app nativo, e não no lugar dele.
+        """
+        return HTMLResponse(index_html())
+
+    @app.get("/manifest.webmanifest", include_in_schema=False)
+    async def manifest() -> Any:
+        """Deixa o app ser fixado na tela inicial do celular.
+
+        Um atalho na tela inicial abre em tela cheia, sem barra de endereço —
+        que é a diferença entre "um site do caixa" e "o app do salão" para quem
+        vai usar isto doze horas por dia.
+        """
+        return {
+            "name": f"Salão — {config.store_name}",
+            "short_name": "Salão",
+            "start_url": "/",
+            "display": "standalone",
+            "background_color": "#0e1116",
+            "theme_color": "#0e1116",
+            "orientation": "portrait",
+        }
 
     @app.get("/health")
     async def health() -> dict[str, Any]:
@@ -240,13 +329,101 @@ def create_app(
             order = orders.open_order(
                 client_uuid=EntityId(request.client_uuid),
                 operator_id=EntityId(request.operator_id),
+                table_id=EntityId(request.table_id) if request.table_id else None,
                 table_label=request.table_label,
                 origin_device_id=device.id,
             )
+        except TableOccupiedError as exc:
+            # 409 com a comanda existente no corpo: o app abre essa em vez de
+            # mostrar erro. Tocar numa mesa ocupada é querer lançar nela.
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"message": str(exc), "order": exc.order.to_json()},
+            ) from exc
+        except TableError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+            ) from exc
         except PdvError as exc:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
             ) from exc
+        return _as_order(order)
+
+    @app.get("/orders/{order_id}")
+    async def order_detail(order_id: str, device: Device) -> dict[str, Any]:
+        try:
+            order = orders.get_order(EntityId(order_id))
+        except OrderNotFoundError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+            ) from exc
+        return {**order.to_json(), "items": orders.list_items(EntityId(order_id))}
+
+    @app.post("/orders/{order_id}/bill", response_model=OrderResponse)
+    async def request_bill(order_id: str, device: Device) -> OrderResponse:
+        """Pedir a conta. Quem **recebe** é o caixa — ver `orders.request_bill`."""
+        try:
+            return _as_order(orders.request_bill(EntityId(order_id)))
+        except OrderNotFoundError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+            ) from exc
+        except OrderClosedError as exc:
+            raise _conflict(exc) from exc
+
+    @app.delete("/orders/{order_id}/bill", response_model=OrderResponse)
+    async def clear_bill(order_id: str, device: Device) -> OrderResponse:
+        """A mesa desistiu de fechar e pediu sobremesa."""
+        try:
+            return _as_order(orders.clear_bill_request(EntityId(order_id)))
+        except OrderNotFoundError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+            ) from exc
+
+    @app.post("/orders/{order_id}/cancel", response_model=OrderResponse)
+    async def cancel_order(
+        order_id: str, request: ReasonRequest, device: Device, manager: Manager
+    ) -> OrderResponse:
+        """Cancelar a comanda inteira — **só com gerente**."""
+        try:
+            order = orders.cancel_order(
+                order_id=EntityId(order_id),
+                authorizer_id=EntityId(manager.id),
+                authorizer_name=manager.name,
+                reason=request.reason,
+            )
+        except OrderNotFoundError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+            ) from exc
+        except PdvError as exc:
+            raise _conflict(exc) from exc
+        return _as_order(order)
+
+    @app.post("/orders/{order_id}/transfer", response_model=OrderResponse)
+    async def transfer_order(
+        order_id: str, request: TransferRequest, device: Device, manager: Manager
+    ) -> OrderResponse:
+        try:
+            order = orders.transfer(
+                order_id=EntityId(order_id),
+                table_id=EntityId(request.table_id),
+                authorizer_id=EntityId(manager.id),
+                authorizer_name=manager.name,
+            )
+        except TableOccupiedError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"message": str(exc), "order": exc.order.to_json()},
+            ) from exc
+        except OrderNotFoundError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+            ) from exc
+        except PdvError as exc:
+            raise _conflict(exc) from exc
         return _as_order(order)
 
     @app.post("/orders/{order_id}/items", response_model=OrderResponse)
@@ -279,6 +456,112 @@ def create_app(
                 status_code=status.HTTP_409_CONFLICT, detail=str(exc)
             ) from exc
         return _as_order(order)
+
+    # -- mesas -------------------------------------------------------------- #
+
+    @app.get("/tables")
+    async def list_tables(device: Device, include_inactive: bool = False) -> dict[str, Any]:
+        """O mapa do salão com a ocupação de cada mesa.
+
+        É a tela inicial do app: o garçom vê livre, ocupada e pedindo conta sem
+        abrir nada.
+        """
+        return {
+            "tables": [
+                t.to_json()
+                for t in tables.list_tables(include_inactive=include_inactive)
+            ]
+        }
+
+    @app.post("/tables")
+    async def create_table(
+        request: TableRequest, device: Device, manager: Manager
+    ) -> dict[str, Any]:
+        try:
+            table = tables.create(
+                label=request.label,
+                area=request.area,
+                seats=request.seats,
+                sort_order=request.sort_order,
+            )
+        except TableError as exc:
+            raise _conflict(exc) from exc
+        return table.to_json()
+
+    @app.patch("/tables/{table_id}")
+    async def patch_table(
+        table_id: str, request: TablePatchRequest, device: Device, manager: Manager
+    ) -> dict[str, Any]:
+        # A ordem importa: `update` recusa mesa inativa (editar o que está fora
+        # do mapa esconderia a alteração do gerente). Então reativar vem antes
+        # da edição, e desativar vem depois — assim renomear e tirar do mapa na
+        # mesma tela funciona nos dois sentidos.
+        def edit() -> Any:
+            return tables.update(
+                EntityId(table_id),
+                label=request.label,
+                area=request.area,
+                seats=request.seats,
+                sort_order=request.sort_order,
+            )
+
+        try:
+            if request.is_active is True:
+                tables.set_active(EntityId(table_id), True)
+                table = edit()
+            elif request.is_active is False:
+                edit()
+                table = tables.set_active(EntityId(table_id), False)
+            else:
+                table = edit()
+        except TableError as exc:
+            raise _conflict(exc) from exc
+        return table.to_json()
+
+    @app.post("/tables/seed")
+    async def seed_tables(
+        request: SeedTablesRequest, device: Device, manager: Manager
+    ) -> dict[str, Any]:
+        """Cria "Mesa 1".."Mesa N" de uma vez, pulando o que já existe."""
+        try:
+            created = tables.seed_default_tables(request.count, area=request.area)
+        except TableError as exc:
+            raise _conflict(exc) from exc
+        return {"created": created, "tables": [t.to_json() for t in tables.list_tables()]}
+
+    # -- gerente ------------------------------------------------------------ #
+
+    @app.post("/manager/session")
+    async def manager_login(
+        request: ManagerLoginRequest, device: Device
+    ) -> dict[str, Any]:
+        """Autoriza um gerente neste aparelho, por poucos minutos.
+
+        Sem token de gerente na entrada — é esta rota que o emite. O PIN é
+        validado offline, contra a réplica local, com o mesmo bloqueio
+        progressivo do balcão.
+        """
+        try:
+            grant = managers.authorize(
+                login=request.login, pin=request.pin, device_id=EntityId(device.id)
+            )
+        except AuthorizationRequiredError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)
+            ) from exc
+        return grant.to_json()
+
+    @app.delete("/manager/session")
+    async def manager_logout(
+        device: Device,
+        x_manager_token: Annotated[str | None, Header()] = None,
+    ) -> dict[str, Any]:
+        return {"revoked": managers.revoke(x_manager_token)}
+
+    @app.get("/manager/session")
+    async def manager_check(manager: Manager) -> dict[str, Any]:
+        """O app usa para saber se ainda pode mostrar as opções de gerente."""
+        return {"user_id": manager.id, "name": manager.name, "role": manager.role}
 
     @app.get("/kds/tickets")
     async def kds_tickets(device: Device, station: str | None = None) -> dict[str, Any]:

@@ -205,7 +205,7 @@ def test_the_panel_shows_open_tables_and_the_kitchen_queue(salon, env) -> None: 
     order = orders.open_order(
         client_uuid=EntityId(new_id()),
         operator_id=EntityId(DEMO_OPERATOR_ID),
-        table_label="Mesa 12",
+        table_label="Mesa 7",
         origin_device_id=EntityId("cel-ana"),
     )
     orders.add_item(
@@ -218,9 +218,44 @@ def test_the_panel_shows_open_tables_and_the_kitchen_queue(salon, env) -> None: 
     panel.refresh()
 
     assert panel._orders_table.rowCount() == 1
-    assert panel._orders_table.item(0, 0).text() == "Mesa 12"
+    assert panel._orders_table.item(0, 0).text() == "Mesa 7"
+    assert panel._orders_table.item(0, 4).text() == "", "ninguém pediu a conta ainda"
     assert panel._kds_table.rowCount() == 1
     assert panel._kds_table.item(0, 3).text() == "na fila"
+
+
+def test_the_counter_sees_which_table_asked_for_the_bill(salon, env) -> None:  # noqa: ANN001
+    """É a única linha da tela em que alguém está de pé, esperando para pagar.
+
+    Sem o destaque, o garçom acaba tendo de vir avisar o caixa — que é
+    exatamente o passo que o app veio eliminar.
+    """
+    panel, database, config = salon
+    orders = TableOrderService(database, config)
+    order = orders.open_order(
+        client_uuid=EntityId(new_id()),
+        operator_id=EntityId(DEMO_OPERATOR_ID),
+        table_label="Mesa 7",
+        origin_device_id=EntityId("cel-ana"),
+    )
+    orders.request_bill(order.id)
+
+    panel.refresh()
+
+    from pdv.ui import theme
+
+    assert panel._orders_table.item(0, 4).text() == "pedindo a conta"
+    assert panel._orders_table.item(0, 0).foreground().color().name() == theme.WARN
+
+
+def test_the_panel_tells_where_the_waiter_app_lives(salon, env) -> None:  # noqa: ANN001
+    """O endereço deixou de ser diagnóstico: é o app que o celular abre."""
+    panel, _database, _config = salon
+
+    panel.refresh()
+
+    assert "App do garçom" in panel._address_label.text()
+    assert ":8420" in panel._address_label.text()
 
 
 def test_the_counter_can_unstick_a_ticket(salon, env) -> None:  # noqa: ANN001

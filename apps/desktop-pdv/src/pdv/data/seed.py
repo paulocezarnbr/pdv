@@ -169,6 +169,29 @@ def seed_demo_data(database: Database, config: AppConfig) -> None:
             ],
         )
 
+        # -- mapa do salão ---------------------------------------------------- #
+        # Oito mesas e duas na varanda. O primeiro dia de uso não pode começar
+        # com uma tela vazia e um botão de cadastro: o garçom precisa lançar
+        # pedido, não configurar sistema. Quem quiser ajusta pelas opções de
+        # gerente, no próprio app.
+        tx.executemany(
+            """
+            INSERT INTO store_tables
+                (id, tenant_id, store_id, label, area, seats, sort_order,
+                 is_active, created_at, updated_at, client_uuid)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+            """,
+            [
+                (new_id(), tenant, store, label, area, seats, order, now, now,
+                 new_id())
+                for order, (label, area, seats) in enumerate(
+                    [(f"Mesa {n}", "Salão", 4) for n in range(1, 9)]
+                    + [("Varanda 1", "Varanda", 2), ("Varanda 2", "Varanda", 6)],
+                    start=1,
+                )
+            ],
+        )
+
 
 DEMO_OPERATOR_ID = "44444444-4444-4444-4444-444444444444"
 DEMO_OPERATOR_NAME = "Ana Caixa"

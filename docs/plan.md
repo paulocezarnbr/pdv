@@ -229,36 +229,97 @@ desconto, cancelar um item — sem precisar estar na loja.
 > passa a conceder descontos e cancelar itens em todas as lojas. Por isso o
 > caminho de escrita tem exigências que o de leitura não tem.
 
-- [ ] **Padrão Inbox** (espelho do Outbox): o comando entra numa fila no
+- [x] **Padrão Inbox** (espelho do Outbox): o comando entra numa fila no
       terminal e é aplicado **uma única vez**, com `command_uuid` idempotente.
       Reenvio por timeout não concede o desconto duas vezes.
-- [ ] **Offline-first também na ida:** terminal sem internet recebe o comando
+- [x] **Offline-first também na ida:** terminal sem internet recebe o comando
       ao reconectar. O painel mostra `pendente` → `entregue` → `aplicado` ou
       `recusado`, nunca um "sucesso" otimista.
-- [ ] **Mesmos tetos do presencial.** Desconto remoto respeita
+- [x] **Mesmos tetos do presencial.** Desconto remoto respeita
       `discount_tiers.max_discount_cents` e o limite do perfil de quem emitiu.
       Estar longe não amplia poder — se não pode no balcão, não pode remoto.
-- [ ] **Escopo restrito:** só pedido **em aberto**. Venda fechada altera-se por
+- [x] **Escopo restrito:** só pedido **em aberto**. Venda fechada altera-se por
       estorno/nova venda; documento fiscal transmitido, só por cancelamento
       fiscal. O painel nunca reescreve o passado.
-- [ ] **Auditoria com dupla identidade:** cada evento grava o `actor` remoto, o
+- [x] **Auditoria com dupla identidade:** cada evento grava o `actor` remoto, o
       `device_id` alvo, IP e canal (`remote_panel`). Relatório de cancelamentos
       separa presencial de remoto — senão o painel vira a rota limpa para o
       mesmo furto que o M09 combate.
 - [ ] **Confirmação no terminal para operações de risco:** cancelar item já
       impresso ou abrir gaveta exige aceite do operador presente. Abrir gaveta
       remotamente sem ninguém por perto é convite a furto.
-- [ ] **Autenticação forte do emissor:** 2FA obrigatório para perfis com poder
-      de comando remoto; sessão curta; assinatura do comando verificada no
-      terminal (o PDV não obedece a quem não prova quem é).
-- [ ] **Rate limit e kill switch:** teto de comandos por minuto por operador e
-      botão do dono para desligar o canal remoto de uma vez.
+- [~] **Autenticação forte do emissor:** assinatura HMAC-SHA256 do comando
+      conferida no terminal contra o `device_secret`, com janela de validade de
+      12 h e tolerância de 5 min de drift — o PDV não obedece a quem não prova
+      quem é. **Falta** o 2FA no lado da nuvem, que é onde ele mora.
+- [~] **Rate limit e kill switch:** a chave de desligamento local existe
+      (`remote.commands_enabled`, ausente = ligado) e o terminal para de
+      obedecer sem depender de a nuvem cooperar — que é justamente o que não se
+      pode supor quando o painel é o que foi comprometido. **Falta** o teto de
+      comandos por minuto, que também pertence à nuvem.
+- [ ] **Transporte:** `fetch_commands` / `report_commands` no `sync/engine.py` e
+      o roteador correspondente na API. O serviço que aplica está pronto e
+      testado; o que falta é o cano que entrega.
 
-**Aceite:** com o terminal **offline**, o gerente concede um desconto pelo
+**Aceite:** ✅ com o terminal **offline**, o gerente concede um desconto pelo
 painel; o comando fica `pendente`. Ao reconectar, é aplicado **uma vez só**
 (reenviá-lo não duplica), aparece no cupom e gera entrada de auditoria
 nomeando o gerente remoto **e** o terminal. Um desconto acima do teto do perfil
 é recusado pelo terminal, mesmo vindo do painel.
+
+Reproduzido verbatim em `tests/test_remote_commands.py` (22 testes), incluindo
+as recusas: assinatura forjada, payload alterado depois de assinado, comando
+endereçado a outro terminal, comando vencido, pedido já fechado e caixa
+tentando autorizar o que só gerente autoriza.
+
+### Fase 3.6 — Salão de verdade: mesas, conta e gerente no celular (Sprint 11)
+
+**Origem:** relato de uso. Três defeitos que só aparecem com o salão cheio.
+
+**O que estava errado**
+
+| Sintoma | Causa |
+|---|---|
+| "O app do garçom não funciona" | Não existia app. O servidor local só servia JSON; abrir o endereço do PDV no navegador dava 404. |
+| "Abrir mesa não funciona" | Abria **sem trava**: dois garçons criavam duas comandas para a mesma mesa, e a conta saía partida em duas que ninguém junta na hora de cobrar. |
+| "Fechar mesa não funciona" | Não existia. O serviço só sabia abrir e lançar item. |
+| "Configurar mesas" | Mesa era texto livre em `orders.customer_id`: "mesa 5", "Mesa 5" e "M5" eram três mesas. |
+
+**O que foi feito**
+
+- [x] **Mesa vira entidade** (`store_tables`, migration 4). Índice único por
+      `lower(label)` entre as **ativas**. O pedido guarda a **cópia** do
+      rótulo: renomear a mesa amanhã não reescreve o cupom de ontem.
+- [x] **Desativar, nunca apagar.** Mesa fora do mapa mantém `is_active = 0`;
+      apagar a linha arrebentaria as comandas antigas e o relatório de
+      faturamento por mesa perderia o passado. Mesa **ocupada não sai** do
+      mapa — sumir com ela deixaria a comanda aberta sem porta de entrada.
+- [x] **Backfill no upgrade.** Loja instalada não abre na segunda com o salão
+      vazio: os rótulos antigos viram mesas e as comandas reencontram a sua.
+- [x] **Uma comanda por mesa.** Abrir mesa ocupada devolve 409 **com a comanda
+      existente no corpo** — o app abre essa, porque tocar numa mesa ocupada é
+      querer lançar nela.
+- [x] **Pedir a conta ≠ receber.** O garçom sinaliza; quem recebe é o caixa. Um
+      segundo ponto de recebimento — sem gaveta, sem impressora, sem
+      conferência de troco — é como o furto de salão entra pela porta da
+      frente. O painel do caixa destaca em âmbar quem está esperando.
+- [x] **Cancelar comanda e transferir de mesa**, com estorno de fila da cozinha
+      e evento `critical` no ledger.
+- [x] **App do garçom em web**, servido pelo próprio PDV em `/`. Sem loja de
+      aplicativo, sem versão de celular defasada, no aparelho que a pessoa já
+      tem. **Não substitui o app nativo** — ver `edge/webapp/__init__.py`.
+- [x] **Concessão de gerente por aparelho** (`edge/manager.py`): PIN validado
+      offline pelo mesmo Argon2id do balcão, vale 10 minutos e só no aparelho
+      que a pediu. O celular fica no balcão desbloqueado a noite inteira; uma
+      sessão que durasse o turno seria promover o aparelho a gerente.
+- [ ] Transferir **itens** entre comandas (juntar e dividir conta) — é operação
+      de caixa, com gaveta por perto, e entra na Fase 4.
+- [ ] Mapa de salão com posição das mesas (arrastar no layout).
+
+**Aceite:** ✅ percorrido no navegador contra o servidor real — parear, abrir
+mesa, lançar item (o item por peso continua ausente do cardápio do celular),
+pedir a conta, autorizar como gerente, cadastrar mesa nova e cancelar a
+comanda. 55 testes em `tests/test_salon.py` e `tests/test_salon_http.py`.
 
 ### Fase 4 — Financeiro & Anti-Furto (Sprint 11–13)
 - [ ] Cashback configurável (percentual, teto, validade, regra por categoria).

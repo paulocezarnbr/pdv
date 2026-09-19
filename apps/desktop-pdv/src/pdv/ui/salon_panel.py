@@ -166,9 +166,9 @@ class SalonPanel(QDialog):
         layout.setSpacing(theme.SPACE_2)
 
         layout.addWidget(_title("MESAS ABERTAS"))
-        self._orders_table = QTableWidget(0, 4)
+        self._orders_table = QTableWidget(0, 5)
         self._orders_table.setHorizontalHeaderLabels(
-            ["Mesa", "Nº", "Itens", "Total"]
+            ["Mesa", "Nº", "Itens", "Total", "Situação"]
         )
         _configure(self._orders_table, stretch_column=0)
         layout.addWidget(self._orders_table, stretch=1)
@@ -291,9 +291,11 @@ class SalonPanel(QDialog):
             )
             self._address_label.setStyleSheet(f"color: {theme.DANGER};")
             return
+        # O endereço deixou de ser só diagnóstico: é o app do garçom. Quem está
+        # no caixa precisa saber o que ditar para o celular, sem procurar.
         self._address_label.setText(
-            f"http://{local_ip_address()}:{self._port}\n"
-            "Descoberta automática: _pdvedge._tcp"
+            f"App do garçom: http://{local_ip_address()}:{self._port}\n"
+            "Abra no navegador do celular e pareie com o código acima."
         )
         self._address_label.setStyleSheet(f"color: {theme.OK};")
 
@@ -309,15 +311,29 @@ class SalonPanel(QDialog):
                 f"{order.local_number:05d}",
                 str(order.item_count),
                 f"R$ {format_cents(Cents(int(order.total_cents)))}",
+                "pedindo a conta" if order.bill_requested else "",
             ]
             for column, value in enumerate(cells):
                 cell = QTableWidgetItem(value)
-                if column:
+                # A coluna de situação é texto, não número: alinhá-la à direita
+                # e em monoespaçada junto com o dinheiro faria a fila de
+                # "pedindo a conta" parecer mais uma coluna de valores.
+                if column and column < 4:
                     cell.setTextAlignment(
                         Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
                     )
                     cell.setFont(theme.font(theme.SIZE_BODY, mono=True))
                 self._orders_table.setItem(row, column, cell)
+
+            if order.bill_requested:
+                # O caixa precisa enxergar de longe qual mesa está esperando
+                # para pagar — é a única linha da tela em que alguém está de pé
+                # aguardando. Sem o destaque, o garçom acaba tendo de vir
+                # avisar, que é justamente o que o app veio eliminar.
+                for column in range(self._orders_table.columnCount()):
+                    self._orders_table.item(row, column).setForeground(
+                        QColor(theme.WARN)
+                    )
             self._orders_table.item(row, 0).setData(
                 Qt.ItemDataRole.UserRole, order.id
             )

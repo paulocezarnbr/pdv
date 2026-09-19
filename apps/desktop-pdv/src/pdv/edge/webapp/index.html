@@ -1,0 +1,630 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0e1116">
+<title>Salão — PDV</title>
+<style>
+/* As cores são as mesmas de ui/theme.py. O garçom e o caixa olham para o mesmo
+   sistema a dois metros de distância; duas paletas diferentes dariam a
+   impressão de dois produtos. */
+:root{
+  --canvas:#0e1116; --surface:#161a21; --raised:#1d222b; --sunken:#11151b;
+  --line:#272d38; --line-strong:#39434f;
+  --text:#e7eaef; --muted:#98a1b0; --faint:#69727f;
+  --accent:#4f8fc0; --accent-hover:#5da0d2; --accent-pressed:#3f7aa8; --on-accent:#0b0f14;
+  --ok:#3fae6e; --warn:#d99a2b; --danger:#e0524f; --selection:#2b4a63;
+  --r-control:6px; --r-panel:10px;
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px;
+  --ui:"Segoe UI Variable Text","Segoe UI",system-ui,"Noto Sans",sans-serif;
+  --display:"Segoe UI Variable Display","Segoe UI",system-ui,sans-serif;
+  --mono:"Cascadia Mono",Consolas,"Noto Sans Mono",monospace;
+  /* Área segura do notch: o botão de ação fica no rodapé, ao alcance do polegar. */
+  --safe-b:env(safe-area-inset-bottom,0px);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%}
+body{
+  background:var(--canvas);color:var(--text);font-family:var(--ui);font-size:15px;
+  /* tnum: a coluna de dinheiro precisa alinhar na vírgula. Sem isso, conferir
+     a comanda vira leitura dígito a dígito. */
+  font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1;
+  overscroll-behavior:none;
+}
+button,input,select{font:inherit;font-variant-numeric:tabular-nums}
+/* Alvo de toque de 44px: o garçom usa isto de pé, com uma mão, andando. */
+button{min-height:44px;border:1px solid var(--line-strong);border-radius:var(--r-control);
+  background:var(--raised);color:var(--text);padding:0 var(--s4);cursor:pointer}
+button:active{background:var(--sunken)}
+button[disabled]{opacity:.45;cursor:default}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:600}
+button.primary:active{background:var(--accent-pressed)}
+button.danger{border-color:var(--danger);color:var(--danger)}
+button.ghost{background:transparent;border-color:transparent;color:var(--muted)}
+input,select{background:var(--sunken);border:1px solid var(--line-strong);
+  border-radius:var(--r-control);color:var(--text);padding:0 var(--s3);min-height:44px;width:100%}
+input:focus,select:focus{outline:2px solid var(--accent);outline-offset:-1px}
+
+/* -- estrutura --------------------------------------------------------- */
+#app{display:flex;flex-direction:column;height:100%}
+header{display:flex;align-items:center;gap:var(--s3);padding:var(--s3) var(--s4);
+  background:var(--surface);border-bottom:1px solid var(--line);flex:0 0 auto}
+header h1{margin:0;font-family:var(--display);font-size:17px;font-weight:600;flex:1;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+header .sub{font-size:11px;color:var(--faint);font-weight:400;display:block}
+main{flex:1;overflow-y:auto;padding:var(--s4);padding-bottom:calc(var(--s5) + var(--safe-b))}
+footer{flex:0 0 auto;padding:var(--s3) var(--s4);padding-bottom:calc(var(--s3) + var(--safe-b));
+  background:var(--surface);border-top:1px solid var(--line);display:flex;gap:var(--s2)}
+footer button{flex:1}
+.hidden{display:none !important}
+
+/* -- mapa de mesas ------------------------------------------------------ */
+.area-title{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);
+  margin:var(--s4) 0 var(--s2)}
+.area-title:first-child{margin-top:0}
+.map{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:var(--s2)}
+.table-card{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--line-strong);
+  border-radius:var(--r-panel);padding:var(--s3);text-align:left;min-height:88px;
+  display:flex;flex-direction:column;justify-content:space-between;gap:var(--s1)}
+.table-card .label{font-family:var(--display);font-size:16px;font-weight:600}
+.table-card .meta{font-size:11px;color:var(--muted)}
+.table-card .total{font-family:var(--mono);font-size:14px;color:var(--text)}
+.table-card.free{border-left-color:var(--line-strong)}
+.table-card.free .meta{color:var(--faint)}
+.table-card.busy{border-left-color:var(--accent)}
+.table-card.billing{border-left-color:var(--warn)}
+.table-card.billing .meta{color:var(--warn)}
+.table-card.off{opacity:.45;border-left-color:var(--line)}
+
+/* -- listas ------------------------------------------------------------- */
+.row{display:flex;align-items:center;gap:var(--s3);padding:var(--s3);
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--r-panel);
+  margin-bottom:var(--s2);width:100%;text-align:left}
+.row .grow{flex:1;min-width:0}
+.row .name{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .sub{display:block;font-size:11px;color:var(--faint);margin-top:2px}
+.row .money{font-family:var(--mono);white-space:nowrap}
+.row.canceled .name,.row.canceled .money{text-decoration:line-through;color:var(--faint)}
+.badge{font-size:10px;letter-spacing:.06em;text-transform:uppercase;padding:2px 6px;
+  border-radius:4px;background:var(--sunken);color:var(--muted);border:1px solid var(--line)}
+.badge.ok{color:var(--ok);border-color:var(--ok)}
+.badge.warn{color:var(--warn);border-color:var(--warn)}
+
+/* -- totais e vazio ----------------------------------------------------- */
+.total-bar{display:flex;justify-content:space-between;align-items:baseline;
+  padding:var(--s3) 0;border-top:1px solid var(--line);margin-top:var(--s3)}
+.total-bar .n{font-family:var(--display);font-size:26px;font-weight:600}
+.empty{text-align:center;color:var(--faint);padding:var(--s5) var(--s4);line-height:1.6}
+.empty strong{display:block;color:var(--muted);font-weight:600;margin-bottom:var(--s1)}
+
+/* -- diálogo ------------------------------------------------------------ */
+dialog{border:1px solid var(--line-strong);border-radius:var(--r-panel);background:var(--surface);
+  color:var(--text);padding:0;width:min(420px,calc(100vw - 32px));max-height:86vh}
+dialog::backdrop{background:rgba(6,8,11,.72)}
+dialog h2{margin:0;padding:var(--s4);font-family:var(--display);font-size:16px;
+  border-bottom:1px solid var(--line)}
+dialog .body{padding:var(--s4);display:flex;flex-direction:column;gap:var(--s3);
+  overflow-y:auto;max-height:56vh}
+dialog .actions{display:flex;gap:var(--s2);padding:var(--s4);border-top:1px solid var(--line)}
+dialog .actions button{flex:1}
+label{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--faint);margin-bottom:var(--s1)}
+.err{color:var(--danger);font-size:13px;min-height:18px}
+.hint{color:var(--faint);font-size:12px;line-height:1.5}
+
+/* -- aviso de conexão --------------------------------------------------- */
+#offline{background:var(--danger);color:#fff;text-align:center;padding:var(--s2);
+  font-size:13px;font-weight:600}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="offline" class="hidden">Sem conexão com o caixa — os lançamentos não entram</div>
+  <header>
+    <button id="back" class="ghost hidden" style="min-width:44px;padding:0 var(--s2)">&#8592;</button>
+    <h1 id="title">Salão<span class="sub" id="subtitle">conectando…</span></h1>
+    <button id="managerBtn" class="ghost" style="min-width:44px;padding:0 var(--s2)" title="Gerente">&#9881;</button>
+  </header>
+  <main id="main"></main>
+  <footer id="footer" class="hidden"></footer>
+</div>
+
+<dialog id="dlg">
+  <h2 id="dlgTitle"></h2>
+  <div class="body" id="dlgBody"></div>
+  <div class="actions">
+    <button id="dlgCancel">Cancelar</button>
+    <button id="dlgOk" class="primary">Confirmar</button>
+  </div>
+</dialog>
+
+<script>
+"use strict";
+/* ==========================================================================
+   App do garçom. Sem framework, de propósito: o arquivo inteiro carrega pelo
+   Wi-Fi da loja, no celular mais velho da equipe, e não tem etapa de build
+   entre o que está no repositório e o que roda na mesa.
+   ========================================================================== */
+
+const S = {           // estado da sessão
+  token:   localStorage.getItem("pdv.token") || "",
+  device:  localStorage.getItem("pdv.device") || "",
+  store:   localStorage.getItem("pdv.store") || "",
+  operator:localStorage.getItem("pdv.operator") || "",
+  manager: null,      // {token, name, expires_at} — NUNCA em localStorage
+  view:    "map",
+  order:   null,
+  tables:  [],
+  menu:    [],
+  timer:   null,
+};
+
+/* A concessão de gerente fica só em memória. Guardá-la em localStorage faria
+   o celular esquecido no balcão continuar sendo gerente depois de recarregar
+   a página — que é exatamente o que o prazo curto existe para impedir. */
+
+const $ = (id) => document.getElementById(id);
+const money = (c) => (c / 100).toLocaleString("pt-BR", {minimumFractionDigits: 2, maximumFractionDigits: 2});
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) =>
+  ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
+const uuid = () => (crypto.randomUUID ? crypto.randomUUID()
+  : "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+      const r = Math.random() * 16 | 0;
+      return (c === "x" ? r : (r & 0x3 | 0x8)).toString(16);
+    }));
+
+/* -- rede ---------------------------------------------------------------- */
+
+async function api(path, options = {}) {
+  const headers = {"Content-Type": "application/json"};
+  if (S.token) headers["Authorization"] = "Bearer " + S.token;
+  if (S.manager) headers["X-Manager-Token"] = S.manager.token;
+
+  let response;
+  try {
+    response = await fetch(path, {...options, headers, body: options.body ? JSON.stringify(options.body) : undefined});
+  } catch (e) {
+    $("offline").classList.remove("hidden");
+    throw new Error("Sem conexão com o caixa.");
+  }
+  $("offline").classList.add("hidden");
+
+  if (response.status === 401) { forget(); render(); throw new Error("Aparelho não pareado."); }
+  if (response.status === 403 && S.manager) {
+    // A concessão venceu enquanto o gerente navegava. Esquecer aqui evita que
+    // a próxima tela mostre botões que já não funcionam.
+    S.manager = null;
+  }
+  if (!response.ok) {
+    let detail = "Erro " + response.status;
+    try {
+      const body = await response.json();
+      detail = typeof body.detail === "string" ? body.detail
+             : (body.detail && body.detail.message) || detail;
+      const err = new Error(detail);
+      err.status = response.status;
+      err.payload = body.detail;
+      throw err;
+    } catch (e) { if (e instanceof Error && e.status) throw e; throw new Error(detail); }
+  }
+  return response.status === 204 ? null : response.json();
+}
+
+function forget() {
+  S.token = S.device = S.store = ""; S.manager = null;
+  ["pdv.token", "pdv.device", "pdv.store"].forEach((k) => localStorage.removeItem(k));
+}
+
+/* -- diálogo ------------------------------------------------------------- */
+
+/* `ok: null` significa diálogo só de escolha — a lista de produtos, o menu do
+   gerente. Quem decide se o botão aparece é esta função, não quem a chama:
+   deixar cada chamada mexer no botão depois já produziu um botão azul vazio na
+   tela, que é o tipo de defeito que só aparece na terceira navegação. */
+function ask({title, body, ok = "Confirmar", cancel = "Cancelar", onOk, danger = false}) {
+  $("dlgTitle").textContent = title;
+  $("dlgBody").innerHTML = body;
+  $("dlgOk").textContent = ok || "";
+  $("dlgOk").className = (danger ? "danger" : "primary") + (ok ? "" : " hidden");
+  $("dlgCancel").textContent = cancel || "Fechar";
+  $("dlgOk").onclick = async () => {
+    const error = $("dlgBody").querySelector(".err");
+    try {
+      $("dlgOk").disabled = true;
+      if (await onOk($("dlgBody")) !== false) $("dlg").close();
+    } catch (e) {
+      if (error) error.textContent = e.message; else alert(e.message);
+    } finally { $("dlgOk").disabled = false; }
+  };
+  $("dlg").showModal();
+  const first = $("dlgBody").querySelector("input,select");
+  if (first) setTimeout(() => first.focus(), 50);
+}
+$("dlgCancel").onclick = () => $("dlg").close();
+
+/* -- pareamento ---------------------------------------------------------- */
+
+function renderPairing() {
+  $("title").firstChild.textContent = "Parear aparelho";
+  $("subtitle").textContent = "código de 6 dígitos no caixa";
+  $("managerBtn").classList.add("hidden");
+  $("footer").classList.add("hidden");
+  $("main").innerHTML = `
+    <div class="empty">
+      <strong>Este aparelho ainda não está pareado</strong>
+      No PDV, abra o <b>Painel do salão</b> (F8) e gere um código.
+    </div>
+    <div style="display:flex;flex-direction:column;gap:var(--s3);max-width:360px;margin:0 auto">
+      <div><label for="code">Código de pareamento</label>
+        <input id="code" inputmode="numeric" autocomplete="off" maxlength="16" placeholder="000000"></div>
+      <div><label for="name">Nome deste aparelho</label>
+        <input id="name" maxlength="64" placeholder="Celular do João"></div>
+      <div class="err" id="pairErr"></div>
+      <button class="primary" id="pairBtn">Parear</button>
+    </div>`;
+  $("pairBtn").onclick = async () => {
+    const code = $("code").value.trim();
+    const name = $("name").value.trim() || "Celular do garçom";
+    if (!code) { $("pairErr").textContent = "Digite o código que aparece no caixa."; return; }
+    try {
+      $("pairBtn").disabled = true;
+      const r = await api("/pair", {method: "POST", body: {code, device_name: name, kind: "waiter"}});
+      S.token = r.token; S.device = r.device_id; S.store = r.store_name;
+      localStorage.setItem("pdv.token", r.token);
+      localStorage.setItem("pdv.device", r.device_id);
+      localStorage.setItem("pdv.store", r.store_name);
+      S.view = "map"; await refresh(); render();
+    } catch (e) { $("pairErr").textContent = e.message; }
+    finally { $("pairBtn").disabled = false; }
+  };
+}
+
+/* -- mapa do salão ------------------------------------------------------- */
+
+function renderMap() {
+  $("title").firstChild.textContent = S.store || "Salão";
+  const busy = S.tables.filter((t) => t.status !== "free").length;
+  const billing = S.tables.filter((t) => t.status === "billing").length;
+  $("subtitle").textContent = S.tables.length
+    ? `${busy} de ${S.tables.length} ocupadas` + (billing ? ` · ${billing} pedindo a conta` : "")
+    : "nenhuma mesa cadastrada";
+  $("back").classList.add("hidden");
+  $("managerBtn").classList.remove("hidden");
+  $("footer").classList.add("hidden");
+
+  if (!S.tables.length) {
+    $("main").innerHTML = `<div class="empty">
+      <strong>O salão ainda não tem mesas</strong>
+      Entre como gerente (no ícone acima) para cadastrar.</div>`;
+    return;
+  }
+
+  const areas = [...new Set(S.tables.map((t) => t.area))];
+  $("main").innerHTML = areas.map((area) => `
+    <div class="area-title">${esc(area)}</div>
+    <div class="map">${S.tables.filter((t) => t.area === area).map(card).join("")}</div>
+  `).join("");
+
+  $("main").querySelectorAll(".table-card").forEach((el) => {
+    el.onclick = () => openTable(el.dataset.id);
+  });
+}
+
+function card(t) {
+  const cls = t.is_active ? t.status : "off";
+  const meta = t.status === "free"
+    ? `${t.seats} lugares`
+    : (t.status === "billing" ? "pedindo a conta" : `comanda ${t.local_number} · ${t.item_count} itens`);
+  return `<button class="table-card ${cls}" data-id="${esc(t.id)}">
+      <span class="label">${esc(t.label)}</span>
+      <span class="meta">${esc(meta)}</span>
+      <span class="total">${t.status === "free" ? "" : "R$ " + money(t.total_cents)}</span>
+    </button>`;
+}
+
+async function openTable(tableId) {
+  const table = S.tables.find((t) => t.id === tableId);
+  if (!table) return;
+  if (!table.is_active) { alert("Mesa fora do mapa do salão."); return; }
+
+  if (table.order_id) { await loadOrder(table.order_id); return; }
+
+  // Mesa livre: abre a comanda. O `client_uuid` nasce aqui, no aparelho, e é o
+  // que impede a mesma comanda de ser faturada duas vezes se a resposta se
+  // perder e o app reenviar.
+  try {
+    const order = await api("/orders", {method: "POST", body: {
+      client_uuid: uuid(), operator_id: S.operator || S.device, table_id: tableId,
+    }});
+    await loadOrder(order.order_id);
+  } catch (e) {
+    // 409 com a comanda no corpo: outro garçom abriu a mesa no mesmo instante.
+    // A resposta certa é abrir a comanda dele, não mostrar erro.
+    if (e.status === 409 && e.payload && e.payload.order) {
+      await loadOrder(e.payload.order.order_id);
+      return;
+    }
+    alert(e.message);
+  }
+}
+
+/* -- comanda ------------------------------------------------------------- */
+
+async function loadOrder(orderId) {
+  S.order = await api("/orders/" + encodeURIComponent(orderId));
+  S.view = "order";
+  render();
+}
+
+function renderOrder() {
+  const o = S.order;
+  $("title").firstChild.textContent = o.table_label || "Comanda";
+  $("subtitle").textContent = `comanda ${o.local_number}` + (o.bill_requested_at ? " · conta pedida" : "");
+  $("back").classList.remove("hidden");
+  $("managerBtn").classList.remove("hidden");
+
+  const live = o.items.filter((i) => !i.canceled);
+  $("main").innerHTML = (o.items.length
+    ? o.items.map(itemRow).join("")
+    : `<div class="empty"><strong>Comanda vazia</strong>Toque em “Lançar item”.</div>`)
+    + `<div class="total-bar"><span>${live.length} ${live.length === 1 ? "item" : "itens"}</span>
+         <span class="n">R$ ${money(o.total_cents)}</span></div>`;
+
+  $("footer").classList.remove("hidden");
+  $("footer").innerHTML = `
+    <button class="primary" id="addItem">Lançar item</button>
+    <button id="bill">${o.bill_requested_at ? "Desfazer conta" : "Pedir a conta"}</button>`;
+  $("addItem").onclick = openMenu;
+  $("bill").onclick = toggleBill;
+}
+
+function itemRow(i) {
+  const stages = {queued: ["na fila", ""], preparing: ["preparando", "warn"],
+                  ready: ["pronto", "ok"], delivered: ["entregue", "ok"]};
+  const [label, kind] = stages[i.kds_status] || ["", ""];
+  const qty = Number(i.quantity) === 1 ? "" : `${i.quantity} × `;
+  return `<div class="row ${i.canceled ? "canceled" : ""}">
+      <span class="grow">
+        <span class="name">${esc(qty)}${esc(i.product_name)}</span>
+        <span class="sub">${i.canceled ? "cancelado — " + esc(i.cancel_reason || "") : "R$ " + money(i.unit_price_cents) + " cada"}</span>
+      </span>
+      ${label && !i.canceled ? `<span class="badge ${kind}">${label}</span>` : ""}
+      <span class="money">R$ ${money(i.total_cents)}</span>
+    </div>`;
+}
+
+async function openMenu() {
+  if (!S.menu.length) S.menu = (await api("/menu")).products;
+  const sellable = S.menu.filter((p) => p.sellable_by_waiter);
+  ask({
+    title: "Lançar item",
+    ok: null, cancel: "Fechar",
+    body: sellable.length
+      ? sellable.map((p) => `<button class="row" data-id="${esc(p.id)}">
+            <span class="grow"><span class="name">${esc(p.name)}</span></span>
+            <span class="money">R$ ${money(p.price_cents)}</span></button>`).join("")
+      : `<div class="hint">Nenhum produto pode ser lançado do celular.
+          Item por peso precisa da balança do balcão.</div>`,
+  });
+  $("dlgBody").querySelectorAll("[data-id]").forEach((el) => {
+    el.onclick = async () => { $("dlg").close(); await addItem(el.dataset.id); };
+  });
+}
+
+async function addItem(productId) {
+  try {
+    await api(`/orders/${encodeURIComponent(S.order.order_id)}/items`, {method: "POST", body: {
+      client_uuid: uuid(), product_id: productId, quantity: "1", station: "cozinha",
+    }});
+    await loadOrder(S.order.order_id);
+  } catch (e) { alert(e.message); }
+}
+
+async function toggleBill() {
+  const o = S.order;
+  try {
+    if (o.bill_requested_at) {
+      await api(`/orders/${encodeURIComponent(o.order_id)}/bill`, {method: "DELETE"});
+    } else {
+      await api(`/orders/${encodeURIComponent(o.order_id)}/bill`, {method: "POST"});
+    }
+    await loadOrder(o.order_id);
+  } catch (e) { alert(e.message); }
+}
+
+/* -- gerente -------------------------------------------------------------- */
+
+$("managerBtn").onclick = () => (S.manager ? managerMenu() : managerLogin());
+
+function managerLogin() {
+  ask({
+    title: "Autorização de gerente",
+    ok: "Autorizar",
+    body: `<div class="hint">A autorização vale por poucos minutos e só neste aparelho.</div>
+      <div><label for="mlogin">Login</label><input id="mlogin" autocomplete="off"></div>
+      <div><label for="mpin">PIN</label><input id="mpin" type="password" inputmode="numeric" autocomplete="off"></div>
+      <div class="err"></div>`,
+    onOk: async (body) => {
+      const grant = await api("/manager/session", {method: "POST", body: {
+        login: body.querySelector("#mlogin").value.trim(),
+        pin: body.querySelector("#mpin").value,
+      }});
+      S.manager = grant;
+      // O poder evapora sozinho: ninguém precisa lembrar de sair.
+      setTimeout(() => { S.manager = null; }, Math.max(1, grant.expires_in_seconds) * 1000);
+      setTimeout(managerMenu, 120);
+    },
+  });
+}
+
+function managerMenu() {
+  const onOrder = S.view === "order" && S.order;
+  ask({
+    title: "Gerente · " + esc(S.manager.name),
+    ok: null, cancel: "Fechar",
+    body: `
+      <button class="row" data-act="tables"><span class="grow"><span class="name">Configurar mesas</span>
+        <span class="sub">criar, renomear, tirar do mapa</span></span></button>
+      ${onOrder ? `
+      <button class="row" data-act="transfer"><span class="grow"><span class="name">Transferir comanda</span>
+        <span class="sub">mudar de mesa</span></span></button>
+      <button class="row" data-act="cancel"><span class="grow"><span class="name">Cancelar comanda</span>
+        <span class="sub">comanda ${S.order.local_number} · R$ ${money(S.order.total_cents)}</span></span></button>` : ""}
+      <button class="row" data-act="logout"><span class="grow"><span class="name">Encerrar autorização</span></span></button>`,
+  });
+  $("dlgBody").querySelectorAll("[data-act]").forEach((el) => {
+    el.onclick = async () => {
+      $("dlg").close();
+      const act = el.dataset.act;
+      if (act === "tables") setTimeout(tablesAdmin, 120);
+      if (act === "transfer") setTimeout(transferDialog, 120);
+      if (act === "cancel") setTimeout(cancelOrderDialog, 120);
+      if (act === "logout") {
+        await api("/manager/session", {method: "DELETE"}).catch(() => {});
+        S.manager = null;
+      }
+    };
+  });
+}
+
+async function tablesAdmin() {
+  const all = (await api("/tables?include_inactive=true")).tables;
+  ask({
+    title: "Configurar mesas",
+    ok: "Nova mesa", cancel: "Fechar",
+    body: (all.length ? all.map((t) => `
+        <button class="row" data-id="${esc(t.id)}">
+          <span class="grow"><span class="name">${esc(t.label)}</span>
+            <span class="sub">${esc(t.area)} · ${t.seats} lugares${t.is_active ? "" : " · fora do mapa"}${t.order_id ? " · ocupada" : ""}</span></span>
+        </button>`).join("")
+      : `<div class="hint">Nenhuma mesa cadastrada.</div>`)
+      + `<button class="row" data-seed="1"><span class="grow"><span class="name">Criar Mesa 1 a 12</span>
+           <span class="sub">pula as que já existem</span></span></button>`,
+    onOk: () => { setTimeout(() => tableForm(null), 120); },
+  });
+  $("dlgBody").querySelectorAll("[data-id]").forEach((el) => {
+    el.onclick = () => { $("dlg").close(); setTimeout(() => tableForm(all.find((t) => t.id === el.dataset.id)), 120); };
+  });
+  $("dlgBody").querySelector("[data-seed]").onclick = async () => {
+    $("dlg").close();
+    try { await api("/tables/seed", {method: "POST", body: {count: 12}}); await refresh(); render(); }
+    catch (e) { alert(e.message); }
+  };
+}
+
+function tableForm(table) {
+  const t = table || {label: "", area: "Salão", seats: 4, is_active: true};
+  ask({
+    title: table ? "Mesa " + table.label : "Nova mesa",
+    ok: "Salvar",
+    body: `
+      <div><label for="tl">Nome</label><input id="tl" maxlength="32" value="${esc(t.label)}"></div>
+      <div><label for="ta">Área</label><input id="ta" maxlength="32" value="${esc(t.area)}"></div>
+      <div><label for="ts">Lugares</label><input id="ts" type="number" min="1" max="99" value="${t.seats}"></div>
+      ${table ? `<div><label for="tact">No mapa do salão</label>
+        <select id="tact"><option value="1"${t.is_active ? " selected" : ""}>Sim</option>
+        <option value="0"${t.is_active ? "" : " selected"}>Não</option></select></div>
+        ${t.order_id ? `<div class="hint">Mesa ocupada pela comanda ${t.local_number}.
+          Só sai do mapa depois que a conta for recebida ou cancelada.</div>` : ""}` : ""}
+      <div class="err"></div>`,
+    onOk: async (body) => {
+      const payload = {
+        label: body.querySelector("#tl").value.trim(),
+        area:  body.querySelector("#ta").value.trim(),
+        seats: Number(body.querySelector("#ts").value) || 4,
+      };
+      if (table) {
+        payload.is_active = body.querySelector("#tact").value === "1";
+        await api("/tables/" + encodeURIComponent(table.id), {method: "PATCH", body: payload});
+      } else {
+        await api("/tables", {method: "POST", body: payload});
+      }
+      await refresh(); render();
+    },
+  });
+}
+
+function transferDialog() {
+  const free = S.tables.filter((t) => t.status === "free" && t.is_active);
+  ask({
+    title: "Transferir comanda",
+    ok: "Transferir",
+    body: free.length
+      ? `<div><label for="tt">Mesa de destino</label><select id="tt">
+           ${free.map((t) => `<option value="${esc(t.id)}">${esc(t.label)} — ${esc(t.area)}</option>`).join("")}
+         </select></div><div class="err"></div>`
+      : `<div class="hint">Não há mesa livre. Juntar duas contas é operação de caixa.</div><div class="err"></div>`,
+    onOk: async (body) => {
+      const select = body.querySelector("#tt");
+      if (!select) return true;
+      const order = await api(`/orders/${encodeURIComponent(S.order.order_id)}/transfer`,
+        {method: "POST", body: {table_id: select.value}});
+      await refresh(); await loadOrder(order.order_id);
+    },
+  });
+}
+
+function cancelOrderDialog() {
+  ask({
+    title: "Cancelar comanda " + S.order.local_number,
+    ok: "Cancelar comanda", cancel: "Voltar", danger: true,
+    body: `<div class="hint">Os ${S.order.items.filter((i) => !i.canceled).length} itens saem da conta e da fila
+        da cozinha. Fica registrado no seu nome, na trilha de auditoria.</div>
+      <div><label for="cr">Motivo</label><input id="cr" maxlength="200" placeholder="Cliente desistiu"></div>
+      <div class="err"></div>`,
+    onOk: async (body) => {
+      const reason = body.querySelector("#cr").value.trim();
+      if (reason.length < 3) { body.querySelector(".err").textContent = "Descreva o motivo."; return false; }
+      await api(`/orders/${encodeURIComponent(S.order.order_id)}/cancel`,
+        {method: "POST", body: {reason}});
+      S.view = "map"; S.order = null;
+      await refresh(); render();
+    },
+  });
+}
+
+/* -- ciclo --------------------------------------------------------------- */
+
+$("back").onclick = async () => { S.view = "map"; S.order = null; await refresh(); render(); };
+
+async function refresh() {
+  if (!S.token) return;
+  try { S.tables = (await api("/tables")).tables; } catch (e) { /* o aviso de offline já apareceu */ }
+}
+
+function render() {
+  if (!S.token) return renderPairing();
+  if (S.view === "order" && S.order) return renderOrder();
+  S.view = "map";
+  renderMap();
+}
+
+/* Recarrega o mapa a cada 5 s. Não é tempo real e não precisa ser: o garçom
+   olha para o mapa entre um atendimento e outro, e um WebSocket por celular
+   custaria uma thread por aparelho no processo que grava a venda. */
+function startPolling() {
+  clearInterval(S.timer);
+  S.timer = setInterval(async () => {
+    if (document.hidden || $("dlg").open) return;
+    await refresh();
+    if (S.view === "map") renderMap();
+  }, 5000);
+}
+
+(async function boot() {
+  S.operator = S.operator || S.device;
+  if (S.token) {
+    try {
+      const health = await fetch("/health").then((r) => r.json());
+      S.store = health.store_name || S.store;
+      localStorage.setItem("pdv.store", S.store);
+    } catch (e) { $("offline").classList.remove("hidden"); }
+    await refresh();
+  }
+  render();
+  startPolling();
+})();
+</script>
+</body>
+</html>

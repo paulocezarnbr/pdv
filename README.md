@@ -29,7 +29,8 @@ commit** da mudança de código.
 
 ## Estado atual
 
-✅ **Fases 1, 2, 2.5 e 3** implementadas — 192 testes passando.
+✅ **Fases 1, 2, 2.5, 3 e 3.6** implementadas, **3.5.b** no terminal — 271
+testes passando.
 
 O que já funciona ponta a ponta, sem internet:
 
@@ -47,11 +48,16 @@ O que já funciona ponta a ponta, sem internet:
 7. Tudo isso numa **única transação SQLite** + enfileiramento no outbox de sync.
 8. **Servidor local do salão** (`_pdvedge._tcp`): o PDV é o servidor do app do
    garçom e do KDS, com idempotência ponta a ponta por `client_uuid`.
-9. Instalador único com provisionamento automático de periféricos, ativação do
-   terminal e atualização in-place.
+9. **App do garçom em web**, servido pelo próprio PDV — mapa de mesas, comanda,
+   pedido de conta e opções de gerente. Ver a seção abaixo.
+10. **Inbox de comandos remotos**: desconto e cancelamento vindos do painel são
+    aplicados **uma vez só**, dentro dos tetos do perfil de quem emitiu.
+11. Instalador único com provisionamento automático de periféricos, ativação do
+    terminal e atualização in-place.
 
-🔜 Próximo: o aplicativo do garçom em si (o contrato do servidor está pronto e
-testado) e a Fase 3.5 — painel administrativo remoto.
+🔜 Próximo: o transporte dos comandos remotos (`fetch`/`report` no motor de
+sync) e o painel web da Fase 3.5.a. O app nativo do garçom segue no roteiro —
+o web **não** o substitui, resolve o que ele não resolve.
 
 ---
 
@@ -109,6 +115,36 @@ A base de demonstração traz `bruno` / `1234` como gerente (teto de 30%) e
 `ana` / `1111` como caixa — que tem PIN válido e, de propósito, **não** pode
 autorizar: liberar o próprio cancelamento é o furto inteiro em um passo.
 
+---
+
+## App do garçom
+
+O PDV serve o app do salão em `http://<ip-do-caixa>:8420`. O endereço aparece
+no **Painel do salão** (F8), junto do código de pareamento: o garçom abre no
+navegador do celular, digita o código e está dentro. Dá para fixar na tela
+inicial — abre em tela cheia, sem barra de endereço.
+
+| Tela | O que faz |
+|---|---|
+| Mapa do salão | Mesas por área, com livre / ocupada / **pedindo a conta** e o total |
+| Comanda | Itens com o estado na cozinha, lançar item, pedir a conta |
+| Gerente (⚙) | Configurar mesas, transferir comanda, cancelar comanda |
+
+Decisões que valem registro:
+
+| Decisão | Motivo |
+|---|---|
+| Web, servido pelo PDV | Sem loja de aplicativo e sem versão de celular defasada falando com um terminal novo — a classe de bug mais cara de diagnosticar por telefone. |
+| **Não** é offline-first | O PDV é a autoridade da comanda. Guardar pedido no celular criaria uma segunda fonte de verdade sobre o que a mesa consumiu. Wi-Fi caído tem solução física; conta divergente, não. |
+| Uma comanda por mesa | Dois garçons abrindo a mesma mesa partiam a conta em duas que ninguém junta na hora de cobrar. Tocar em mesa ocupada abre a comanda que já existe. |
+| Pedir a conta ≠ receber | Um segundo ponto de recebimento, sem gaveta e sem conferência de troco, é como o furto de salão entra pela porta da frente. |
+| Gerente vale 10 min, por aparelho | O celular fica no balcão desbloqueado a noite inteira. Sessão que durasse o turno seria promover o aparelho. |
+| Item por peso ausente do cardápio | Quem pesa é a balança do balcão, que guarda o quadro cru como prova. Peso digitado por quem cobra é o buraco que o módulo anti-furto existe para fechar. |
+| Mesa desativa, nunca apaga | Comandas antigas apontam para ela; apagar a linha custaria todo o relatório de faturamento por mesa. |
+
+O PIN de gerente é validado **offline**, com o mesmo Argon2id e o mesmo
+bloqueio progressivo do balcão. `bruno` / `1234` na base de demonstração;
+`ana` / `1111` tem PIN válido e, de propósito, **não** autoriza.
 ---
 
 ## Sistema visual

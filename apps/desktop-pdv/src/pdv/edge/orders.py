@@ -38,6 +38,8 @@ from pdv.data.database import Database
 from pdv.data.repositories import OutboxRepository, ProductRepository, SaleRepository
 from pdv.domain.errors import PdvError
 from pdv.domain.models import (
+    AuditEventType,
+    AuditSeverity,
     Cents,
     EntityId,
     Grams,
@@ -48,6 +50,8 @@ from pdv.domain.models import (
     utc_now,
 )
 from pdv.edge.hub import Event, EventHub
+from pdv.edge.tables import TableError, TableService
+from pdv.services.audit import AuditService
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +68,20 @@ class ProductNotSellableError(PdvError):
     """Produto inexistente, inativo ou que exige balança."""
 
 
+class TableOccupiedError(PdvError):
+    """A mesa já tem comanda aberta.
+
+    Carrega o pedido existente porque a resposta certa para o garçom não é um
+    erro: é a comanda que já está lá. Quem toca numa mesa ocupada quer lançar
+    nela, e abrir uma segunda comanda partiria a conta em duas que ninguém
+    consegue juntar na hora de cobrar.
+    """
+
+    def __init__(self, message: str, order: TableOrder) -> None:
+        super().__init__(message)
+        self.order = order
+
+
 @dataclass(frozen=True, slots=True)
 class TableOrder:
     id: EntityId
@@ -73,6 +91,25 @@ class TableOrder:
     status: str
     total_cents: Cents
     item_count: int
+    table_id: EntityId | None = None
+    bill_requested_at: str | None = None
+
+    @property
+    def bill_requested(self) -> bool:
+        return bool(self.bill_requested_at)
+
+    def to_json(self) -> dict[str, object]:
+        return {
+            "order_id": self.id,
+            "client_uuid": self.client_uuid,
+            "local_number": self.local_number,
+            "table_id": self.table_id,
+            "table_label": self.table_label,
+            "status": self.status,
+            "total_cents": int(self.total_cents),
+            "item_count": self.item_count,
+            "bill_requested_at": self.bill_requested_at,
+        }
 
 
 class TableOrderService:
@@ -96,19 +133,40 @@ class TableOrderService:
         *,
         client_uuid: EntityId,
         operator_id: EntityId,
-        table_label: str,
         origin_device_id: EntityId,
+        table_id: EntityId | None = None,
+        table_label: str = "",
     ) -> TableOrder:
         """Abre um pedido, ou devolve o existente se o uuid já foi visto.
 
         Reenviar após um timeout é o caso **normal** no salão, não a exceção: o
         Wi-Fi da loja cai atrás da geladeira e o celular não sabe se o pedido
         entrou. Por isso repetir é seguro por construção.
+
+        Args:
+            table_id: a mesa do cadastro. `table_label` sozinho continua aceito
+                para não quebrar aparelho antigo ainda não atualizado — mas o
+                rótulo é resolvido contra o cadastro, e um nome desconhecido é
+                recusado em vez de criar mesa fantasma.
+
+        Raises:
+            TableOccupiedError: a mesa já tem comanda aberta. A exceção carrega
+                essa comanda, que é o que o app deve abrir.
         """
         existing = self._find_by_client_uuid(client_uuid)
         if existing is not None:
             logger.info("Pedido reenviado, devolvendo o existente: %s", client_uuid)
             return existing
+
+        table = self._resolve_table(table_id, table_label)
+        # A trava que faltava. Sem ela, dois garçons tocando na mesma mesa ao
+        # mesmo tempo abriam duas comandas para um cliente só.
+        occupying = self._open_order_of(table.id)
+        if occupying is not None:
+            raise TableOccupiedError(
+                f"A {table.label} já tem a comanda {occupying.local_number} aberta.",
+                occupying,
+            )
 
         order_id = new_id()
         now = iso(utc_now())
@@ -128,12 +186,13 @@ class TableOrderService:
                     channel="waiter",
                     origin_device_id=origin_device_id,
                 )
-                # A mesa mora no pedido, não numa tabela à parte: o salão desta
-                # fase é simples e uma tabela `tables` só ganharia sentido com
-                # mapa de salão, junção e transferência de mesa (Fase 5).
+                # `customer_id` guarda a **cópia** do rótulo, e não é redundância
+                # com `table_id`: renomear a mesa amanhã não pode reescrever o
+                # que saiu impresso no cupom de hoje.
                 connection.execute(
-                    "UPDATE orders SET customer_id = ?, updated_at = ? WHERE id = ?",
-                    (table_label.strip()[:32], now, order_id),
+                    "UPDATE orders SET table_id = ?, customer_id = ?, "
+                    "updated_at = ? WHERE id = ?",
+                    (table.id, table.label, now, order_id),
                 )
 
                 self._outbox.enqueue(
@@ -145,7 +204,8 @@ class TableOrderService:
                     payload={
                         "id": order_id,
                         "channel": "waiter",
-                        "table_label": table_label,
+                        "table_id": table.id,
+                        "table_label": table.label,
                         "local_number": local_number,
                         "origin_device_id": origin_device_id,
                     },
@@ -162,10 +222,11 @@ class TableOrderService:
             id=EntityId(order_id),
             client_uuid=client_uuid,
             local_number=local_number,
-            table_label=table_label,
+            table_label=table.label,
             status="open",
             total_cents=Cents(0),
             item_count=0,
+            table_id=table.id,
         )
         self._hub.publish(
             Event(
@@ -173,11 +234,231 @@ class TableOrderService:
                 {
                     "order_id": order.id,
                     "local_number": order.local_number,
+                    "table_id": table.id,
                     "table_label": order.table_label,
                 },
             )
         )
         return order
+
+    # -- fechamento ----------------------------------------------------------- #
+
+    def request_bill(self, order_id: EntityId) -> TableOrder:
+        """O garçom pede a conta. **Não** recebe.
+
+        Aqui está a divisão que mantém o dinheiro num lugar só: o celular
+        sinaliza que a mesa quer fechar, e o caixa recebe. Deixar o app fechar a
+        conta criaria um segundo ponto de recebimento — sem gaveta, sem
+        impressora e sem conferência de troco — que é como o furto de sala entra
+        pela porta da frente.
+
+        Repetir é inofensivo: marcar duas vezes não muda o instante gravado.
+        """
+        order = self._require_open(order_id)
+        if order.bill_requested:
+            return order
+
+        now = iso(utc_now())
+        with self._db.transaction() as connection:
+            connection.execute(
+                "UPDATE orders SET bill_requested_at = ?, updated_at = ?, "
+                "is_synced = 0 WHERE id = ? AND status = 'open'",
+                (now, now, order_id),
+            )
+            self._outbox.enqueue(
+                connection,
+                entity_table="orders",
+                entity_id=order_id,
+                client_uuid=EntityId(new_id()),
+                operation="update",
+                payload={"id": order_id, "bill_requested_at": now},
+            )
+
+        self._hub.publish(
+            Event(
+                "order.bill_requested",
+                {
+                    "order_id": order_id,
+                    "local_number": order.local_number,
+                    "table_label": order.table_label,
+                    "total_cents": int(order.total_cents),
+                },
+            )
+        )
+        logger.info("Conta pedida: mesa %s", order.table_label)
+        return self.get_order(order_id)
+
+    def clear_bill_request(self, order_id: EntityId) -> TableOrder:
+        """Desfaz o pedido de conta — a mesa resolveu pedir sobremesa."""
+        now = iso(utc_now())
+        with self._db.transaction() as connection:
+            connection.execute(
+                "UPDATE orders SET bill_requested_at = NULL, updated_at = ?, "
+                "is_synced = 0 WHERE id = ? AND status = 'open'",
+                (now, order_id),
+            )
+        self._hub.publish(Event("order.bill_cleared", {"order_id": order_id}))
+        return self.get_order(order_id)
+
+    def cancel_order(
+        self,
+        *,
+        order_id: EntityId,
+        authorizer_id: EntityId,
+        authorizer_name: str,
+        reason: str,
+    ) -> TableOrder:
+        """Cancela a comanda inteira — **exige gerente** (ver `manager.py`).
+
+        Uma mesa aberta por engano precisa sumir do salão, senão o mapa mente e
+        a mesa fica bloqueada a noite toda. Mas cancelar comanda com item
+        lançado é o vetor de furto clássico: a comida sai, a comanda some.
+        Por isso passa por credencial e vira evento `critical` no ledger.
+        """
+        order = self._require_open(order_id)
+        reason = " ".join(str(reason).split())[:200]
+        if not reason:
+            raise ProductNotSellableError("Cancelar comanda exige motivo.")
+
+        now = iso(utc_now())
+        with self._db.transaction() as connection:
+            connection.execute(
+                "UPDATE order_items SET canceled_at = ?, canceled_by_user_id = ?, "
+                "cancel_reason = ? WHERE order_id = ? AND canceled_at IS NULL",
+                (now, authorizer_id, f"[comanda cancelada] {reason}", order_id),
+            )
+            # Ticket na fila da cozinha de comanda cancelada some da tela: manter
+            # é mandar preparar comida que ninguém vai receber.
+            connection.execute(
+                "UPDATE kds_tickets SET status = 'canceled', updated_at = ? "
+                " WHERE order_id = ? AND status <> 'canceled'",
+                (now, order_id),
+            )
+            connection.execute(
+                "UPDATE orders SET status = 'canceled', closed_at = ?, "
+                "authorized_by_user_id = ?, subtotal_cents = 0, discount_cents = 0, "
+                "total_cents = 0, updated_at = ?, is_synced = 0 WHERE id = ?",
+                (now, authorizer_id, now, order_id),
+            )
+            self._outbox.enqueue(
+                connection,
+                entity_table="orders",
+                entity_id=order_id,
+                client_uuid=EntityId(new_id()),
+                operation="update",
+                payload={
+                    "id": order_id,
+                    "status": "canceled",
+                    "authorized_by_user_id": authorizer_id,
+                    "reason": reason,
+                },
+            )
+            self._audit().append(
+                connection,
+                event_type=AuditEventType.ITEM_CANCELED,
+                actor_user_id=authorizer_id,
+                authorizer_user_id=authorizer_id,
+                severity=AuditSeverity.CRITICAL,
+                payload={
+                    "order_id": order_id,
+                    "local_number": order.local_number,
+                    "table_label": order.table_label,
+                    "item_count": order.item_count,
+                    "total_cents": int(order.total_cents),
+                    "reason": reason,
+                    "authorizer_name": authorizer_name,
+                    "channel": "waiter",
+                },
+            )
+
+        self._hub.publish(
+            Event(
+                "order.canceled",
+                {
+                    "order_id": order_id,
+                    "local_number": order.local_number,
+                    "table_label": order.table_label,
+                },
+            )
+        )
+        logger.warning(
+            "Comanda %s cancelada por %s: %s",
+            order.local_number, authorizer_name, reason,
+        )
+        return self.get_order(order_id)
+
+    def transfer(
+        self,
+        *,
+        order_id: EntityId,
+        table_id: EntityId,
+        authorizer_id: EntityId,
+        authorizer_name: str,
+    ) -> TableOrder:
+        """Muda a comanda de mesa.
+
+        A mesa de destino precisa estar livre. Empurrar uma comanda para cima de
+        outra juntaria duas contas sem ninguém decidir isso — e a junção de
+        contas é operação de caixa, não de celular.
+        """
+        order = self._require_open(order_id)
+        table = self._resolve_table(table_id, "")
+        if table.id == order.table_id:
+            return order
+
+        occupying = self._open_order_of(table.id)
+        if occupying is not None:
+            raise TableOccupiedError(
+                f"A {table.label} já tem a comanda {occupying.local_number} aberta.",
+                occupying,
+            )
+
+        now = iso(utc_now())
+        with self._db.transaction() as connection:
+            connection.execute(
+                "UPDATE orders SET table_id = ?, customer_id = ?, updated_at = ?, "
+                "is_synced = 0 WHERE id = ?",
+                (table.id, table.label, now, order_id),
+            )
+            self._outbox.enqueue(
+                connection,
+                entity_table="orders",
+                entity_id=order_id,
+                client_uuid=EntityId(new_id()),
+                operation="update",
+                payload={
+                    "id": order_id,
+                    "table_id": table.id,
+                    "table_label": table.label,
+                },
+            )
+            self._audit().append(
+                connection,
+                event_type=AuditEventType.PRICE_OVERRIDE,
+                actor_user_id=authorizer_id,
+                authorizer_user_id=authorizer_id,
+                severity=AuditSeverity.WARNING,
+                payload={
+                    "operation": "table_transfer",
+                    "order_id": order_id,
+                    "from_table": order.table_label,
+                    "to_table": table.label,
+                    "authorizer_name": authorizer_name,
+                    "channel": "waiter",
+                },
+            )
+
+        self._hub.publish(
+            Event(
+                "order.transferred",
+                {
+                    "order_id": order_id,
+                    "from_table": order.table_label,
+                    "to_table": table.label,
+                },
+            )
+        )
+        return self.get_order(order_id)
 
     # -- itens ---------------------------------------------------------------- #
 
@@ -302,13 +583,20 @@ class TableOrderService:
 
     # -- consultas ------------------------------------------------------------ #
 
+    #: Colunas do pedido de mesa. Uma constante porque `get_order`,
+    #: `list_open_orders` e a busca por mesa precisam montar exatamente o mesmo
+    #: `TableOrder`, e três listas de colunas divergem na primeira alteração.
+    _SELECT = (
+        "SELECT o.id, o.client_uuid, o.local_number, o.customer_id, o.status, "
+        "       o.total_cents, o.table_id, o.bill_requested_at, "
+        "       (SELECT COUNT(*) FROM order_items i "
+        "         WHERE i.order_id = o.id AND i.canceled_at IS NULL) AS items "
+        "  FROM orders o "
+    )
+
     def get_order(self, order_id: EntityId) -> TableOrder:
         row = self._db.query_one(
-            "SELECT o.id, o.client_uuid, o.local_number, o.customer_id, o.status, "
-            "       o.total_cents, "
-            "       (SELECT COUNT(*) FROM order_items i "
-            "         WHERE i.order_id = o.id AND i.canceled_at IS NULL) AS items "
-            "  FROM orders o WHERE o.id = ? AND o.tenant_id = ?",
+            self._SELECT + " WHERE o.id = ? AND o.tenant_id = ?",
             (order_id, self._config.tenant_id),
         )
         if row is None:
@@ -317,16 +605,43 @@ class TableOrderService:
 
     def list_open_orders(self) -> list[TableOrder]:
         rows = self._db.query_all(
-            "SELECT o.id, o.client_uuid, o.local_number, o.customer_id, o.status, "
-            "       o.total_cents, "
-            "       (SELECT COUNT(*) FROM order_items i "
-            "         WHERE i.order_id = o.id AND i.canceled_at IS NULL) AS items "
-            "  FROM orders o "
-            " WHERE o.tenant_id = ? AND o.status = 'open' AND o.channel = 'waiter' "
+            self._SELECT
+            + " WHERE o.tenant_id = ? AND o.status = 'open' AND o.channel = 'waiter' "
             " ORDER BY o.opened_at",
             (self._config.tenant_id,),
         )
         return [_to_order(row) for row in rows]
+
+    def list_items(self, order_id: EntityId) -> list[dict[str, object]]:
+        """Os itens da comanda, para a tela do garçom.
+
+        Os cancelados vêm junto, marcados. Sumir com eles faria a conta parecer
+        ter encolhido sozinha, e é exatamente o item cancelado que o garçom
+        precisa conseguir mostrar ao cliente que reclama.
+        """
+        rows = self._db.query_all(
+            "SELECT i.id, i.product_name, i.quantity, i.unit_price_cents, "
+            "       i.total_cents, i.created_at, i.canceled_at, i.cancel_reason, "
+            "       (SELECT t.status FROM kds_tickets t "
+            "         WHERE t.order_item_id = i.id ORDER BY t.created_at DESC "
+            "         LIMIT 1) AS kds_status "
+            "  FROM order_items i WHERE i.order_id = ? ORDER BY i.created_at",
+            (order_id,),
+        )
+        return [
+            {
+                "id": str(row["id"]),
+                "product_name": str(row["product_name"]),
+                "quantity": str(row["quantity"]),
+                "unit_price_cents": int(row["unit_price_cents"]),
+                "total_cents": int(row["total_cents"]),
+                "created_at": str(row["created_at"]),
+                "canceled": row["canceled_at"] is not None,
+                "cancel_reason": row["cancel_reason"],
+                "kds_status": row["kds_status"],
+            }
+            for row in rows
+        ]
 
     # -- internos ------------------------------------------------------------- #
 
@@ -336,6 +651,48 @@ class TableOrderService:
             (client_uuid, self._config.tenant_id),
         )
         return self.get_order(EntityId(str(row["id"]))) if row else None
+
+    def _open_order_of(self, table_id: EntityId) -> TableOrder | None:
+        row = self._db.query_one(
+            self._SELECT
+            + " WHERE o.tenant_id = ? AND o.table_id = ? AND o.status = 'open' "
+            " ORDER BY o.opened_at LIMIT 1",
+            (self._config.tenant_id, table_id),
+        )
+        return _to_order(row) if row else None
+
+    def _resolve_table(self, table_id: EntityId | None, label: str):  # noqa: ANN202
+        """Aceita id ou rótulo, e sempre devolve mesa do **cadastro**.
+
+        Aceitar rótulo livre foi o que criou "mesa 5", "Mesa 5" e "M5" como três
+        mesas distintas. Aqui um nome desconhecido é recusado — o app mostra o
+        mapa e o garçom escolhe.
+        """
+        tables = TableService(self._db, self._config)
+        if table_id:
+            table = tables.get(EntityId(str(table_id)))
+            if not table.is_active:
+                raise TableError(f"A {table.label} está fora do mapa do salão.")
+            return table
+
+        found = tables.find_by_label(label) if label.strip() else None
+        if found is None:
+            raise TableError(
+                f"Mesa {label.strip()!r} não existe no cadastro. "
+                "Cadastre-a nas opções de gerente antes de usá-la."
+                if label.strip()
+                else "Escolha uma mesa do salão."
+            )
+        return found
+
+    def _audit(self) -> AuditService:
+        return AuditService(
+            tenant_id=EntityId(self._config.tenant_id),
+            store_id=EntityId(self._config.store_id),
+            device_id=EntityId(self._config.device_id),
+            outbox=self._outbox,
+            device_secret=self._config.device_secret,
+        )
 
     def _require_open(self, order_id: EntityId) -> TableOrder:
         order = self.get_order(order_id)
@@ -356,4 +713,18 @@ def _to_order(row: sqlite3.Row) -> TableOrder:
         status=str(row["status"]),
         total_cents=Cents(int(row["total_cents"])),
         item_count=int(row["items"]),
+        table_id=EntityId(str(row["table_id"])) if row["table_id"] else None,
+        bill_requested_at=(
+            str(row["bill_requested_at"]) if row["bill_requested_at"] else None
+        ),
     )
+
+
+__all__ = [
+    "OrderClosedError",
+    "OrderNotFoundError",
+    "ProductNotSellableError",
+    "TableOccupiedError",
+    "TableOrder",
+    "TableOrderService",
+]
