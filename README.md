@@ -108,11 +108,12 @@ O operador não tira a mão do teclado numa fila.
 | `F6` | Desconto percentual — exige credencial de gerente, limitada ao teto do perfil |
 | `F8` | Painel do salão: pareamento, mesas abertas e fila da cozinha |
 | `F10` | Receber (dinheiro, débito, crédito, PIX ou dividido) e imprimir |
+| `F12` | Fechamento cego do caixa — exige credencial de gerente |
 
 A autorização de gerente é validada **offline**, com Argon2id contra a réplica
 local de `users.pin_hash`, e cada tentativa recusada vira evento de auditoria.
-A base de demonstração traz `bruno` / `1234` como gerente (teto de 30%) e
-`ana` / `1111` como caixa — que tem PIN válido e, de propósito, **não** pode
+A base de demonstração traz `bruno` / `483916` como gerente (teto de 30%) e
+`ana` / `705284` como caixa — que tem PIN válido e, de propósito, **não** pode
 autorizar: liberar o próprio cancelamento é o furto inteiro em um passo.
 
 ---

@@ -4,7 +4,7 @@ Princípios de UI de PDV que o layout respeita:
 
 * **Teclado acima do mouse.** O operador não tira a mão do teclado numa fila.
   F2 registra o pesado, F3 lança o unitário, F4 cancela item, F6 desconta,
-  F8 abre o salão, F9 as mesas, F10 finaliza.
+  F8 abre o salão, F9 as mesas, F10 finaliza e F12 fecha o caixa.
 * **O peso é o maior elemento da tela.** É o número que o cliente confere de pé
   do outro lado do balcão.
 * **Estado de conexão sempre visível.** O operador precisa saber que está
@@ -62,6 +62,7 @@ from pdv.hardware.scale.worker import ScaleService
 from pdv.remote.inbox import InboxRepository
 from pdv.services.authorization import AuthorizationService, Identity
 from pdv.services.checkout import CheckoutService
+from pdv.services.cash_session import CashSessionError, CashSessionService
 from pdv.ui import theme
 from pdv.ui.dialogs import ManagerAuthDialog, PaymentDialog
 from pdv.ui.salon_panel import SalonPanel
@@ -92,12 +93,14 @@ class CounterWindow(QMainWindow):
         database: Database,
         *,
         operator: Identity,
+        cash_sessions: CashSessionService | None = None,
         edge_port: int | None = None,
         edge_scheme: str = "http",
         edge_tls=None,  # noqa: ANN001 - TlsMaterial | None
     ) -> None:
         super().__init__()
         self._operator = operator
+        self._cash_sessions = cash_sessions
         self._checkout = checkout
         self._scale = scale
         self._printer = printer
@@ -147,6 +150,7 @@ class CounterWindow(QMainWindow):
         # sem isso, o operador que assume vende no nome de quem saiu — e a
         # trilha de auditoria passa a apontar para a pessoa errada.
         self._operator_label = QLabel(f"Caixa: {self._operator.first_name}")
+        self._cash_label = QLabel("Sessão: aberta" if self._cash_sessions else "")
         self._sync_label = QLabel("Sincronização: —")
         self._connection_label = QLabel("Balança: conectando…")
         self._salon_label = QLabel(
@@ -160,6 +164,7 @@ class CounterWindow(QMainWindow):
         self._command_label.setVisible(False)
         for label in (
             self._operator_label,
+            self._cash_label,
             self._connection_label,
             self._salon_label,
             self._sync_label,
@@ -167,6 +172,7 @@ class CounterWindow(QMainWindow):
         ):
             label.setFont(theme.font(theme.SIZE_MICRO))
         self.statusBar().addPermanentWidget(self._operator_label)
+        self.statusBar().addPermanentWidget(self._cash_label)
         self.statusBar().addPermanentWidget(self._connection_label)
         self.statusBar().addPermanentWidget(self._salon_label)
         self.statusBar().addPermanentWidget(self._sync_label)
@@ -441,6 +447,7 @@ class CounterWindow(QMainWindow):
         QShortcut(QKeySequence("F8"), self, self._open_salon)
         QShortcut(QKeySequence("F9"), self, self._open_tables)
         QShortcut(QKeySequence("F10"), self, self._finalize_sale)
+        QShortcut(QKeySequence("F12"), self, self._close_cash_session)
 
     def _wire_scale(self) -> None:
         self._scale.reading_received.connect(self._on_reading)
@@ -834,6 +841,49 @@ class CounterWindow(QMainWindow):
         self.statusBar().showMessage(
             f"Venda {local_number:06d} finalizada — R$ {format_cents(total)}", 6000
         )
+
+    def _close_cash_session(self) -> None:
+        """F12 fecha o caixa sem revelar o esperado antes da declaração."""
+        if self._cash_sessions is None or self._cash_sessions.current() is None:
+            QMessageBox.information(self, "Fechar caixa", "Não há caixa aberto.")
+            return
+        declared, accepted = QInputDialog.getDouble(
+            self, "Fechamento cego",
+            "Conte o dinheiro da gaveta e informe o total (R$):",
+            0.0, 0.0, 999_999.99, 2,
+        )
+        if not accepted:
+            return
+        authorizer = ManagerAuthDialog.ask(
+            self._authorization,
+            operation="Autorizar o fechamento cego desta sessão de caixa.",
+            parent=self,
+        )
+        if authorizer is None:
+            return
+        try:
+            result = self._cash_sessions.close(
+                declared_cents=Cents(
+                    int((Decimal(str(declared)) * Decimal(100)).quantize(Decimal("1")))
+                ),
+                operator_id=self._operator_id,
+                authorizer_id=authorizer.id,
+            )
+        except CashSessionError as exc:
+            QMessageBox.critical(self, "Fechar caixa", str(exc))
+            return
+        sign = "+" if int(result.difference_cents) > 0 else ""
+        QMessageBox.information(
+            self,
+            "Caixa fechado",
+            f"Declarado: R$ {format_cents(result.declared_cents)}\n"
+            f"Esperado: R$ {format_cents(result.expected_cents)}\n"
+            f"Divergência: {sign}R$ {format_cents(result.difference_cents)}",
+        )
+        self._cash_label.setText("Sessão: fechada")
+        # Uma sessão encerrada não pode continuar recebendo vendas. Fechar a
+        # janela força novo login e uma nova abertura antes da próxima venda.
+        self.close()
 
     def _refresh_total(self) -> None:
         sale = self._checkout.current_sale

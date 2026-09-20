@@ -412,12 +412,13 @@ paralelo.
 - [ ] Créditos pré-pagos com **ledger de saldo** — nunca uma coluna mutável de saldo.
 - [ ] Fiado com limite de crédito, bloqueio automático e aging de recebíveis.
 - [ ] Níveis de desconto (Diamante / Funcionário / Dono) com teto e autorização.
-- [~] Conciliação cega de caixa: o núcleo já abre a sessão, soma apenas
+- [x] Conciliação cega de caixa: o núcleo abre a sessão, soma apenas
       dinheiro líquido de troco, grava o declarado antes de revelar o esperado,
       calcula a divergência e fecha auditoria + Outbox na mesma transação. O
-      PostgreSQL recebeu a migration 006 e a lista branca do sync. Falta ligar
-      os diálogos de abertura/fechamento à janela do caixa e exigir gerente
-      acima da tolerância configurada.
+      PostgreSQL recebeu a migration 006 e a lista branca do sync. A abertura
+      ocorre depois do login e o fechamento F12 exige gerente; depois de fechar,
+      a janela termina para impedir venda fora de sessão. A política atual é
+      deliberadamente mais rígida que uma tolerância: todo fechamento é autorizado.
 - **Aceite:** o operador não obtém o valor esperado do caixa por nenhuma tela,
   relatório ou endpoint antes do fechamento — teste de API incluído.
 

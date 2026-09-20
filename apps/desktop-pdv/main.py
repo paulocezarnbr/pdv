@@ -32,15 +32,16 @@ from __future__ import annotations
 import logging
 import os
 import sys
+from decimal import Decimal
 
-from PySide6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtWidgets import QApplication, QInputDialog, QMessageBox
 
 from pdv.config import AppConfig
 from pdv.data.database import Database
 from pdv.data.repositories import OutboxRepository
 from pdv.data.seed import seed_demo_data
 from pdv.domain.errors import AuditChainError
-from pdv.domain.models import EntityId
+from pdv.domain.models import Cents, EntityId
 from pdv.edge.worker import EdgeServer
 from pdv.hardware.printer.backends import PrintService, build_printer
 from pdv.hardware.scale.serial_scale import build_scale
@@ -50,6 +51,7 @@ from pdv.provisioning.secrets import SecretVault
 from pdv.remote.commands import RemoteCommandService
 from pdv.services.audit import AuditService
 from pdv.services.authorization import AuthorizationService
+from pdv.services.cash_session import CashSessionError, CashSessionService
 from pdv.services.checkout import CheckoutService
 from pdv.sync.engine import SyncEngine
 from pdv.sync.transport import HttpTransport
@@ -164,6 +166,35 @@ def main() -> int:
 
     logger.info("Caixa aberto por %s (%s)", operator.name, operator.role)
 
+    cash_sessions = CashSessionService(database, config)
+    open_session = cash_sessions.current()
+    if open_session is not None and open_session.operator_id != EntityId(str(operator.id)):
+        QMessageBox.critical(
+            None,
+            "Caixa em uso",
+            "Há uma sessão de caixa aberta por outro operador. "
+            "Entre com o operador responsável para encerrá-la.",
+        )
+        return 1
+    if open_session is None:
+        opening, accepted = QInputDialog.getDouble(
+            None, "Abrir caixa", "Fundo de troco inicial (R$):",
+            0.0, 0.0, 999_999.99, 2,
+        )
+        if not accepted:
+            logger.info("Abertura de caixa cancelada; o PDV não foi iniciado.")
+            return 0
+        try:
+            cash_sessions.open(
+                operator_id=EntityId(str(operator.id)),
+                opening_cents=Cents(
+                    int((Decimal(str(opening)) * Decimal(100)).quantize(Decimal("1")))
+                ),
+            )
+        except CashSessionError as exc:
+            QMessageBox.critical(None, "Abrir caixa", str(exc))
+            return 1
+
     checkout = CheckoutService(database, config)
 
     scale = ScaleService(build_scale(config.scale), config.scale)
@@ -190,6 +221,7 @@ def main() -> int:
         config,
         database,
         operator=operator,
+        cash_sessions=cash_sessions,
         edge_port=edge.port if edge is not None else None,
         edge_scheme=edge.scheme if edge is not None else "http",
         edge_tls=edge.tls if edge is not None else None,
