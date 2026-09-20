@@ -1,6 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 
+import "@carbon/styles/css/styles.css";
+import "./globals.css";
+
 export const metadata: Metadata = {
   title: "ERP Food Service",
   description: "Retaguarda do ERP de food service.",
@@ -17,19 +20,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="pt-BR">
-      <body
-        style={{
-          margin: 0,
-          minHeight: "100vh",
-          background: "#0e1116",
-          color: "#e7eaef",
-          fontFamily:
-            '"Segoe UI Variable Text","Segoe UI",system-ui,"Noto Sans",sans-serif',
-          fontVariantNumeric: "tabular-nums",
-        }}
-      >
-        {children}
-      </body>
+      <body className="cds--g100">{children}</body>
     </html>
   );
 }

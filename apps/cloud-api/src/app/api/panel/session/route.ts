@@ -29,11 +29,24 @@ import {
   SESSION_COOKIE,
   verifyPassword,
   type PanelUser,
+  requirePanelUser,
 } from "@/lib/auth/panel";
 import { sql } from "@/lib/db";
 import { ApiError, clientIp, handler, json, parseBody } from "@/lib/http";
 
 export const dynamic = "force-dynamic";
+
+export const GET = handler(async (request) => {
+  const user = await requirePanelUser(request);
+  return json({
+    user: {
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      canAuthorize: user.canAuthorize,
+    },
+  });
+});
 
 const MAX_ATTEMPTS = 8;
 const WINDOW_MINUTES = 15;

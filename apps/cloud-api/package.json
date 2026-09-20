@@ -10,7 +10,8 @@
   "scripts": {
     "dev": "next dev --port 3000",
     "build": "next build",
-    "start": "next start --port ${PORT:-3000}",
+    "start": "next start",
+    "start:standalone": "node .next/standalone/server.js",
     "migrate": "tsx scripts/migrate.ts",
     "sign": "tsx scripts/sign.ts",
     "test": "vitest run",
@@ -20,6 +21,8 @@
     "e2e": "python scripts/e2e.py"
   },
   "dependencies": {
+    "@carbon/icons-react": "^11.73.0",
+    "@carbon/react": "^1.94.0",
     "next": "15.5.25",
     "postgres": "3.4.5",
     "react": "19.1.0",

@@ -194,6 +194,24 @@ node --experimental-strip-types scripts/seed-tenant.ts \
 O script imprime a senha gerada **uma única vez** — ela não é recuperável
 depois, porque só o hash é guardado. Anote antes de fechar o terminal.
 
+### Entrar no painel
+
+Abra a raiz do domínio configurado no Coolify, por exemplo:
+
+```text
+https://api.seudominio.com.br/
+```
+
+Use o e-mail e a senha criados pelo script. O cookie da sessão é `HttpOnly`,
+`SameSite=Lax` e `Secure`; por isso o painel deve ser acessado por **HTTPS**.
+Em HTTP puro o navegador recebe a sessão, mas corretamente se recusa a
+reenviá-la. O proxy do Coolify cuida do certificado público e da renovação.
+
+O painel consolida todas as lojas do tenant e permite filtrar uma loja. A API
+valida esse filtro contra o tenant da sessão; trocar o UUID na URL não permite
+consultar outra empresa. Os números são atualizados automaticamente a cada
+30 segundos, e o horário do último dado fica sempre visível.
+
 ---
 
 ## Atualizar

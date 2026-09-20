@@ -221,16 +221,22 @@ lugar pelo navegador e **agir à distância** — alterar um pedido, conceder um
 desconto, cancelar um item — sem precisar estar na loja.
 
 #### 3.5.a — Telemetria ao vivo (caminho de leitura)
-- [ ] Dashboard web por loja: faturamento do dia, ticket médio, vendas/hora,
-      ranking de produtos, CMV e margem — atualizando via WebSocket.
-- [ ] Visão consolidada multi-loja para o dono (respeitando `tenant_id`).
-- [ ] Estado operacional de cada terminal: online/offline, **itens pendentes de
+- [~] Dashboard web por loja: faturamento do dia, ticket médio, vendas/hora,
+      ranking de produtos, CMV, margem, descontos e gorjetas. Atualiza a cada
+      30 s e sob demanda; WebSocket fica para o próximo incremento.
+- [x] Visão consolidada multi-loja para o dono (respeitando `tenant_id`) e
+      filtro de loja validado no servidor, não confiado ao navegador.
+- [~] Estado operacional de cada terminal: online/offline, **itens pendentes de
       sincronização**, último ACK, drift de relógio, papel da impressora.
-- [ ] Indicador explícito de **frescor do dado**: "atualizado há 8 s" vs
+      Já entrega último contato e comandos remotos pendentes; a telemetria de
+      papel, drift e tamanho da Outbox ainda precisa nascer no terminal.
+- [x] Indicador explícito de **frescor do dado**: "atualizado há 8 s" vs
       "terminal offline há 40 min — números podem estar defasados". Dashboard
       que mente sobre estar atualizado é pior que dashboard sem dado.
-- [ ] Alertas: caixa mudo, divergência de conciliação, pico de cancelamentos,
+- [~] Alertas: caixa mudo, divergência de conciliação, pico de cancelamentos,
       estoque negativo, cadeia de auditoria acusando adulteração.
+      Alertas de fraude/ledger em aberto já aparecem; as demais regras entram
+      junto da conciliação cega da Fase 4.
 
 #### 3.5.b — Comandos remotos (caminho de escrita)
 > ⚠️ **Inverte o modelo de confiança.** Até aqui o PDV só *enviava*. Aceitar
