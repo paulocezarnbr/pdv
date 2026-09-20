@@ -30,7 +30,7 @@ commit** da mudança de código.
 ## Estado atual
 
 ✅ **Fases 1, 2, 2.5, 3, 3.5, 3.6 e 4** implementadas; a fundação da Fase 5
-(fiscal) já começou. A suíte desktop tem **447 testes** passando.
+(fiscal) já começou. A suíte desktop tem **453 testes** passando.
 
 O que já funciona ponta a ponta, sem internet:
 
@@ -59,7 +59,9 @@ O que já funciona ponta a ponta, sem internet:
     autenticado pode criar a conta, o PIN é Argon2id e cada criação entra numa
     auditoria administrativa imutável.
 13. Reserva fiscal offline por terminal, com série própria, numeração atômica,
-    idempotência por venda e fila explícita de contingência.
+    idempotência por venda e fila explícita de contingência. O adaptador
+    open source PyNFe conecta NFC-e do RJ à SVRS sem prender o domínio à
+    biblioteca ou a um SaaS fiscal.
 
 🔜 Próximo: assinatura do XML NFC-e, regras estaduais e transmissão/consulta na
 SEFAZ. O núcleo não declara uma nota “autorizada” antes da resposta fiscal real.

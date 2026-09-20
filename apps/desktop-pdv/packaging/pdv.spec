@@ -24,7 +24,7 @@ Build:
 
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy_metadata
 
 APP_NAME = "PDV"
 SETUP_NAME = "PDVSetup"
@@ -46,6 +46,12 @@ datas = [
     # opera sem internet (ver a rota `/vendor` em `edge/server.py`).
     (str(SRC / "pdv" / "edge" / "webapp" / "vendor"), "pdv/edge/webapp/vendor"),
 ]
+# Schemas e tabelas de endpoints do PyNFe são abertos por caminho em runtime.
+datas += collect_data_files("pynfe")
+# Mantém METADATA, autores e licença LGPL junto do executável distribuído.
+# Código fechado pode usar a biblioteca, mas não pode apagar os direitos e
+# avisos do componente open source que está sendo redistribuído.
+datas += copy_metadata("PyNFe")
 
 hiddenimports = [
     # Backends de impressão resolvidos por import tardio dentro de funções:
@@ -92,6 +98,17 @@ hiddenimports = [
     "cryptography.hazmat.primitives.serialization",
     "cryptography.hazmat.primitives.asymmetric.ec",
     "cryptography.hazmat.bindings._rust",
+    # O provedor fiscal é carregado apenas quando o tenant habilita NFC-e.
+    # Incluí-lo explicitamente evita que a build do caixa funcione até o dia
+    # da primeira emissão fiscal e então falhe por import tardio.
+    "pynfe",
+    "pynfe.entidades",
+    "pynfe.processamento",
+    "pynfe.processamento.comunicacao",
+    "pynfe.processamento.serializacao",
+    "pynfe.utils",
+    "pynfe.utils.webservices",
+    "signxml",
 ]
 
 # Corta o que não é usado no terminal de caixa. Cada exclusão reduz o tamanho

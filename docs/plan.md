@@ -437,7 +437,9 @@ paralelo.
 - [~] NFC-e com contingência offline e transmissão posterior. A fundação local
       já reserva o documento como `contingency_pending`, de forma idempotente,
       preserva o motivo e mantém histórico imutável. Assinatura XML, regras por
-      UF e transmissão SEFAZ continuam pendentes de certificado A1 e CSC.
+      UF e transmissão SEFAZ continuam pendentes de certificado A1 e CSC. O
+      adaptador PyNFe/SVRS para RJ já valida disponibilidade e interpreta
+      autorização exclusivamente pelos códigos fiscais 100/150.
 - [x] Numeração de série por PDV, nunca compartilhada entre estações. A reserva
       usa `BEGIN IMMEDIATE`, chave única por terminal/modelo/série/número e
       devolve o mesmo documento quando a mesma venda é reenviada.

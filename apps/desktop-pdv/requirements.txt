@@ -22,6 +22,16 @@ cryptography==47.0.0    # Certificado TLS autoassinado do servidor do salao
                         # (LAN da loja = Wi-Fi do cliente; sem TLS o token
                         #  do aparelho e o PIN trafegam legiveis)
 
+# --- Fiscal NFC-e (RJ usa a SEFAZ Virtual do RS / SVRS) ---
+# O wheel 0.6.5 não declara suas dependências no metadata do PyPI; por isso
+# elas ficam explícitas e pinadas aqui. Sem isto o instalador conclui e a
+# primeira importação fiscal falha por ausência de `signxml`.
+PyNFe==0.6.5            # LGPL-3.0, comunicação NFe/NFCe com a SEFAZ
+signxml==5.1.0          # assinatura XMLDSig
+lxml==6.1.3             # XML/XSD
+pyOpenSSL==26.1.0       # certificado A1 / TLS mútuo
+requests==2.33.0        # transporte usado internamente pelo PyNFe
+
 # --- Dev ---
 pytest==8.3.2
 pytest-qt==4.5.0
