@@ -389,6 +389,24 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_credit_charge_order
 CREATE INDEX IF NOT EXISTS idx_credit_customer_due
     ON credit_account_ledger(tenant_id,customer_id,due_at,created_at);
 
+CREATE TABLE IF NOT EXISTS discount_tiers (
+    id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, store_id TEXT NOT NULL,
+    code TEXT NOT NULL, name TEXT NOT NULL,
+    percent_basis_points INTEGER NOT NULL CHECK(percent_basis_points BETWEEN 0 AND 10000),
+    priority INTEGER NOT NULL DEFAULT 0, requires_manager INTEGER NOT NULL DEFAULT 0,
+    valid_from TEXT, valid_until TEXT, is_active INTEGER NOT NULL DEFAULT 1,
+    updated_at TEXT NOT NULL, client_uuid TEXT NOT NULL UNIQUE,
+    is_synced INTEGER NOT NULL DEFAULT 0, synced_at TEXT,
+    UNIQUE(tenant_id,store_id,code)
+);
+CREATE TABLE IF NOT EXISTS customer_discount_tiers (
+    customer_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, tier_id TEXT NOT NULL,
+    assigned_by_user_id TEXT NOT NULL, assigned_at TEXT NOT NULL,
+    client_uuid TEXT NOT NULL UNIQUE, is_synced INTEGER NOT NULL DEFAULT 0,
+    synced_at TEXT, FOREIGN KEY(customer_id) REFERENCES customers(id),
+    FOREIGN KEY(tier_id) REFERENCES discount_tiers(id)
+);
+
 -- ===========================================================================
 -- Fase 3 — Servidor local (edge) para o app do garçom e o KDS
 -- ===========================================================================

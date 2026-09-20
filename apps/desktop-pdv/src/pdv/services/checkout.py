@@ -59,6 +59,7 @@ from pdv.services.cashback import CashbackService
 from pdv.services.payments import record_payments, settle_payments
 from pdv.services.prepaid import PrepaidError, PrepaidService
 from pdv.services.credit_account import CreditAccountError, CreditAccountService
+from pdv.services.discount_tiers import DiscountTier
 from pdv.services.pricing import net_weight, price_for_weight
 from pdv.services.stock import StockService, explode_recipe, total_cost_cents
 
@@ -379,6 +380,38 @@ class CheckoutService:
         return item
 
     # -- fechamento ----------------------------------------------------------- #
+
+    def apply_customer_tier(
+        self, *, tier: DiscountTier, operator_id: EntityId,
+        authorizer_id: EntityId | None = None,
+    ) -> Cents:
+        """Aplica o nível sem acumular: prevalece o maior desconto já concedido."""
+        sale = self._current
+        if sale is None or not sale.items:
+            raise InvalidWeightError("Não há venda aberta com itens para aplicar o nível")
+        if tier.requires_manager and authorizer_id is None:
+            raise InvalidWeightError("Este nível exige autorização de gerente.")
+        candidate = tier.discount_for(sale.subtotal_cents)
+        if int(candidate) <= int(sale.discount_cents):
+            return sale.discount_cents
+        with self._db.transaction() as connection:
+            sale.discount_cents = candidate
+            SaleRepository(connection, self._outbox).update_totals(
+                sale.id, sale.subtotal_cents, sale.discount_cents, sale.total_cents
+            )
+            connection.execute(
+                "UPDATE orders SET discount_tier_id=?,authorized_by_user_id=? WHERE id=?",
+                (tier.id, authorizer_id, sale.id),
+            )
+            self._audit().append(
+                connection, event_type=AuditEventType.DISCOUNT_APPLIED,
+                actor_user_id=operator_id, authorizer_user_id=authorizer_id,
+                severity=AuditSeverity.WARNING,
+                payload={"order_id":sale.id,"tier_id":tier.id,"tier_code":tier.code,
+                         "percent_basis_points":tier.percent_basis_points,
+                         "discount_cents":int(candidate),"channel":"automatic_tier"},
+            )
+        return candidate
 
     def finalize_sale(
         self,

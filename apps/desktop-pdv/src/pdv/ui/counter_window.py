@@ -67,6 +67,7 @@ from pdv.services.cash_session import CashSessionError, CashSessionService
 from pdv.services.cashback import CashbackError, CashbackService, Customer
 from pdv.services.prepaid import PrepaidError, PrepaidService
 from pdv.services.credit_account import CreditAccountError, CreditAccountService
+from pdv.services.discount_tiers import DiscountTierError, DiscountTierService
 from pdv.ui import theme
 from pdv.ui.dialogs import ManagerAuthDialog, PaymentDialog
 from pdv.ui.salon_panel import SalonPanel
@@ -117,6 +118,7 @@ class CounterWindow(QMainWindow):
         self._cashback = CashbackService(database, config)
         self._prepaid = PrepaidService(database, config)
         self._credit_account = CreditAccountService(database, config)
+        self._discount_tiers = DiscountTierService(database, config)
         self._operator_id = EntityId(str(operator.id))
 
         self._weighed: list[Product] = []
@@ -452,6 +454,7 @@ class CounterWindow(QMainWindow):
         QShortcut(QKeySequence("F4"), self, self._cancel_item)
         QShortcut(QKeySequence("F5"), self, self._manage_credit_account)
         QShortcut(QKeySequence("F6"), self, self._apply_discount)
+        QShortcut(QKeySequence("Ctrl+F6"), self, self._manage_discount_tiers)
         QShortcut(QKeySequence("F7"), self, self._configure_cashback)
         QShortcut(QKeySequence("F8"), self, self._open_salon)
         QShortcut(QKeySequence("F9"), self, self._open_tables)
@@ -843,6 +846,64 @@ class CounterWindow(QMainWindow):
             f"Cashback de {percent:.2f}% configurado por {authorizer.name}", 8000
         )
 
+    def _manage_discount_tiers(self) -> None:
+        authorizer = ManagerAuthDialog.ask(
+            self._authorization,
+            operation="Configurar ou atribuir níveis automáticos de desconto.",
+            parent=self,
+        )
+        if authorizer is None:
+            return
+        action, accepted = QInputDialog.getItem(
+            self, "Níveis de desconto", "Operação:",
+            ("Configurar nível", "Atribuir nível ao cliente"), 0, False,
+        )
+        if not accepted:
+            return
+        if action == "Configurar nível":
+            labels = {"Diamante": "diamond", "Funcionário": "employee", "Dono": "owner"}
+            label, accepted = QInputDialog.getItem(
+                self, "Níveis de desconto", "Nível:", tuple(labels), 0, False
+            )
+            if not accepted:
+                return
+            percent, accepted = QInputDialog.getDouble(
+                self, "Níveis de desconto", "Percentual:", 10.0, 0.0, 100.0, 2
+            )
+            if not accepted:
+                return
+            requires = QMessageBox.question(
+                self, "Níveis de desconto", "Exigir gerente a cada aplicação?"
+            ) == QMessageBox.StandardButton.Yes
+            try:
+                self._discount_tiers.configure(
+                    code=labels[label], name=label, percent=Decimal(str(percent)),
+                    priority=0, requires_manager=requires, actor_user_id=authorizer.id,
+                )
+            except DiscountTierError as exc:
+                QMessageBox.critical(self, "Níveis de desconto", str(exc))
+                return
+            self.statusBar().showMessage(f"Nível {label} configurado", 6000)
+            return
+        customer = self._select_customer()
+        if not isinstance(customer, Customer):
+            return
+        tiers = self._discount_tiers.list_active()
+        if not tiers:
+            QMessageBox.information(self, "Níveis de desconto", "Configure um nível primeiro.")
+            return
+        names = [f"{tier.name} — {tier.percent_basis_points / 100:.2f}%" for tier in tiers]
+        selected, accepted = QInputDialog.getItem(
+            self, "Níveis de desconto", "Nível do cliente:", names, 0, False
+        )
+        if not accepted:
+            return
+        tier = tiers[names.index(selected)]
+        self._discount_tiers.assign(
+            customer_id=customer.id, tier_id=tier.id, actor_user_id=authorizer.id
+        )
+        self.statusBar().showMessage(f"{customer.name}: nível {tier.name}", 6000)
+
     def _open_tables(self) -> None:
         """O salão inteiro, com busca, e o recebimento da conta.
 
@@ -867,6 +928,25 @@ class CounterWindow(QMainWindow):
         customer = self._select_customer()
         if customer is False:
             return
+
+        if isinstance(customer, Customer):
+            tier = self._discount_tiers.for_customer(customer.id)
+            if tier is not None:
+                tier_authorizer = None
+                if tier.requires_manager:
+                    tier_authorizer = ManagerAuthDialog.ask(
+                        self._authorization,
+                        operation=f"Autorizar nível {tier.name} para {customer.name}.",
+                        parent=self,
+                    )
+                    if tier_authorizer is None:
+                        return
+                self._checkout.apply_customer_tier(
+                    tier=tier, operator_id=self._operator_id,
+                    authorizer_id=tier_authorizer.id if tier_authorizer else None,
+                )
+                sale = self._checkout.current_sale
+                self._refresh_total()
 
         prepaid_balance = (
             self._prepaid.balance(customer.id)

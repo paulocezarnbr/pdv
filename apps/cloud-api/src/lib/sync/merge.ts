@@ -105,6 +105,13 @@ const WRITABLE: Readonly<Record<string, readonly string[]>> = {
     "order_id", "source_charge_id", "due_at", "actor_user_id",
     "authorizer_user_id", "created_at",
   ],
+  discount_tiers: [
+    "id", "store_id", "client_uuid", "code", "name", "percent_basis_points",
+    "priority", "requires_manager", "valid_from", "valid_until", "is_active", "updated_at",
+  ],
+  customer_discount_tiers: [
+    "customer_id", "client_uuid", "tier_id", "assigned_by_user_id", "assigned_at",
+  ],
   audit_ledger: [
     "id", "store_id", "device_id", "client_uuid", "seq", "event_type",
     "severity", "actor_user_id", "authorizer_user_id", "payload_json",

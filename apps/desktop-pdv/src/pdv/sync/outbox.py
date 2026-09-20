@@ -40,6 +40,8 @@ SYNCABLE_TABLES: Final[frozenset[str]] = frozenset(
         "prepaid_ledger",
         "credit_account_ledger",
         "customer_credit_accounts",
+        "discount_tiers",
+        "customer_discount_tiers",
     }
 )
 

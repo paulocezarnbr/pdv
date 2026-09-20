@@ -1,0 +1,141 @@
+"""Níveis de desconto configuráveis e atribuídos a clientes."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from decimal import Decimal, ROUND_HALF_UP
+
+from pdv.config import AppConfig
+from pdv.data.database import Database
+from pdv.data.repositories import OutboxRepository
+from pdv.domain.errors import PdvError
+from pdv.domain.models import (
+    AuditEventType, AuditSeverity, Cents, EntityId, iso, new_id, utc_now,
+)
+from pdv.services.audit import AuditService
+
+
+class DiscountTierError(PdvError):
+    pass
+
+
+@dataclass(frozen=True, slots=True)
+class DiscountTier:
+    id: EntityId
+    code: str
+    name: str
+    percent_basis_points: int
+    priority: int
+    requires_manager: bool
+
+    def discount_for(self, subtotal: Cents) -> Cents:
+        return Cents(int((Decimal(int(subtotal)) * Decimal(self.percent_basis_points)
+                          / Decimal(10000)).quantize(Decimal("1"), ROUND_HALF_UP)))
+
+
+class DiscountTierService:
+    CODES = ("diamond", "employee", "owner")
+
+    def __init__(self, database: Database, config: AppConfig) -> None:
+        self._db, self._config = database, config
+        self._outbox = OutboxRepository()
+
+    def configure(self, *, code: str, name: str, percent: Decimal, priority: int,
+                  requires_manager: bool, actor_user_id: EntityId) -> DiscountTier:
+        code = code.strip().lower()
+        if code not in self.CODES:
+            raise DiscountTierError("Nível desconhecido.")
+        if percent < 0 or percent > 100 or not name.strip():
+            raise DiscountTierError("Nome ou percentual do nível é inválido.")
+        basis = int((percent * 100).quantize(Decimal("1"), ROUND_HALF_UP))
+        now = iso(utc_now())
+        with self._db.transaction() as connection:
+            existing = connection.execute(
+                "SELECT id,client_uuid FROM discount_tiers WHERE tenant_id=? AND store_id=? AND code=?",
+                (self._config.tenant_id, self._config.store_id, code),
+            ).fetchone()
+            tier_id = EntityId(existing["id"] if existing else new_id())
+            client_uuid = EntityId(existing["client_uuid"] if existing else new_id())
+            connection.execute(
+                "INSERT INTO discount_tiers(id,tenant_id,store_id,code,name,percent_basis_points,"
+                "priority,requires_manager,updated_at,client_uuid) VALUES(?,?,?,?,?,?,?,?,?,?) "
+                "ON CONFLICT(tenant_id,store_id,code) DO UPDATE SET name=excluded.name,"
+                "percent_basis_points=excluded.percent_basis_points,priority=excluded.priority,"
+                "requires_manager=excluded.requires_manager,is_active=1,updated_at=excluded.updated_at,is_synced=0",
+                (tier_id,self._config.tenant_id,self._config.store_id,code,name.strip(),basis,
+                 priority,int(requires_manager),now,client_uuid),
+            )
+            self._outbox.enqueue(connection,entity_table="discount_tiers",entity_id=tier_id,
+                client_uuid=client_uuid,operation="update" if existing else "insert",
+                payload={"id":tier_id,"store_id":self._config.store_id,"code":code,
+                         "name":name.strip(),"percent_basis_points":basis,"priority":priority,
+                         "requires_manager":requires_manager,"is_active":True,"updated_at":now})
+            self._audit().append(connection,event_type=AuditEventType.DISCOUNT_TIER_CONFIGURED,
+                actor_user_id=actor_user_id,authorizer_user_id=actor_user_id,
+                severity=AuditSeverity.WARNING,
+                payload={"tier_id":tier_id,"code":code,"percent_basis_points":basis})
+        return DiscountTier(tier_id,code,name.strip(),basis,priority,requires_manager)
+
+    def list_active(self) -> list[DiscountTier]:
+        rows = self._db.query_all(
+            "SELECT * FROM discount_tiers WHERE tenant_id=? AND store_id=? AND is_active=1 "
+            "AND (valid_from IS NULL OR valid_from<=?) AND (valid_until IS NULL OR valid_until>=?) "
+            "ORDER BY priority DESC,name",
+            (self._config.tenant_id,self._config.store_id,iso(utc_now()),iso(utc_now())),
+        )
+        return [self._row(row) for row in rows]
+
+    def assign(self, *, customer_id: EntityId, tier_id: EntityId,
+               actor_user_id: EntityId) -> None:
+        if self._db.query_one(
+            "SELECT id FROM discount_tiers WHERE id=? AND tenant_id=? AND is_active=1",
+            (tier_id,self._config.tenant_id),
+        ) is None:
+            raise DiscountTierError("Nível não existe ou está inativo.")
+        now = iso(utc_now())
+        with self._db.transaction() as connection:
+            existing = connection.execute(
+                "SELECT client_uuid FROM customer_discount_tiers WHERE customer_id=?",
+                (customer_id,),
+            ).fetchone()
+            client_uuid = EntityId(existing["client_uuid"] if existing else new_id())
+            connection.execute(
+                "INSERT INTO customer_discount_tiers(customer_id,tenant_id,tier_id,"
+                "assigned_by_user_id,assigned_at,client_uuid) VALUES(?,?,?,?,?,?) "
+                "ON CONFLICT(customer_id) DO UPDATE SET tier_id=excluded.tier_id,"
+                "assigned_by_user_id=excluded.assigned_by_user_id,assigned_at=excluded.assigned_at,is_synced=0",
+                (customer_id,self._config.tenant_id,tier_id,actor_user_id,now,client_uuid),
+            )
+            self._outbox.enqueue(connection,entity_table="customer_discount_tiers",
+                entity_id=customer_id,client_uuid=client_uuid,
+                operation="update" if existing else "insert",
+                payload={"customer_id":customer_id,"tier_id":tier_id,
+                         "assigned_by_user_id":actor_user_id,"assigned_at":now})
+            self._audit().append(connection,event_type=AuditEventType.DISCOUNT_TIER_ASSIGNED,
+                actor_user_id=actor_user_id,authorizer_user_id=actor_user_id,
+                severity=AuditSeverity.WARNING,
+                payload={"customer_id":customer_id,"tier_id":tier_id})
+
+    def for_customer(self, customer_id: EntityId) -> DiscountTier | None:
+        now = iso(utc_now())
+        row = self._db.query_one(
+            "SELECT t.* FROM customer_discount_tiers c JOIN discount_tiers t ON t.id=c.tier_id "
+            "WHERE c.tenant_id=? AND c.customer_id=? AND t.is_active=1 "
+            "AND (t.valid_from IS NULL OR t.valid_from<=?) "
+            "AND (t.valid_until IS NULL OR t.valid_until>=?)",
+            (self._config.tenant_id,customer_id,now,now),
+        )
+        return None if row is None else self._row(row)
+
+    @staticmethod
+    def _row(row) -> DiscountTier:  # noqa: ANN001
+        return DiscountTier(EntityId(row["id"]),row["code"],row["name"],
+            int(row["percent_basis_points"]),int(row["priority"]),bool(row["requires_manager"]))
+
+    def _audit(self) -> AuditService:
+        return AuditService(tenant_id=self._config.tenant_id,store_id=self._config.store_id,
+            device_id=self._config.device_id,outbox=self._outbox,
+            device_secret=self._config.device_secret)
+
+
+__all__ = ["DiscountTier", "DiscountTierError", "DiscountTierService"]

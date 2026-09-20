@@ -117,6 +117,7 @@ contorna avisos TLS, pois ensinar o garçom a ignorá-los anularia a autenticaç
 | `F4` | Cancelar item — exige credencial de gerente |
 | `F5` | Configurar limite ou receber Fiado/Pendura |
 | `F6` | Desconto percentual — exige credencial de gerente, limitada ao teto do perfil |
+| `Ctrl+F6` | Configurar/atribuir níveis Diamante, Funcionário e Dono |
 | `F7` | Configurar cashback (percentual, teto e validade) — exige gerente |
 | `F8` | Painel do salão: pareamento, mesas abertas e fila da cozinha |
 | `F10` | Receber (dinheiro, débito, crédito, PIX ou dividido) e imprimir |

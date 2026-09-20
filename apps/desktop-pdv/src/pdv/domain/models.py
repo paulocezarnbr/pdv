@@ -270,6 +270,8 @@ class AuditEventType(Enum):
     CREDIT_ACCOUNT_CONFIGURED = "credit_account_configured"
     CREDIT_ACCOUNT_CHARGED = "credit_account_charged"
     CREDIT_ACCOUNT_PAID = "credit_account_paid"
+    DISCOUNT_TIER_CONFIGURED = "discount_tier_configured"
+    DISCOUNT_TIER_ASSIGNED = "discount_tier_assigned"
     SCALE_ANOMALY = "scale_anomaly"
     # Fase 3.5: um comando do painel que o terminal se recusou a obedecer.
     # Tipo próprio, e não um `price_override` reaproveitado: recusa remota é

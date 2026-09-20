@@ -25,7 +25,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Final
 
-SCHEMA_VERSION: Final[int] = 9
+SCHEMA_VERSION: Final[int] = 10
 _SCHEMA_FILE: Final[Path] = Path(__file__).with_name("schema.sql")
 
 #: Migration 2 — tabelas do servidor local (Fase 3).
@@ -428,6 +428,26 @@ CREATE INDEX IF NOT EXISTS idx_credit_customer_due
     ON credit_account_ledger(tenant_id,customer_id,due_at,created_at);
 """
 
+_MIGRATION_10_DISCOUNT_TIERS: Final[str] = """
+CREATE TABLE IF NOT EXISTS discount_tiers (
+    id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, store_id TEXT NOT NULL,
+    code TEXT NOT NULL, name TEXT NOT NULL,
+    percent_basis_points INTEGER NOT NULL CHECK(percent_basis_points BETWEEN 0 AND 10000),
+    priority INTEGER NOT NULL DEFAULT 0, requires_manager INTEGER NOT NULL DEFAULT 0,
+    valid_from TEXT, valid_until TEXT, is_active INTEGER NOT NULL DEFAULT 1,
+    updated_at TEXT NOT NULL, client_uuid TEXT NOT NULL UNIQUE,
+    is_synced INTEGER NOT NULL DEFAULT 0, synced_at TEXT,
+    UNIQUE(tenant_id,store_id,code)
+);
+CREATE TABLE IF NOT EXISTS customer_discount_tiers (
+    customer_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, tier_id TEXT NOT NULL,
+    assigned_by_user_id TEXT NOT NULL, assigned_at TEXT NOT NULL,
+    client_uuid TEXT NOT NULL UNIQUE, is_synced INTEGER NOT NULL DEFAULT 0,
+    synced_at TEXT, FOREIGN KEY(customer_id) REFERENCES customers(id),
+    FOREIGN KEY(tier_id) REFERENCES discount_tiers(id)
+);
+"""
+
 
 def _add_column(
     connection: sqlite3.Connection, table: str, column: str, declaration: str
@@ -557,6 +577,9 @@ class Database:
 
         if current < 9:
             connection.executescript(_MIGRATION_9_CREDIT_ACCOUNT)
+
+        if current < 10:
+            connection.executescript(_MIGRATION_10_DISCOUNT_TIERS)
 
         if current < SCHEMA_VERSION:
             connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
