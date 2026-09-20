@@ -181,9 +181,18 @@ técnica.
       rota de negócio confia no IP de origem: a LAN da loja é a mesma rede do
       Wi-Fi do cliente.
 - [x] **Pareamento presencial**: o código é gerado na tela do caixa, vale 5 min
-      e serve uma vez só. O acesso físico ao balcão é a âncora — quem não chega
+      e serve uma vez só. O código agora tem **8 dígitos**, contador visível e
+      revogação antecipada no caixa. O acesso físico ao balcão é a âncora — quem não chega
       lá não pareia, mesmo estando na rede. Só o hash do token é gravado, e a
       revogação vale no instante seguinte.
+- [x] **TLS na rede local**: o PDV gera e renova um certificado ECDSA para o
+      hostname e os IPs locais. O fingerprint aparece no caixa para conferência
+      presencial; PIN, token e pedidos não atravessam o Wi-Fi em texto claro.
+- [x] **Identidade fixa do garçom sobre o aparelho pareado**: parear identifica
+      o dispositivo; login identifica a pessoa do turno. O mesmo Argon2id,
+      política de PIN e rate limit persistente do caixa protegem `joao`,
+      `maria` e os demais usuários. Trocar de funcionário não exige novo
+      pareamento, e revogar o aparelho continua encerrando seu acesso.
 - [x] KDS com tempo por item, bump/recall e alerta de atraso.
       *Recall* existe porque a cozinha erra: bateu pronto no prato errado e
       precisa desfazer sem cancelar o item — cancelar mexe na venda, o que é
@@ -345,6 +354,14 @@ Cobertura por camada: 22 testes de aplicação, 14 de transporte e ciclo
 - [x] **App do garçom em web**, servido pelo próprio PDV em `/`. Sem loja de
       aplicativo, sem versão de celular defasada, no aparelho que a pessoa já
       tem. **Não substitui o app nativo** — ver `edge/webapp/__init__.py`.
+- [x] **Visualizador de mesas no caixa com pesquisa** e destaque de pedido de
+      conta. O caixa recebe de verdade, registra pagamentos e troco, imprime o
+      cupom e só então fecha a comanda; pedir a conta no celular nunca equivale
+      a marcar a venda como paga.
+- [x] **Gorjeta atribuída ao funcionário**, separada do total dos produtos e
+      persistida junto ao pagamento. O relatório por funcionário consolida
+      vendas, atendimentos, ticket médio e gorjetas sem atribuir resultado ao
+      celular compartilhado.
 - [x] **Concessão de gerente por aparelho** (`edge/manager.py`): PIN validado
       offline pelo mesmo Argon2id do balcão, vale 10 minutos e só no aparelho
       que a pediu. O celular fica no balcão desbloqueado a noite inteira; uma
@@ -353,10 +370,36 @@ Cobertura por camada: 22 testes de aplicação, 14 de transporte e ciclo
       de caixa, com gaveta por perto, e entra na Fase 4.
 - [ ] Mapa de salão com posição das mesas (arrastar no layout).
 
-**Aceite:** ✅ percorrido no navegador contra o servidor real — parear, abrir
-mesa, lançar item (o item por peso continua ausente do cardápio do celular),
-pedir a conta, autorizar como gerente, cadastrar mesa nova e cancelar a
-comanda. 55 testes em `tests/test_salon.py` e `tests/test_salon_http.py`.
+**Aceite:** ✅ percorrido no navegador contra o servidor real — parear, entrar
+como garçom, abrir mesa, lançar item (o item por peso continua ausente do
+cardápio do celular), pedir a conta, receber no caixa, registrar gorjeta,
+autorizar como gerente, cadastrar mesa nova e cancelar a comanda. A regressão
+completa do PDV soma **395 testes**.
+
+### Fase 3.7 — Retaguarda Cloud em Next.js para Coolify ✅ **CONCLUÍDA**
+
+- [x] API reescrita em **Next.js 15 + TypeScript**, com rotas de ativação,
+      push/pull de sincronização, comandos remotos, sessão do painel e health.
+- [x] Imagem Docker `standalone`, usuário sem privilégio, migrations na subida
+      e healthcheck que consulta o PostgreSQL. Pronta para deploy direto no
+      Coolify; imagem verificada com aproximadamente **83 MB**.
+- [x] PostgreSQL multi-tenant com RLS real. Migrations usam a credencial
+      administrativa e a aplicação usa `erp_app` (`NOSUPERUSER NOBYPASSRLS`),
+      pois o superusuário fornecido pelo banco gerenciado ignora RLS mesmo com
+      `FORCE ROW LEVEL SECURITY`.
+- [x] Ledger cloud append-only para a role da aplicação: `INSERT/SELECT`
+      permitidos e `UPDATE/DELETE` revogados. A âncora HMAC detecta buraco,
+      elo quebrado e reescrita de evento já sincronizado.
+- [x] Contrato criptográfico Python ↔ TypeScript testado byte a byte e suíte
+      contra PostgreSQL real: **22 testes cloud**, incluindo idempotência,
+      rollback atômico, isolamento entre tenants e adulteração do ledger.
+- [x] Build e execução da imagem final verificados: migrations automáticas,
+      contêiner `healthy`, `/api/health` com `database: ok` e
+      `tenant_isolation: ativo`.
+
+**Próximo incremento:** a Fase 3.5.a passa a consumir esta retaguarda para o
+dashboard multi-loja e indicadores de frescor; não haverá uma segunda API em
+paralelo.
 
 ### Fase 4 — Financeiro & Anti-Furto (Sprint 11–13)
 - [ ] Cashback configurável (percentual, teto, validade, regra por categoria).
