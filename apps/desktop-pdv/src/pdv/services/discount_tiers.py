@@ -47,6 +47,11 @@ class DiscountTierService:
             raise DiscountTierError("Nível desconhecido.")
         if percent < 0 or percent > 100 or not name.strip():
             raise DiscountTierError("Nome ou percentual do nível é inválido.")
+        # "Dono" costuma conceder o maior desconto do sistema. A proteção não
+        # pode depender de uma checkbox da UI: importação, sync ou código antigo
+        # também passam por este serviço. Portanto, senha é invariável do nível.
+        if code == "owner":
+            requires_manager = True
         basis = int((percent * 100).quantize(Decimal("1"), ROUND_HALF_UP))
         now = iso(utc_now())
         with self._db.transaction() as connection:
@@ -125,7 +130,13 @@ class DiscountTierService:
             "AND (t.valid_until IS NULL OR t.valid_until>=?)",
             (self._config.tenant_id,customer_id,now,now),
         )
-        return None if row is None else self._row(row)
+        tier = None if row is None else self._row(row)
+        # Defesa em profundidade para registros antigos ou adulterados: mesmo
+        # que `requires_manager=0` tenha chegado ao banco, Dono exige senha.
+        if tier is not None and tier.code == "owner" and not tier.requires_manager:
+            return DiscountTier(tier.id, tier.code, tier.name,
+                                tier.percent_basis_points, tier.priority, True)
+        return tier
 
     @staticmethod
     def _row(row) -> DiscountTier:  # noqa: ANN001

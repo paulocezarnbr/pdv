@@ -61,6 +61,19 @@ def test_reconfigure_updates_instead_of_duplicating(tiers) -> None:  # noqa: ANN
     assert b.percent_basis_points == 2000
 
 
+def test_owner_always_requires_manager_even_when_configuration_says_no(tiers) -> None:  # noqa: ANN001
+    database, service, customer, actor = tiers
+    owner = service.configure(code="owner", name="Dono", percent=Decimal("50"),
+                              priority=100, requires_manager=False, actor_user_id=actor)
+    assert owner.requires_manager is True
+    service.assign(customer_id=customer, tier_id=owner.id, actor_user_id=actor)
+    # Também protege um registro antigo/adulterado que tente desligar a trava.
+    database.connection.execute(
+        "UPDATE discount_tiers SET requires_manager=0 WHERE id=?", (owner.id,)
+    )
+    assert service.for_customer(customer).requires_manager is True
+
+
 def test_configuration_and_assignment_are_synced_and_audited(tiers) -> None:  # noqa: ANN001
     database, service, customer, actor = tiers
     tier = service.configure(code="owner", name="Dono", percent=Decimal("100"),

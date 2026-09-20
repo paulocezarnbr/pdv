@@ -872,9 +872,16 @@ class CounterWindow(QMainWindow):
             )
             if not accepted:
                 return
-            requires = QMessageBox.question(
-                self, "Níveis de desconto", "Exigir gerente a cada aplicação?"
-            ) == QMessageBox.StandardButton.Yes
+            if labels[label] == "owner":
+                requires = True
+                QMessageBox.information(
+                    self, "Nível Dono",
+                    "O nível Dono sempre exige login e PIN de gerente em cada uso.",
+                )
+            else:
+                requires = QMessageBox.question(
+                    self, "Níveis de desconto", "Exigir gerente a cada aplicação?"
+                ) == QMessageBox.StandardButton.Yes
             try:
                 self._discount_tiers.configure(
                     code=labels[label], name=label, percent=Decimal(str(percent)),
