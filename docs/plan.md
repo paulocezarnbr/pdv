@@ -408,9 +408,9 @@ dashboard multi-loja e indicadores de frescor; não haverá uma segunda API em
 paralelo.
 
 ### Fase 4 — Financeiro & Anti-Furto (Sprint 11–13)
-- [~] Cashback configurável: núcleo offline concluído com percentual, teto,
-      validade, crédito idempotente por venda e resgate FIFO por lote em ledger
-      append-only. Falta seleção de cliente na tela e regra por categoria.
+- [~] Cashback configurável: fluxo do balcão concluído com identificação do
+      cliente, percentual, teto, validade, cupom, crédito idempotente por venda
+      e resgate FIFO por lote em ledger append-only. Falta regra por categoria.
 - [ ] Créditos pré-pagos com **ledger de saldo** — nunca uma coluna mutável de saldo.
 - [ ] Fiado com limite de crédito, bloqueio automático e aging de recebíveis.
 - [ ] Níveis de desconto (Diamante / Funcionário / Dono) com teto e autorização.

@@ -116,6 +116,7 @@ contorna avisos TLS, pois ensinar o garçom a ignorá-los anularia a autenticaç
 | `F3` | Ir para a busca de item unitário (código ou nome) |
 | `F4` | Cancelar item — exige credencial de gerente |
 | `F6` | Desconto percentual — exige credencial de gerente, limitada ao teto do perfil |
+| `F7` | Configurar cashback (percentual, teto e validade) — exige gerente |
 | `F8` | Painel do salão: pareamento, mesas abertas e fila da cozinha |
 | `F10` | Receber (dinheiro, débito, crédito, PIX ou dividido) e imprimir |
 | `F12` | Fechamento cego do caixa — exige credencial de gerente |

@@ -54,6 +54,7 @@ from pdv.domain.models import (
 )
 from pdv.hardware.printer.layout import ReceiptContext, build_sale_receipt
 from pdv.services.audit import AuditService
+from pdv.services.cashback import CashbackService
 from pdv.services.payments import record_payments, settle_payments
 from pdv.services.pricing import net_weight, price_for_weight
 from pdv.services.stock import StockService, explode_recipe, total_cost_cents
@@ -383,6 +384,7 @@ class CheckoutService:
         operator_id: EntityId,
         operator_name: str,
         customer_name: str | None = None,
+        customer_id: EntityId | None = None,
     ) -> bytes:
         """Fecha a venda e devolve o payload ESC/POS pronto para impressão.
 
@@ -396,6 +398,8 @@ class CheckoutService:
 
         payments = settle_payments(payments, sale.total_cents)
 
+        cashback_credit = None
+        cashback = CashbackService(self._db, self._config)
         with self._db.transaction() as connection:
             SaleRepository(connection, self._outbox).close_order(
                 order_id=sale.id,
@@ -419,6 +423,28 @@ class CheckoutService:
                 tenant_id=EntityId(self._config.tenant_id),
                 payments=payments,
             )
+
+            if customer_id is not None:
+                cashback_credit = cashback.earn_in(
+                    connection,
+                    customer_id=customer_id,
+                    order_id=sale.id,
+                    eligible_cents=sale.total_cents,
+                    actor_user_id=operator_id,
+                )
+                if cashback_credit is not None:
+                    self._audit().append(
+                        connection,
+                        event_type=AuditEventType.CASHBACK_CREDITED,
+                        actor_user_id=operator_id,
+                        severity=AuditSeverity.INFO,
+                        payload={
+                            "order_id": sale.id,
+                            "customer_id": customer_id,
+                            "amount_cents": int(cashback_credit.amount_cents),
+                            "expires_at": cashback_credit.expires_at,
+                        },
+                    )
 
             self._audit().append(
                 connection,
@@ -461,6 +487,12 @@ class CheckoutService:
                 operator_name=operator_name,
                 terminal_label=f"PDV {self._config.device_id[:8]}",
                 customer_name=customer_name,
+                cashback_earned_cents=(
+                    int(cashback_credit.amount_cents) if cashback_credit else 0
+                ),
+                credit_balance_cents=(
+                    int(cashback.balance(customer_id)) if customer_id is not None else None
+                ),
             ),
             self._config.printer,
         )

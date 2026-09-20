@@ -7,7 +7,10 @@ import pytest
 
 from pdv.config import AppConfig
 from pdv.data.database import Database, SCHEMA_VERSION
-from pdv.domain.models import Cents, EntityId, new_id
+from pdv.data.repositories import ProductRepository
+from pdv.data.seed import DEMO_OPERATOR_ID, seed_demo_data
+from pdv.domain.models import Cents, EntityId, Payment, PaymentMethod, new_id
+from pdv.services.checkout import CheckoutService
 from pdv.services.cashback import CashbackError, CashbackService
 
 
@@ -99,3 +102,36 @@ def test_customer_and_ledger_are_queued_for_sync(cashback) -> None:  # noqa: ANN
         "SELECT entity_table FROM sync_outbox ORDER BY seq"
     )]
     assert tables == ["customers", "cashback_ledger"]
+
+
+def test_checkout_credits_cashback_atomically_and_prints_it(tmp_path: Path) -> None:
+    config = AppConfig(
+        tenant_id="11111111-1111-1111-1111-111111111111",
+        store_id="22222222-2222-2222-2222-222222222222",
+        device_id="33333333-3333-3333-3333-333333333333",
+        database_path=tmp_path / "pdv.db",
+    )
+    database = Database(config.database_path)
+    database.migrate()
+    seed_demo_data(database, config)
+    cashback = CashbackService(database, config)
+    cashback.configure(percent=Decimal("10"), max_per_sale_cents=Cents(500), validity_days=30)
+    customer = cashback.create_customer(name="Lia", phone="(11) 99999-0000")
+    coffee = next(product for product in ProductRepository(database.connection).list_active(
+        EntityId(config.tenant_id)
+    ) if product.sku == "CAFE-EXP")
+    checkout = CheckoutService(database, config)
+    checkout.register_unit_item(product=coffee, quantity=Decimal("1"),
+                                operator_id=EntityId(DEMO_OPERATOR_ID))
+    receipt = checkout.finalize_sale(
+        payments=(Payment(PaymentMethod.PIX, Cents(700)),),
+        operator_id=EntityId(DEMO_OPERATOR_ID), operator_name="Ana Caixa",
+        customer_id=customer, customer_name="Lia",
+    )
+    text = receipt.decode("cp850", errors="replace")
+    assert "Cliente" in text and "Lia" in text
+    assert "Cashback creditado" in text and "0,70" in text
+    assert cashback.balance(customer) == 70
+    assert database.query_one(
+        "SELECT event_type FROM audit_ledger WHERE event_type='cashback_credited'"
+    ) is not None

@@ -264,6 +264,7 @@ class AuditEventType(Enum):
     SESSION_CLOSED = "session_closed"
     CASHBACK_CREDITED = "cashback_credited"
     CASHBACK_REDEEMED = "cashback_redeemed"
+    CASHBACK_RULE_CHANGED = "cashback_rule_changed"
     SCALE_ANOMALY = "scale_anomaly"
     # Fase 3.5: um comando do painel que o terminal se recusou a obedecer.
     # Tipo próprio, e não um `price_override` reaproveitado: recusa remota é

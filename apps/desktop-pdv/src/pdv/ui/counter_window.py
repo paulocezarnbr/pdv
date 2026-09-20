@@ -4,7 +4,7 @@ Princípios de UI de PDV que o layout respeita:
 
 * **Teclado acima do mouse.** O operador não tira a mão do teclado numa fila.
   F2 registra o pesado, F3 lança o unitário, F4 cancela item, F6 desconta,
-  F8 abre o salão, F9 as mesas, F10 finaliza e F12 fecha o caixa.
+  F7 configura cashback, F8 abre o salão, F9 as mesas, F10 finaliza e F12 fecha o caixa.
 * **O peso é o maior elemento da tela.** É o número que o cliente confere de pé
   do outro lado do balcão.
 * **Estado de conexão sempre visível.** O operador precisa saber que está
@@ -63,6 +63,7 @@ from pdv.remote.inbox import InboxRepository
 from pdv.services.authorization import AuthorizationService, Identity
 from pdv.services.checkout import CheckoutService
 from pdv.services.cash_session import CashSessionError, CashSessionService
+from pdv.services.cashback import CashbackError, CashbackService, Customer
 from pdv.ui import theme
 from pdv.ui.dialogs import ManagerAuthDialog, PaymentDialog
 from pdv.ui.salon_panel import SalonPanel
@@ -110,6 +111,7 @@ class CounterWindow(QMainWindow):
         self._edge_scheme = edge_scheme
         self._edge_tls = edge_tls
         self._authorization = AuthorizationService(database, config.tenant_id)
+        self._cashback = CashbackService(database, config)
         self._operator_id = EntityId(str(operator.id))
 
         self._weighed: list[Product] = []
@@ -444,6 +446,7 @@ class CounterWindow(QMainWindow):
         QShortcut(QKeySequence("F3"), self, self._focus_unit_search)
         QShortcut(QKeySequence("F4"), self, self._cancel_item)
         QShortcut(QKeySequence("F6"), self, self._apply_discount)
+        QShortcut(QKeySequence("F7"), self, self._configure_cashback)
         QShortcut(QKeySequence("F8"), self, self._open_salon)
         QShortcut(QKeySequence("F9"), self, self._open_tables)
         QShortcut(QKeySequence("F10"), self, self._finalize_sale)
@@ -793,6 +796,46 @@ class CounterWindow(QMainWindow):
             parent=self,
         ).exec()
 
+    def _configure_cashback(self) -> None:
+        authorizer = ManagerAuthDialog.ask(
+            self._authorization,
+            operation="Configurar a regra de cashback desta loja.",
+            parent=self,
+        )
+        if authorizer is None:
+            return
+        percent, accepted = QInputDialog.getDouble(
+            self, "Cashback", "Percentual sobre a venda:", 5.0, 0.0, 100.0, 2
+        )
+        if not accepted:
+            return
+        cap, accepted = QInputDialog.getDouble(
+            self, "Cashback", "Teto por venda (R$; zero = sem teto):",
+            10.0, 0.0, 999_999.99, 2,
+        )
+        if not accepted:
+            return
+        days, accepted = QInputDialog.getInt(
+            self, "Cashback", "Validade do crédito em dias:", 30, 1, 3650
+        )
+        if not accepted:
+            return
+        try:
+            self._cashback.configure(
+                percent=Decimal(str(percent)),
+                max_per_sale_cents=Cents(
+                    int((Decimal(str(cap)) * Decimal(100)).quantize(Decimal("1")))
+                ),
+                validity_days=days,
+                actor_user_id=authorizer.id,
+            )
+        except CashbackError as exc:
+            QMessageBox.critical(self, "Cashback", str(exc))
+            return
+        self.statusBar().showMessage(
+            f"Cashback de {percent:.2f}% configurado por {authorizer.name}", 8000
+        )
+
     def _open_tables(self) -> None:
         """O salão inteiro, com busca, e o recebimento da conta.
 
@@ -814,6 +857,10 @@ class CounterWindow(QMainWindow):
         if sale is None or not sale.items:
             return
 
+        customer = self._select_customer()
+        if customer is False:
+            return
+
         dialog = PaymentDialog(sale.total_cents, parent=self)
         if dialog.exec() != PaymentDialog.DialogCode.Accepted:
             return
@@ -826,6 +873,8 @@ class CounterWindow(QMainWindow):
                 payments=dialog.payments,
                 operator_id=self._operator_id,
                 operator_name=self._operator.name,
+                customer_id=customer.id if isinstance(customer, Customer) else None,
+                customer_name=customer.name if isinstance(customer, Customer) else None,
             )
         except PdvError as exc:
             QMessageBox.critical(self, "Não foi possível finalizar", str(exc))
@@ -841,6 +890,36 @@ class CounterWindow(QMainWindow):
         self.statusBar().showMessage(
             f"Venda {local_number:06d} finalizada — R$ {format_cents(total)}", 6000
         )
+
+    def _select_customer(self) -> Customer | None | bool:
+        """Identifica o cliente; `False` significa que o operador cancelou."""
+        phone, accepted = QInputDialog.getText(
+            self,
+            "Cliente e cashback",
+            "Telefone do cliente (deixe vazio para venda sem cashback):",
+        )
+        if not accepted:
+            return False
+        if not phone.strip():
+            return None
+        existing = self._cashback.find_customer_by_phone(phone)
+        if existing is not None:
+            balance = self._cashback.balance(existing.id)
+            self.statusBar().showMessage(
+                f"Cliente {existing.name} — cashback R$ {format_cents(balance)}", 5000
+            )
+            return existing
+        name, accepted = QInputDialog.getText(
+            self, "Novo cliente", "Nome do cliente:"
+        )
+        if not accepted:
+            return False
+        try:
+            customer_id = self._cashback.create_customer(name=name, phone=phone)
+        except CashbackError as exc:
+            QMessageBox.critical(self, "Cliente", str(exc))
+            return False
+        return Customer(customer_id, name.strip(), phone.strip())
 
     def _close_cash_session(self) -> None:
         """F12 fecha o caixa sem revelar o esperado antes da declaração."""
