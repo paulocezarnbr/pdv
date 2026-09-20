@@ -415,7 +415,8 @@ paralelo.
       atômico no recebimento e saldo sempre derivado de lançamentos imutáveis.
 - [x] Fiado com limite de crédito, bloqueio automático, pagamento FIFO e aging
       de recebíveis vencidos, todo derivado de ledger append-only.
-- [x] Níveis de desconto (Diamante / Funcionário / Dono) configuráveis, com
+- [x] Níveis de desconto (Bronze / Prata / Ouro / Diamante / Funcionário /
+      Dono) configuráveis, com percentuais padrão conservadores,
       atribuição auditada, aplicação automática e validade. A autorização é
       configurável nos demais níveis; **Dono sempre exige senha de gerente**.
 - [x] Conciliação cega de caixa: o núcleo abre a sessão, soma apenas

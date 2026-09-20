@@ -34,7 +34,7 @@ class DiscountTier:
 
 
 class DiscountTierService:
-    CODES = ("diamond", "employee", "owner")
+    CODES = ("bronze", "silver", "gold", "diamond", "employee", "owner")
 
     def __init__(self, database: Database, config: AppConfig) -> None:
         self._db, self._config = database, config

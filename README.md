@@ -117,16 +117,18 @@ contorna avisos TLS, pois ensinar o garçom a ignorá-los anularia a autenticaç
 | `F4` | Cancelar item — exige credencial de gerente |
 | `F5` | Configurar limite ou receber Fiado/Pendura |
 | `F6` | Desconto percentual — exige credencial de gerente, limitada ao teto do perfil |
-| `Ctrl+F6` | Configurar/atribuir níveis Diamante, Funcionário e Dono |
-
-Os percentuais dos níveis são configuráveis. O nível **Dono** é uma exceção
-de segurança: sempre exige login e PIN de gerente a cada aplicação; essa trava
-é validada no serviço, inclusive para dados recebidos por sincronização.
+| `Ctrl+F6` | Configurar/atribuir níveis Bronze, Prata, Ouro, Diamante, Funcionário e Dono |
 | `F7` | Configurar cashback (percentual, teto e validade) — exige gerente |
 | `F8` | Painel do salão: pareamento, mesas abertas e fila da cozinha |
 | `F10` | Receber (dinheiro, débito, crédito, PIX ou dividido) e imprimir |
 | `F11` | Carregar crédito pré-pago de cliente — exige gerente |
 | `F12` | Fechamento cego do caixa — exige credencial de gerente |
+
+Os níveis padrão começam em Bronze 2%, Prata 4%, Ouro 6%, Diamante 10%,
+Funcionário 15% e Dono 20%; todos os percentuais são configuráveis. O nível
+**Dono** é uma exceção de segurança: sempre exige login e PIN de gerente a cada
+aplicação; essa trava é validada no serviço, inclusive para dados recebidos por
+sincronização.
 
 A autorização de gerente é validada **offline**, com Argon2id contra a réplica
 local de `users.pin_hash`, e cada tentativa recusada vira evento de auditoria.

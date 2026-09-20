@@ -16,6 +16,7 @@ from pdv.services.authorization import hash_pin
 
 def seed_demo_data(database: Database, config: AppConfig) -> None:
     """Popula o banco local se ainda não houver produtos. Idempotente."""
+    _seed_default_discount_tiers(database, config)
     connection = database.connection
     existing = connection.execute("SELECT COUNT(*) AS total FROM products").fetchone()
     if int(existing["total"]) > 0:
@@ -200,6 +201,47 @@ def seed_demo_data(database: Database, config: AppConfig) -> None:
         )
 
 
+def _seed_default_discount_tiers(database: Database, config: AppConfig) -> None:
+    """Cria a régua inicial sem sobrescrever decisões do administrador.
+
+    A retaguarda provisiona os níveis de lojas reais. Estes padrões existem
+    somente no tenant de demonstração, inclusive em bancos demo antigos que
+    já tenham produtos. ``ON CONFLICT DO NOTHING`` preserva percentuais que o
+    gerente tenha personalizado.
+    """
+    if config.tenant_id != DEMO_TENANT_ID:
+        return
+
+    now = iso(utc_now())
+    defaults = (
+        ("bronze", "Bronze", 200, 10, 0),
+        ("silver", "Prata", 400, 20, 0),
+        ("gold", "Ouro", 600, 30, 0),
+        ("diamond", "Diamante", 1_000, 40, 0),
+        ("employee", "Funcionário", 1_500, 50, 1),
+        ("owner", "Dono", 2_000, 100, 1),
+    )
+    with database.transaction() as tx:
+        tx.executemany(
+            """
+            INSERT INTO discount_tiers
+                (id, tenant_id, store_id, code, name, percent_basis_points,
+                 priority, requires_manager, valid_from, valid_until,
+                 is_active, updated_at, client_uuid, is_synced, synced_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, 1, ?, ?, 0, NULL)
+            ON CONFLICT(tenant_id, store_id, code) DO NOTHING
+            """,
+            [
+                (
+                    new_id(), config.tenant_id, config.store_id, code, name,
+                    basis_points, priority, requires_manager, now, new_id(),
+                )
+                for code, name, basis_points, priority, requires_manager in defaults
+            ],
+        )
+
+
+DEMO_TENANT_ID = "11111111-1111-1111-1111-111111111111"
 DEMO_OPERATOR_ID = "44444444-4444-4444-4444-444444444444"
 DEMO_OPERATOR_NAME = "Ana Caixa"
 DEMO_OPERATOR_LOGIN = "ana"

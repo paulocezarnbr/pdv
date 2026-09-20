@@ -7,6 +7,7 @@ import pytest
 
 from pdv.config import AppConfig
 from pdv.data.database import Database, SCHEMA_VERSION
+from pdv.data.seed import seed_demo_data
 from pdv.domain.models import Cents, EntityId, new_id
 from pdv.services.cashback import CashbackService
 from pdv.services.discount_tiers import DiscountTierError, DiscountTierService
@@ -85,3 +86,43 @@ def test_configuration_and_assignment_are_synced_and_audited(tiers) -> None:  # 
     assert "discount_tiers" in tables and "customer_discount_tiers" in tables
     events = {row[0] for row in database.connection.execute("SELECT event_type FROM audit_ledger")}
     assert {"discount_tier_configured", "discount_tier_assigned"} <= events
+
+
+def test_demo_seed_creates_all_default_tiers_without_overwriting_them(
+    tmp_path: Path,
+) -> None:
+    config = AppConfig(
+        tenant_id="11111111-1111-1111-1111-111111111111",
+        store_id="22222222-2222-2222-2222-222222222222",
+        device_id="33333333-3333-3333-3333-333333333333",
+        database_path=tmp_path / "seed.db",
+    )
+    database = Database(config.database_path)
+    database.migrate()
+    try:
+        seed_demo_data(database, config)
+        rows = database.connection.execute(
+            "SELECT code,percent_basis_points,requires_manager "
+            "FROM discount_tiers ORDER BY priority"
+        ).fetchall()
+        assert [(row["code"], row["percent_basis_points"]) for row in rows] == [
+            ("bronze", 200),
+            ("silver", 400),
+            ("gold", 600),
+            ("diamond", 1_000),
+            ("employee", 1_500),
+            ("owner", 2_000),
+        ]
+        assert rows[-1]["requires_manager"] == 1
+
+        # Uma configuração local é decisão do gerente, não do seed.
+        database.connection.execute(
+            "UPDATE discount_tiers SET percent_basis_points=750 WHERE code='gold'"
+        )
+        seed_demo_data(database, config)
+        assert database.query_one(
+            "SELECT percent_basis_points n FROM discount_tiers WHERE code='gold'"
+        )["n"] == 750
+        assert database.query_one("SELECT count(*) n FROM discount_tiers")["n"] == 6
+    finally:
+        database.close()

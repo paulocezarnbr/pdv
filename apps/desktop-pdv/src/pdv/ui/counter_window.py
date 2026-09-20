@@ -861,7 +861,10 @@ class CounterWindow(QMainWindow):
         if not accepted:
             return
         if action == "Configurar nível":
-            labels = {"Diamante": "diamond", "Funcionário": "employee", "Dono": "owner"}
+            labels = {
+                "Bronze": "bronze", "Prata": "silver", "Ouro": "gold",
+                "Diamante": "diamond", "Funcionário": "employee", "Dono": "owner",
+            }
             label, accepted = QInputDialog.getItem(
                 self, "Níveis de desconto", "Nível:", tuple(labels), 0, False
             )
