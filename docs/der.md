@@ -396,6 +396,22 @@ do que veio do salão.
 **`fiscal_events`** — histórico append-only de reserva, autorização, rejeição e
 cancelamento. UPDATE e DELETE são recusados no SQLite.
 
+**Autoridade cloud.** No PostgreSQL, `fiscal_configurations` guarda os dados do
+emitente e apenas referências ao A1/CSC; `fiscal_product_profiles` contém
+NCM/CFOP/CEST/CSOSN ou CST por produto. `fiscal_series` separa a série normal
+central (`device_id NULL`) das séries `offline_contingency` por terminal.
+`fiscal_documents` usa `UNIQUE (tenant_id, request_uuid)` e adiciona o estado
+`unknown` para resposta ambígua. `fiscal_events` é append-only também no banco
+central, protegido por trigger contra UPDATE/DELETE.
+
+| Relação cloud | Cardinalidade | Regra |
+|---|---:|---|
+| `store → fiscal_configuration` | 1 : 0..1 | Loja desabilitada não emite |
+| `store → fiscal_series(normal)` | 1 : 1 por modelo | Numeração central sob `FOR UPDATE` |
+| `device → fiscal_series(contingency)` | 1 : 1 por modelo | Nunca compartilhada |
+| `order → fiscal_document` | 1 : 0..N tentativas | `request_uuid` impede repetição da mesma tentativa |
+| `fiscal_document → fiscal_events` | 1 : N | Histórico imutável |
+
 ---
 
 ### 2.8 Tabelas Locais do PDV (nunca sobem como entidade)

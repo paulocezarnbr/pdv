@@ -31,6 +31,8 @@ qualquer tentativa de reescrever um elo já ancorado é recusada e vira alerta.
 | `POST /api/commands/issue` | Painel | Comando assinado para um terminal. Teto por perfil e por janela. |
 | `GET /api/commands/pending` | Terminal | Entrega **não** consome. |
 | `POST /api/commands/results` | Terminal | O terminal conta o que fez. Só na primeira vez que conta. |
+| `POST /api/fiscal/issue` | Terminal | Reserva uma NFC-e normal uma vez e chama o serviço fiscal privado. Resposta ambígua vira `unknown`. |
+| `GET /api/fiscal/status` | Terminal | Reconcilia `unknown` no ledger idempotente antes de permitir qualquer nova decisão. |
 | `POST/DELETE /api/panel/session` | Painel | Login com scrypt, sessão em cookie `HttpOnly`, freio por e-mail **e** por IP. |
 
 ---
@@ -39,10 +41,10 @@ qualquer tentativa de reescrever um elo já ancorado é recusada e vira alerta.
 
 ```bash
 npm install
-docker compose up -d postgres
+docker compose up -d postgres fiscal-service
 
 cp .env.example .env
-# edite DATABASE_URL e SESSION_SECRET
+# edite DATABASE_URL, SESSION_SECRET, FISCAL_SERVICE_URL e FISCAL_SERVICE_TOKEN
 
 npm run migrate
 npm run dev

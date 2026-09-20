@@ -32,7 +32,12 @@
  * na primeira requisição — e o build não precisa de segredo nenhum.
  */
 
-const REQUIRED = ["DATABASE_URL", "SESSION_SECRET"] as const;
+const REQUIRED = [
+  "DATABASE_URL",
+  "SESSION_SECRET",
+  "FISCAL_SERVICE_URL",
+  "FISCAL_SERVICE_TOKEN",
+] as const;
 
 type RequiredName = (typeof REQUIRED)[number];
 
@@ -94,6 +99,19 @@ export const env = {
 
   get isProduction(): boolean {
     return this.nodeEnv === "production";
+  },
+
+  /** Serviço fiscal interno. Nunca deve ser publicado pelo proxy. */
+  get fiscalServiceUrl(): string {
+    return required("FISCAL_SERVICE_URL");
+  },
+
+  get fiscalServiceToken(): string {
+    return required("FISCAL_SERVICE_TOKEN");
+  },
+
+  get fiscalTimeoutMs(): number {
+    return optionalInt("FISCAL_SERVICE_TIMEOUT_MS", 20_000);
   },
 } as const;
 

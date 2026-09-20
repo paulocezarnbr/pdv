@@ -13,3 +13,6 @@ __all__ = [
     "AuthorizationResult", "FiscalCommunicationError", "FiscalDocument",
     "FiscalError", "FiscalGateway", "FiscalService", "PyNFeGateway", "SefazStatus",
 ]
+from pdv.fiscal.cloud import FiscalCoordinator, HttpCloudFiscalGateway
+
+__all__ = ["FiscalCoordinator", "HttpCloudFiscalGateway"]

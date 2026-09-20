@@ -434,18 +434,25 @@ paralelo.
   relatório ou endpoint antes do fechamento — teste de API incluído.
 
 ### Fase 5 — Fiscal (Sprint 14–16)
-- [~] NFC-e com contingência offline e transmissão posterior. A fundação local
-      já reserva o documento como `contingency_pending`, de forma idempotente,
-      preserva o motivo e mantém histórico imutável. Assinatura XML, regras por
-      UF e transmissão SEFAZ continuam pendentes de certificado A1 e CSC. O
-      adaptador PyNFe/SVRS para RJ já valida disponibilidade e interpreta
-      autorização exclusivamente pelos códigos fiscais 100/150.
+- [~] NFC-e **server-first** com contingência offline. A nuvem já autentica o
+      terminal, reserva a série normal no PostgreSQL, exige cadastro tributário
+      completo e chama um serviço fiscal interno com dupla idempotência. O PDV
+      só entra em contingência quando a conexão nem foi estabelecida; timeout
+      ambíguo vira `unknown` e bloqueia emissão duplicada.
+- [x] Serviço fiscal Python privado, sem porta pública, token em comparação
+      constante, cofre por referência sem path traversal e estado durável. O
+      motor permanece travado para produção até QR Code v3/NT 2025.002 e RJ/SVRS
+      passarem em homologação — não inventa XML nem tributação.
+- [x] Interface `FiscalProvider` no Next.js: permite substituir PyNFe por motor
+      JavaScript ou API fiscal sem alterar contratos, séries ou o PDV.
 - [x] Numeração de série por PDV, nunca compartilhada entre estações. A reserva
       usa `BEGIN IMMEDIATE`, chave única por terminal/modelo/série/número e
       devolve o mesmo documento quando a mesma venda é reenviada.
 - **Aceite parcial entregue:** 16 vendas reservadas concorrentemente recebem
   os números 1–16 sem repetição; 12 tentativas concorrentes da mesma venda
-  geram um único documento e consomem um único número.
+  geram um único documento e consomem um único número. No PostgreSQL real, o
+  reenvio chama o provedor uma vez; timeout vira `unknown` e continua sem uma
+  segunda emissão.
 
 ### Fase 6 — IA & Canais (Sprint 17–20)
 - [ ] Cardápio QR com upsell contextual.

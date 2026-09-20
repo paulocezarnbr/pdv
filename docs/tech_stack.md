@@ -12,13 +12,13 @@
 ```
                     ┌──────────────────────────────────────┐
                     │        CLOUD (multi-tenant)          │
-                    │  FastAPI + PostgreSQL 16 (RLS)       │
-                    │  Redis · Celery · S3 · WS Gateway    │
+                    │  Next.js 15 + PostgreSQL 17 (RLS)    │
+                    │  API/painel + fiscal privado         │
                     └───────▲──────────────────▲───────────┘
                             │ HTTPS/WSS        │ HTTPS
                             │ (sync em lote)   │
         ┌───────────────────┴────────┐    ┌────┴─────────────────┐
-        │   DESKTOP PDV (Windows)    │    │   WEB APP (Next.js)   │
+        │   DESKTOP PDV (Windows)    │    │ Painel no mesmo Next  │
         │   PySide6 + SQLite (WAL)   │    │   Retaguarda / BI     │
         │   FastAPI local + WS       │    └───────────────────────┘
         │   ├─ Serial  → Balança     │
@@ -41,15 +41,15 @@ dependência de tempo real da operação de venda.
 
 | Camada | Escolha | Por quê | Alternativa descartada |
 |---|---|---|---|
-| Linguagem | Python 3.12 | Mesma stack do desktop → domínio e regras de preço/estoque compartilhados por pacote | Node/Go (duplicaria a regra de negócio) |
-| Framework | FastAPI + Pydantic v2 | Tipagem, OpenAPI automático, ASGI para WebSocket do KDS | Django (ORM pesado para write-heavy de PDV) |
-| ORM | SQLAlchemy 2.0 (async) + Alembic | Controle fino de SQL para RLS e upserts idempotentes | Tortoise/Prisma |
-| Banco | PostgreSQL 16 | RLS nativo = isolamento multi-tenant na camada mais baixa | MySQL (sem RLS) |
-| Cache/Fila | Redis 7 | Pub/Sub para KDS + rate limit + locks de sync | RabbitMQ (overkill no MVP) |
-| Jobs | Celery + Redis | Forecast, envio fiscal, WhatsApp, relatórios | APScheduler (não distribui) |
-| Realtime | WebSocket ASGI + Redis Pub/Sub | KDS multi-estação com fan-out por `store_id` | SSE (unidirecional) |
-| Storage | S3-compatible (MinIO/R2) | Imagens de produto, XMLs fiscais, backups | Filesystem local |
-| Observab. | OpenTelemetry + Prometheus + Sentry | Rastrear latência de sync e falha de periférico | Logs soltos |
+| Linguagem | TypeScript 5 / Node 22 | API e painel no mesmo deploy, contrato tipado | Backend Python separado (dois deploys para CRUD/painel) |
+| Framework | Next.js 15 | Route handlers + React no mesmo artefato standalone | FastAPI para toda a nuvem |
+| SQL | `postgres` com transações explícitas | RLS, `FOR UPDATE` e upserts ficam visíveis | ORM que esconda limites transacionais |
+| Banco | PostgreSQL 17 | RLS nativo = isolamento multi-tenant na camada mais baixa | MySQL (sem RLS) |
+| Fiscal | Next orquestrador + FastAPI/PyNFe privado | A1 fora do processo público e motor substituível | Biblioteca JS ainda sem contingência/QR v3/RJ homologados |
+| Cache/Fila | PostgreSQL nesta fase | Menos infraestrutura até fan-out justificar Redis | Redis prematuro |
+| Realtime local | FastAPI/WebSocket no PDV | KDS e garçom continuam mesmo sem internet | WebSocket cloud como dependência da loja |
+| Storage | S3-compatible (planejado) | XMLs fiscais e imagens fora do banco após autorização | Filesystem do contêiner |
+| Observab. | Logs estruturados; OTel planejado | Deploy atual continua simples sem fechar a porta à telemetria | Logs com segredos/corpos fiscais |
 
 ### Estratégia Multi-Tenant
 **Shared database, shared schema, com RLS.** Única coluna `tenant_id` + policy:

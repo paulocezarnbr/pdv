@@ -22,5 +22,19 @@ services:
       timeout: 3s
       retries: 10
 
+  # Rede interna apenas: não há `ports`. O Next é a única porta pública e
+  # autentica o terminal antes de chegar aqui.
+  fiscal-service:
+    build: ../fiscal-service
+    environment:
+      FISCAL_SERVICE_TOKEN: ${FISCAL_SERVICE_TOKEN:?defina FISCAL_SERVICE_TOKEN}
+      FISCAL_STATE_DB: /data/fiscal-state.sqlite3
+      FISCAL_SECRETS_DIR: /run/secrets/fiscal
+    volumes:
+      - fiscal_state:/data
+      - ./secrets/fiscal:/run/secrets/fiscal:ro
+    restart: unless-stopped
+
 volumes:
   erp_pgdata:
+  fiscal_state:

@@ -34,11 +34,11 @@ describeDb("painel contra PostgreSQL real", () => {
 
     const user = randomUUID();
     await admin`INSERT INTO panel_users (id, tenant_id, email, name, role, password_hash, can_authorize) VALUES (${user}, ${tenant}, 'dono@teste.local', 'Dono Teste', 'owner', 'hash-inutil', true)`;
-    sessionToken = "sessao-dashboard-integracao";
+    sessionToken = `sessao-dashboard-${randomUUID()}`;
     await admin`INSERT INTO panel_sessions (token_hash, tenant_id, user_id, expires_at) VALUES (${createHash("sha256").update(sessionToken).digest("hex")}, ${tenant}, ${user}, now() + interval '1 hour')`;
     const manager = randomUUID();
     await admin`INSERT INTO panel_users (id, tenant_id, email, name, role, password_hash, can_authorize) VALUES (${manager}, ${tenant}, 'gerente@teste.local', 'Gerente Teste', 'manager', 'hash-inutil', true)`;
-    managerSessionToken = "sessao-gerente-integracao";
+    managerSessionToken = `sessao-gerente-${randomUUID()}`;
     await admin`INSERT INTO panel_sessions (token_hash, tenant_id, user_id, expires_at) VALUES (${createHash("sha256").update(managerSessionToken).digest("hex")}, ${tenant}, ${manager}, now() + interval '1 hour')`;
 
     const staff = randomUUID();
@@ -57,13 +57,21 @@ describeDb("painel contra PostgreSQL real", () => {
 
   afterAll(async () => {
     if (!admin) return;
-    for (const id of [tenant, otherTenant]) {
-      await admin`DELETE FROM order_item_ingredients WHERE tenant_id = ${id}`;
-      await admin`DELETE FROM order_items WHERE tenant_id = ${id}`;
-      await admin`DELETE FROM orders WHERE tenant_id = ${id}`;
-      await admin`DELETE FROM fraud_alerts WHERE tenant_id = ${id}`;
-      await admin`DELETE FROM users WHERE tenant_id = ${id}`;
-      await admin`DELETE FROM tenants WHERE id = ${id}`;
+    // Só no banco efêmero: a auditoria é imutável inclusive para o admin e
+    // precisa ter os triggers desativados para a fixture poder ser removida.
+    await admin`SET session_replication_role = replica`;
+    try {
+      for (const id of [tenant, otherTenant]) {
+        await admin`DELETE FROM panel_admin_events WHERE tenant_id = ${id}`;
+        await admin`DELETE FROM order_item_ingredients WHERE tenant_id = ${id}`;
+        await admin`DELETE FROM order_items WHERE tenant_id = ${id}`;
+        await admin`DELETE FROM orders WHERE tenant_id = ${id}`;
+        await admin`DELETE FROM fraud_alerts WHERE tenant_id = ${id}`;
+        await admin`DELETE FROM users WHERE tenant_id = ${id}`;
+        await admin`DELETE FROM tenants WHERE id = ${id}`;
+      }
+    } finally {
+      await admin`SET session_replication_role = origin`;
     }
     await admin.end({ timeout: 5 });
   });

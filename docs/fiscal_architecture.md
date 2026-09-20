@@ -1,64 +1,74 @@
-# Contexto Fiscal — NFC-e offline-first
+# Contexto Fiscal — NFC-e server-first com contingência local
 
-## Limite desta fase
+## Decisão
 
-O núcleo fiscal não confunde **reservar** com **autorizar**. O PDV já consegue
-reservar série/número e registrar uma emissão normal ou em contingência, mas só
-um adaptador estadual, falando com a SEFAZ e usando certificado válido, poderá
-mover o documento para `authorized`.
+A emissão normal acontece no **servidor**, não no caixa. O Next.js autentica o
+terminal, valida o tenant, reserva série/número no PostgreSQL e chama um serviço
+fiscal Python privado. O certificado A1 e seu segredo ficam no cofre do servidor;
+eles não atravessam a API pública.
 
-## Provedor escolhido para o Rio de Janeiro
+O PDV Python conserva uma série própria somente para contingência. Ela só pode
+ser usada quando a conexão com a nuvem comprovadamente nem chegou a ser
+estabelecida. Timeout, HTTP 500 ou resposta ilegível são estados `unknown`: a
+SEFAZ pode ter autorizado, então o terminal consulta o status e **não** emite
+outro documento.
 
-O adaptador inicial usa **PyNFe 0.6.5** (LGPL-3.0), pinado no instalador. É
-nativo Python e preserva o funcionamento local do PDV; adicionar um serviço
-PHP ou um SaaS entre o caixa e a SEFAZ criaria mais um ponto de falha e outra
-credencial de longa duração. A SEFAZ-RJ utiliza a SVRS para NFC-e, e um teste de
-contrato fixa a URL de homologação resolvida pela biblioteca.
+## Por que não uma biblioteca JavaScript agora
 
-O domínio conhece apenas `FiscalGateway`. Migrar futuramente para uma API
-externa exige outro adaptador, sem alterar série, estados ou idempotência.
-PyNFe não decide que uma nota foi autorizada: o adaptador só aceita `cStat`
-100/150 e conserva XML processado, chave e protocolo.
+TypeScript é usado para autenticação, idempotência, numeração e orquestração —
+onde ele é uma ótima escolha e já é a stack do backend. O motor fiscal fica sob
+`FiscalProvider`, portanto pode ser trocado sem alterar PDV ou API.
 
-O pacote publicado não declara dependências no metadata do wheel 0.6.5. Por
-isso `signxml`, `lxml`, `pyOpenSSL` e `requests` estão explicitamente pinados em
-`requirements.txt`; confiar na instalação transitiva faria o executável falhar
-somente na primeira emissão.
+O `@brasil-fiscal/nfe` foi avaliado, mas seu roadmap ainda marca contingência,
+QR Code v3 e Reforma Tributária como pendentes e não demonstra uma matriz de
+homologação para o RJ. O PyNFe 0.6.5 também mantém a adequação ao QR Code v3 em
+aberto. Nenhuma das duas bibliotecas será declarada pronta para produção por
+conveniência de linguagem.
 
-O instalador inclui o metadata, autores e a licença LGPL do PyNFe. A licença
-permite o aplicativo comercial fechado, mas os avisos e os direitos sobre a
-biblioteca aberta não são removidos nem disfarçados.
+O primeiro adaptador interno usa PyNFe para transporte/certificado e fica sob
+uma **trava de homologação**. Produção só será habilitada após XML 4.00, QR Code
+v3, regras da NT 2025.002 e cenários do RJ/SVRS passarem na suíte homologada.
+
+## Componentes
+
+1. `cloud-api` — autentica dispositivo, valida cadastro tributário, reserva a
+   série normal e mantém o estado autoritativo.
+2. `fiscal-service` — serviço FastAPI interno, protegido por token, com
+   idempotência durável própria e acesso a referências de segredo montadas em
+   diretório privado.
+3. `desktop-pdv` — cliente da API e emissor local exclusivamente em contingência.
 
 ## Invariantes
 
-1. Série pertence a `(tenant, loja, terminal, modelo)`. Duas estações nunca
-   compartilham contador.
-2. Uma venda e um modelo têm no máximo um documento. Repetir após timeout
-   devolve a primeira reserva.
-3. Série usada não pode ser trocada. Alteração exigirá encerramento formal e
-   nova configuração, não um `UPDATE` silencioso.
-4. Documento fiscal não é apagado. Correções são novos eventos fiscais.
-5. `contingency_pending` não significa “autorizado”; significa que a venda foi
-   emitida localmente e ainda precisa de transmissão posterior.
-6. Número reservado não pode ser entregue a outra venda.
+1. Série normal pertence à loja e é numerada centralmente.
+2. Cada terminal tem uma série de contingência diferente.
+3. `request_uuid` identifica a tentativa de ponta a ponta; repeti-la não chama
+   o provedor nem consome outro número.
+4. `processing` ou `unknown` nunca autoriza emissão local substituta.
+5. Documento e evento fiscal não são apagados; correções são eventos novos.
+6. `authorized` exige `cStat` fiscal aceito, chave, protocolo e XML processado.
+7. Falta de NCM/CFOP/CSOSN/CST ou cadastro do emitente recusa antes de reservar;
+   o sistema não inventa tributação.
+8. O A1 é referenciado por nome de segredo. Bytes e senha não aparecem em
+   payload, PostgreSQL, log ou resposta ao terminal.
 
 ## Estados
 
-`pending` → `authorized | rejected`
+`processing → authorized | rejected | unknown`
 
-`contingency_pending` → transmissão posterior → `authorized | rejected`
+`unknown → consulta por chave → authorized | rejected`
 
-`authorized` → evento fiscal de cancelamento → `canceled`
+`contingency_pending → transmissão posterior → authorized | rejected`
 
-## Próxima fatia
+`authorized → evento de cancelamento → canceled`
 
-- Configuração fiscal do emitente, UF, CSC/idToken e ambiente.
-- Cofre do certificado A1, sem senha no SQLite ou em variável de log.
-- Gerador/assinador XML NFC-e 4.00 com validação XSD.
-- Gerador fiscal e consulta por chave antes de qualquer reenvio ambíguo.
-- DANFE NFC-e 80 mm com QR Code e indicação visível de contingência.
-- Sincronização de `fiscal_documents` e `fiscal_events` com o PostgreSQL.
+## Próxima fatia fiscal
 
-SAT CF-e (modelo 59) permanece separado: o modelo aparece no esquema para não
-forçar migração destrutiva, mas o hardware SAT exige outro adaptador e não será
-tratado como se fosse NFC-e.
+- Gerador/assinador XML NFC-e 4.00 com QR Code v3 e validação XSD.
+- Consulta por chave e reconciliação automática dos documentos `unknown`.
+- Credenciais A1/CSC e cadastro tributário em tela exclusiva do dono.
+- DANFE NFC-e 80 mm com indicação visível de contingência.
+- Homologação formal RJ/SVRS antes de liberar `production`.
+
+SAT CF-e (modelo 59) permanece um adaptador separado: o hardware e o protocolo
+não serão tratados como se fossem NFC-e.
