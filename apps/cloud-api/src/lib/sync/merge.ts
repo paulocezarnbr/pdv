@@ -83,7 +83,8 @@ const WRITABLE: Readonly<Record<string, readonly string[]>> = {
   ],
   cash_sessions: [
     "id", "store_id", "device_id", "client_uuid", "operator_id", "opened_at",
-    "closed_at", "opening_cents", "closing_cents",
+    "closed_at", "opening_cents", "closing_cents", "declared_cents",
+    "expected_cents", "difference_cents", "blind_close",
   ],
   audit_ledger: [
     "id", "store_id", "device_id", "client_uuid", "seq", "event_type",

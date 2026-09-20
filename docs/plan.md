@@ -412,7 +412,12 @@ paralelo.
 - [ ] Créditos pré-pagos com **ledger de saldo** — nunca uma coluna mutável de saldo.
 - [ ] Fiado com limite de crédito, bloqueio automático e aging de recebíveis.
 - [ ] Níveis de desconto (Diamante / Funcionário / Dono) com teto e autorização.
-- [ ] Conciliação cega de caixa: o operador não vê o esperado até fechar.
+- [~] Conciliação cega de caixa: o núcleo já abre a sessão, soma apenas
+      dinheiro líquido de troco, grava o declarado antes de revelar o esperado,
+      calcula a divergência e fecha auditoria + Outbox na mesma transação. O
+      PostgreSQL recebeu a migration 006 e a lista branca do sync. Falta ligar
+      os diálogos de abertura/fechamento à janela do caixa e exigir gerente
+      acima da tolerância configurada.
 - **Aceite:** o operador não obtém o valor esperado do caixa por nenhuma tela,
   relatório ou endpoint antes do fechamento — teste de API incluído.
 

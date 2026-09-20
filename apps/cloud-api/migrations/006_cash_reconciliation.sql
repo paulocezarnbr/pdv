@@ -1,0 +1,4 @@
+ALTER TABLE cash_sessions ADD COLUMN IF NOT EXISTS declared_cents BIGINT;
+ALTER TABLE cash_sessions ADD COLUMN IF NOT EXISTS expected_cents BIGINT;
+ALTER TABLE cash_sessions ADD COLUMN IF NOT EXISTS difference_cents BIGINT;
+ALTER TABLE cash_sessions ADD COLUMN IF NOT EXISTS blind_close BOOLEAN NOT NULL DEFAULT TRUE;
