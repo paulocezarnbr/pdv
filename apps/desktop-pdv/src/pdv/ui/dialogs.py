@@ -174,7 +174,8 @@ class PaymentDialog(QDialog):
     espelhadas aqui apenas como *aviso*: falta de valor e troco em cartão.
     """
 
-    def __init__(self, total_cents: Cents, parent: QWidget | None = None) -> None:
+    def __init__(self, total_cents: Cents, parent: QWidget | None = None,
+                 *, prepaid_balance_cents: Cents = Cents(0)) -> None:
         super().__init__(parent)
         self._total = int(total_cents)
         self._payments: list[Payment] = []
@@ -200,6 +201,11 @@ class PaymentDialog(QDialog):
         self._method = QComboBox()
         for method, label in _METHOD_LABELS:
             self._method.addItem(label, method)
+        if int(prepaid_balance_cents) > 0:
+            self._method.addItem(
+                f"Crédito pré-pago (saldo R$ {format_cents(prepaid_balance_cents)})",
+                PaymentMethod.PREPAID,
+            )
         self._method.setMinimumHeight(38)
         entry.addWidget(self._method, stretch=3)
 
@@ -279,7 +285,7 @@ class PaymentDialog(QDialog):
         method: PaymentMethod = self._method.currentData()
         self._payments.append(Payment(method=method, amount_cents=Cents(cents)))
 
-        label = dict(_METHOD_LABELS)[method]
+        label = dict(_METHOD_LABELS).get(method, "Crédito pré-pago")
         self._list.addItem(QListWidgetItem(f"{label} — R$ {format_cents(Cents(cents))}"))
 
         remaining = max(0, self._total - self._paid())

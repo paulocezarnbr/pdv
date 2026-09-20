@@ -25,7 +25,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Final
 
-SCHEMA_VERSION: Final[int] = 7
+SCHEMA_VERSION: Final[int] = 8
 _SCHEMA_FILE: Final[Path] = Path(__file__).with_name("schema.sql")
 
 #: Migration 2 — tabelas do servidor local (Fase 3).
@@ -383,6 +383,24 @@ CREATE INDEX IF NOT EXISTS idx_cashback_customer
     ON cashback_ledger (tenant_id, customer_id, created_at);
 """
 
+_MIGRATION_8_PREPAID: Final[str] = """
+-- Fase 4 — crédito pré-pago. Todo saldo é soma de lançamentos imutáveis.
+CREATE TABLE IF NOT EXISTS prepaid_ledger (
+    id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, store_id TEXT NOT NULL,
+    customer_id TEXT NOT NULL, entry_type TEXT NOT NULL
+        CHECK(entry_type IN ('deposit','debit','refund')),
+    amount_cents INTEGER NOT NULL CHECK(amount_cents > 0), order_id TEXT,
+    actor_user_id TEXT NOT NULL, authorizer_user_id TEXT,
+    created_at TEXT NOT NULL, client_uuid TEXT NOT NULL UNIQUE,
+    is_synced INTEGER NOT NULL DEFAULT 0, synced_at TEXT,
+    FOREIGN KEY(customer_id) REFERENCES customers(id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_prepaid_debit_order
+    ON prepaid_ledger(tenant_id, order_id) WHERE entry_type='debit';
+CREATE INDEX IF NOT EXISTS idx_prepaid_customer
+    ON prepaid_ledger(tenant_id, customer_id, created_at);
+"""
+
 
 def _add_column(
     connection: sqlite3.Connection, table: str, column: str, declaration: str
@@ -506,6 +524,9 @@ class Database:
 
         if current < 7:
             connection.executescript(_MIGRATION_7_CASHBACK)
+
+        if current < 8:
+            connection.executescript(_MIGRATION_8_PREPAID)
 
         if current < SCHEMA_VERSION:
             connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")

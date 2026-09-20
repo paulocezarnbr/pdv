@@ -45,6 +45,7 @@ from pdv.domain.models import (
     Grams,
     IngredientConsumption,
     Payment,
+    PaymentMethod,
     PricingMode,
     Product,
     Sale,
@@ -56,6 +57,7 @@ from pdv.hardware.printer.layout import ReceiptContext, build_sale_receipt
 from pdv.services.audit import AuditService
 from pdv.services.cashback import CashbackService
 from pdv.services.payments import record_payments, settle_payments
+from pdv.services.prepaid import PrepaidError, PrepaidService
 from pdv.services.pricing import net_weight, price_for_weight
 from pdv.services.stock import StockService, explode_recipe, total_cost_cents
 
@@ -400,6 +402,8 @@ class CheckoutService:
 
         cashback_credit = None
         cashback = CashbackService(self._db, self._config)
+        prepaid = PrepaidService(self._db, self._config)
+        prepaid_balance: Cents | None = None
         with self._db.transaction() as connection:
             SaleRepository(connection, self._outbox).close_order(
                 order_id=sale.id,
@@ -416,6 +420,19 @@ class CheckoutService:
             # `payments` existia no schema e nunca recebia linha: o sistema
             # sabia quanto entrou e não sabia como, e o fechamento de caixa por
             # forma de pagamento não tinha de onde sair.
+            prepaid_amount = Cents(sum(
+                int(payment.amount_cents)
+                for payment in payments
+                if payment.method is PaymentMethod.PREPAID
+            ))
+            if int(prepaid_amount) > 0:
+                if customer_id is None:
+                    raise PrepaidError("Crédito pré-pago exige cliente identificado.")
+                prepaid_balance = prepaid.redeem_in(
+                    connection, customer_id=customer_id, order_id=sale.id,
+                    amount_cents=prepaid_amount, actor_user_id=operator_id,
+                )
+
             record_payments(
                 connection,
                 self._outbox,
@@ -491,7 +508,7 @@ class CheckoutService:
                     int(cashback_credit.amount_cents) if cashback_credit else 0
                 ),
                 credit_balance_cents=(
-                    int(cashback.balance(customer_id)) if customer_id is not None else None
+                    int(prepaid_balance) if prepaid_balance is not None else None
                 ),
             ),
             self._config.printer,

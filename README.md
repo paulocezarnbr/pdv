@@ -119,6 +119,7 @@ contorna avisos TLS, pois ensinar o garçom a ignorá-los anularia a autenticaç
 | `F7` | Configurar cashback (percentual, teto e validade) — exige gerente |
 | `F8` | Painel do salão: pareamento, mesas abertas e fila da cozinha |
 | `F10` | Receber (dinheiro, débito, crédito, PIX ou dividido) e imprimir |
+| `F11` | Carregar crédito pré-pago de cliente — exige gerente |
 | `F12` | Fechamento cego do caixa — exige credencial de gerente |
 
 A autorização de gerente é validada **offline**, com Argon2id contra a réplica

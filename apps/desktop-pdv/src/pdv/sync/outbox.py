@@ -37,6 +37,7 @@ SYNCABLE_TABLES: Final[frozenset[str]] = frozenset(
         "cash_sessions",
         "customers",
         "cashback_ledger",
+        "prepaid_ledger",
     }
 )
 

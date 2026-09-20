@@ -4,7 +4,8 @@ Princípios de UI de PDV que o layout respeita:
 
 * **Teclado acima do mouse.** O operador não tira a mão do teclado numa fila.
   F2 registra o pesado, F3 lança o unitário, F4 cancela item, F6 desconta,
-  F7 configura cashback, F8 abre o salão, F9 as mesas, F10 finaliza e F12 fecha o caixa.
+  F7 configura cashback, F8 abre o salão, F9 as mesas, F10 finaliza,
+  F11 carrega crédito pré-pago e F12 fecha o caixa.
 * **O peso é o maior elemento da tela.** É o número que o cliente confere de pé
   do outro lado do balcão.
 * **Estado de conexão sempre visível.** O operador precisa saber que está
@@ -64,6 +65,7 @@ from pdv.services.authorization import AuthorizationService, Identity
 from pdv.services.checkout import CheckoutService
 from pdv.services.cash_session import CashSessionError, CashSessionService
 from pdv.services.cashback import CashbackError, CashbackService, Customer
+from pdv.services.prepaid import PrepaidError, PrepaidService
 from pdv.ui import theme
 from pdv.ui.dialogs import ManagerAuthDialog, PaymentDialog
 from pdv.ui.salon_panel import SalonPanel
@@ -112,6 +114,7 @@ class CounterWindow(QMainWindow):
         self._edge_tls = edge_tls
         self._authorization = AuthorizationService(database, config.tenant_id)
         self._cashback = CashbackService(database, config)
+        self._prepaid = PrepaidService(database, config)
         self._operator_id = EntityId(str(operator.id))
 
         self._weighed: list[Product] = []
@@ -450,6 +453,7 @@ class CounterWindow(QMainWindow):
         QShortcut(QKeySequence("F8"), self, self._open_salon)
         QShortcut(QKeySequence("F9"), self, self._open_tables)
         QShortcut(QKeySequence("F10"), self, self._finalize_sale)
+        QShortcut(QKeySequence("F11"), self, self._deposit_prepaid)
         QShortcut(QKeySequence("F12"), self, self._close_cash_session)
 
     def _wire_scale(self) -> None:
@@ -861,7 +865,13 @@ class CounterWindow(QMainWindow):
         if customer is False:
             return
 
-        dialog = PaymentDialog(sale.total_cents, parent=self)
+        prepaid_balance = (
+            self._prepaid.balance(customer.id)
+            if isinstance(customer, Customer) else Cents(0)
+        )
+        dialog = PaymentDialog(
+            sale.total_cents, parent=self, prepaid_balance_cents=prepaid_balance
+        )
         if dialog.exec() != PaymentDialog.DialogCode.Accepted:
             return
 
@@ -920,6 +930,37 @@ class CounterWindow(QMainWindow):
             QMessageBox.critical(self, "Cliente", str(exc))
             return False
         return Customer(customer_id, name.strip(), phone.strip())
+
+    def _deposit_prepaid(self) -> None:
+        customer = self._select_customer()
+        if not isinstance(customer, Customer):
+            return
+        amount, accepted = QInputDialog.getDouble(
+            self, "Crédito pré-pago", "Valor da carga (R$):",
+            50.0, 0.01, 999_999.99, 2,
+        )
+        if not accepted:
+            return
+        authorizer = ManagerAuthDialog.ask(
+            self._authorization,
+            operation=f"Autorizar carga pré-paga para {customer.name}.",
+            parent=self,
+        )
+        if authorizer is None:
+            return
+        cents = Cents(int((Decimal(str(amount)) * Decimal(100)).quantize(Decimal("1"))))
+        try:
+            balance = self._prepaid.deposit(
+                customer_id=customer.id, amount_cents=cents,
+                actor_user_id=self._operator_id, authorizer_user_id=authorizer.id,
+            )
+        except PrepaidError as exc:
+            QMessageBox.critical(self, "Crédito pré-pago", str(exc))
+            return
+        QMessageBox.information(
+            self, "Crédito pré-pago",
+            f"Carga concluída. Saldo de {customer.name}: R$ {format_cents(balance)}",
+        )
 
     def _close_cash_session(self) -> None:
         """F12 fecha o caixa sem revelar o esperado antes da declaração."""

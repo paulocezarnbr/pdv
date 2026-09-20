@@ -349,6 +349,21 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_cashback_credit_order
 CREATE INDEX IF NOT EXISTS idx_cashback_customer
     ON cashback_ledger (tenant_id, customer_id, created_at);
 
+CREATE TABLE IF NOT EXISTS prepaid_ledger (
+    id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, store_id TEXT NOT NULL,
+    customer_id TEXT NOT NULL, entry_type TEXT NOT NULL
+        CHECK(entry_type IN ('deposit','debit','refund')),
+    amount_cents INTEGER NOT NULL CHECK(amount_cents > 0), order_id TEXT,
+    actor_user_id TEXT NOT NULL, authorizer_user_id TEXT,
+    created_at TEXT NOT NULL, client_uuid TEXT NOT NULL UNIQUE,
+    is_synced INTEGER NOT NULL DEFAULT 0, synced_at TEXT,
+    FOREIGN KEY(customer_id) REFERENCES customers(id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_prepaid_debit_order
+    ON prepaid_ledger(tenant_id, order_id) WHERE entry_type='debit';
+CREATE INDEX IF NOT EXISTS idx_prepaid_customer
+    ON prepaid_ledger(tenant_id, customer_id, created_at);
+
 -- ===========================================================================
 -- Fase 3 — Servidor local (edge) para o app do garçom e o KDS
 -- ===========================================================================

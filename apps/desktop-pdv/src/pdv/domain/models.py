@@ -265,6 +265,8 @@ class AuditEventType(Enum):
     CASHBACK_CREDITED = "cashback_credited"
     CASHBACK_REDEEMED = "cashback_redeemed"
     CASHBACK_RULE_CHANGED = "cashback_rule_changed"
+    PREPAID_CREDITED = "prepaid_credited"
+    PREPAID_REDEEMED = "prepaid_redeemed"
     SCALE_ANOMALY = "scale_anomaly"
     # Fase 3.5: um comando do painel que o terminal se recusou a obedecer.
     # Tipo próprio, e não um `price_override` reaproveitado: recusa remota é
