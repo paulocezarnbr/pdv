@@ -369,9 +369,36 @@ não para o PDV onde está gravado. Manter a origem é o que permite ao relatór
 dizer de qual aparelho saiu cada venda — e ao M09 separar o que veio do balcão
 do que veio do salão.
 
+### 2.7 Fiscal offline-first
+
+**`fiscal_series`** — contador exclusivo de um PDV e modelo fiscal.
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `tenant_id`, `store_id`, `device_id` | UUID/TEXT | Escopo completo do terminal |
+| `model` | INTEGER | `65` NFC-e; `59` reservado ao adaptador SAT |
+| `series` | INTEGER | 1–999; única por loja/modelo, não pode pertencer a dois PDVs |
+| `next_number` | INTEGER | Incrementado dentro de `BEGIN IMMEDIATE` |
+| `environment` | TEXT | `homologation` \| `production` |
+
+**`fiscal_documents`** — a reserva e o resultado fiscal.
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `order_id`, `model` | FK + INTEGER | Únicos juntos por tenant: reenvio é idempotente |
+| `series`, `number` | INTEGER | Par único por loja/modelo; nunca reutilizado |
+| `emission_type` | TEXT | `normal` \| `offline_contingency` |
+| `status` | TEXT | `pending` \| `contingency_pending` \| `authorized` \| `rejected` \| `canceled` |
+| `contingency_reason` | TEXT NULL | Por que não houve autorização online |
+| `access_key`, `protocol`, `xml_content` | TEXT NULL | Só preenchidos pelo adaptador fiscal real |
+| `client_uuid`, `is_synced`, `synced_at` | sync | Idempotência e envio posterior |
+
+**`fiscal_events`** — histórico append-only de reserva, autorização, rejeição e
+cancelamento. UPDATE e DELETE são recusados no SQLite.
+
 ---
 
-### 2.7 Tabelas Locais do PDV (nunca sobem como entidade)
+### 2.8 Tabelas Locais do PDV (nunca sobem como entidade)
 
 **`sync_outbox`** — a fila que garante o offline.
 

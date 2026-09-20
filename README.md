@@ -29,7 +29,8 @@ commit** da mudança de código.
 
 ## Estado atual
 
-✅ **Fases 1, 2, 2.5, 3, 3.5.b e 3.6** implementadas — 301 testes passando.
+✅ **Fases 1, 2, 2.5, 3, 3.5, 3.6 e 4** implementadas; a fundação da Fase 5
+(fiscal) já começou. A suíte desktop tem **447 testes** passando.
 
 O que já funciona ponta a ponta, sem internet:
 
@@ -54,10 +55,14 @@ O que já funciona ponta a ponta, sem internet:
     quem emitiu, e o resultado volta para o painel com o motivo da recusa.
 11. Instalador único com provisionamento automático de periféricos, ativação do
     terminal e atualização in-place.
+12. Painel web com cadastro de múltiplos proprietários: somente outro dono
+    autenticado pode criar a conta, o PIN é Argon2id e cada criação entra numa
+    auditoria administrativa imutável.
+13. Reserva fiscal offline por terminal, com série própria, numeração atômica,
+    idempotência por venda e fila explícita de contingência.
 
-🔜 Próximo: o painel web da Fase 3.5.a (telemetria ao vivo) e a Fase 4
-(financeiro e anti-furto). O app nativo do garçom segue no roteiro — o web
-**não** o substitui, resolve o que ele não resolve.
+🔜 Próximo: assinatura do XML NFC-e, regras estaduais e transmissão/consulta na
+SEFAZ. O núcleo não declara uma nota “autorizada” antes da resposta fiscal real.
 
 ---
 
@@ -138,6 +143,12 @@ A base de demonstração traz `olivia` / `84627519` como proprietária (teto de
 100%), `bruno` / `483916` como gerente (teto de 30%) e `ana` / `705284` como
 caixa. Cancelar item exige especificamente o gerente; atribuir Funcionário/Dono
 e usar o nível Dono exigem especificamente a proprietária.
+
+O tenant pode ter **mais de um proprietário**. No painel web, uma sessão com
+papel `owner` abre “Adicionar outro dono”; gerente não acessa a rota. O servidor
+valida a mesma política de PIN do PDV, grava somente Argon2id e a réplica chega
+aos caixas pelo sync de `users`. Não há remoção de proprietário nesta etapa,
+evitando exclusão acidental do último dono.
 
 ---
 

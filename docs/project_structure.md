@@ -74,6 +74,8 @@ pdv/
 │   │   │   │   ├── stock.py           # baixa fracionada por ficha técnica
 │   │   │   │   ├── audit.py           # ledger SHA-256 encadeado
 │   │   │   │   └── checkout.py        # orquestra a venda em 1 transação
+│   │   │   ├── fiscal/
+│   │   │   │   └── service.py          # série/número atômicos + contingência
 │   │   │   ├── sync/
 │   │   │   │   ├── outbox.py
 │   │   │   │   ├── client.py          # httpx + backoff

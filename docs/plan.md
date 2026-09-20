@@ -434,8 +434,16 @@ paralelo.
   relatório ou endpoint antes do fechamento — teste de API incluído.
 
 ### Fase 5 — Fiscal (Sprint 14–16)
-- [ ] NFC-e com contingência offline e transmissão posterior.
-- [ ] Numeração de série por PDV, nunca compartilhada entre estações.
+- [~] NFC-e com contingência offline e transmissão posterior. A fundação local
+      já reserva o documento como `contingency_pending`, de forma idempotente,
+      preserva o motivo e mantém histórico imutável. Assinatura XML, regras por
+      UF e transmissão SEFAZ continuam pendentes de certificado A1 e CSC.
+- [x] Numeração de série por PDV, nunca compartilhada entre estações. A reserva
+      usa `BEGIN IMMEDIATE`, chave única por terminal/modelo/série/número e
+      devolve o mesmo documento quando a mesma venda é reenviada.
+- **Aceite parcial entregue:** 16 vendas reservadas concorrentemente recebem
+  os números 1–16 sem repetição; 12 tentativas concorrentes da mesma venda
+  geram um único documento e consomem um único número.
 
 ### Fase 6 — IA & Canais (Sprint 17–20)
 - [ ] Cardápio QR com upsell contextual.

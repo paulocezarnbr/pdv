@@ -25,7 +25,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Final
 
-SCHEMA_VERSION: Final[int] = 12
+SCHEMA_VERSION: Final[int] = 13
 _SCHEMA_FILE: Final[Path] = Path(__file__).with_name("schema.sql")
 
 #: Migration 2 — tabelas do servidor local (Fase 3).
@@ -503,6 +503,79 @@ BEGIN
 END;
 """
 
+_MIGRATION_13_FISCAL_FOUNDATION: Final[str] = """
+CREATE TABLE IF NOT EXISTS fiscal_series (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    store_id TEXT NOT NULL,
+    device_id TEXT NOT NULL,
+    model INTEGER NOT NULL DEFAULT 65 CHECK(model IN (59,65)),
+    series INTEGER NOT NULL CHECK(series BETWEEN 1 AND 999),
+    next_number INTEGER NOT NULL DEFAULT 1 CHECK(next_number > 0),
+    environment TEXT NOT NULL DEFAULT 'homologation'
+        CHECK(environment IN ('homologation','production')),
+    updated_at TEXT NOT NULL,
+    UNIQUE(tenant_id,store_id,device_id,model),
+    UNIQUE(tenant_id,store_id,model,series)
+);
+CREATE TABLE IF NOT EXISTS fiscal_documents (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    store_id TEXT NOT NULL,
+    device_id TEXT NOT NULL,
+    order_id TEXT NOT NULL,
+    model INTEGER NOT NULL CHECK(model IN (59,65)),
+    series INTEGER NOT NULL CHECK(series BETWEEN 1 AND 999),
+    number INTEGER NOT NULL CHECK(number > 0),
+    environment TEXT NOT NULL CHECK(environment IN ('homologation','production')),
+    emission_type TEXT NOT NULL CHECK(emission_type IN ('normal','offline_contingency')),
+    status TEXT NOT NULL CHECK(status IN
+        ('pending','contingency_pending','authorized','rejected','canceled')),
+    contingency_reason TEXT,
+    access_key TEXT,
+    protocol TEXT,
+    xml_content TEXT,
+    issued_at TEXT NOT NULL,
+    authorized_at TEXT,
+    updated_at TEXT NOT NULL,
+    client_uuid TEXT NOT NULL UNIQUE,
+    is_synced INTEGER NOT NULL DEFAULT 0,
+    synced_at TEXT,
+    FOREIGN KEY(order_id) REFERENCES orders(id),
+    UNIQUE(tenant_id,store_id,model,series,number),
+    UNIQUE(tenant_id,order_id,model)
+);
+CREATE INDEX IF NOT EXISTS idx_fiscal_documents_pending
+    ON fiscal_documents(status,is_synced,issued_at);
+CREATE TABLE IF NOT EXISTS fiscal_events (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    fiscal_document_id TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    client_uuid TEXT NOT NULL UNIQUE,
+    is_synced INTEGER NOT NULL DEFAULT 0,
+    synced_at TEXT,
+    FOREIGN KEY(fiscal_document_id) REFERENCES fiscal_documents(id)
+);
+CREATE TRIGGER IF NOT EXISTS trg_fiscal_documents_no_delete
+BEFORE DELETE ON fiscal_documents
+BEGIN
+    SELECT RAISE(ABORT, 'fiscal documents are immutable');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_fiscal_events_no_update
+BEFORE UPDATE ON fiscal_events
+BEGIN
+    SELECT RAISE(ABORT, 'fiscal events are immutable');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_fiscal_events_no_delete
+BEFORE DELETE ON fiscal_events
+BEGIN
+    SELECT RAISE(ABORT, 'fiscal events are immutable');
+END;
+"""
+
 
 def _add_column(
     connection: sqlite3.Connection, table: str, column: str, declaration: str
@@ -641,6 +714,9 @@ class Database:
 
         if current < 12:
             connection.executescript(_MIGRATION_12_OWNER_TIER_ASSIGNMENT)
+
+        if current < 13:
+            connection.executescript(_MIGRATION_13_FISCAL_FOUNDATION)
 
         if current < SCHEMA_VERSION:
             connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
