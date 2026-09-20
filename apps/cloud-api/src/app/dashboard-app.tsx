@@ -1,7 +1,7 @@
 "use client";
 
 import { Button, InlineLoading, InlineNotification, Select, SelectItem, TextInput } from "@carbon/react";
-import { ChartLine, Logout, Renew, Restaurant, Security, Store, WarningAlt } from "@carbon/icons-react";
+import { Add, ChartLine, Logout, Renew, Restaurant, Security, Store, UserMultiple, WarningAlt } from "@carbon/icons-react";
 import { FormEvent, useCallback, useEffect, useState, type ReactNode } from "react";
 
 type SessionUser = { name: string; email: string; role: string };
@@ -16,6 +16,7 @@ type Dashboard = {
   devices: { id: string; label: string; store_name: string; last_seen_at: string | null; pending_commands: string; open_alerts: string }[];
   alerts: { id: string; reason: string; store_name: string | null; device_id: string; raised_at: string }[];
 };
+type Owner = { id: string; name: string; login: string; is_active: boolean; updated_at: string };
 
 const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 const integer = new Intl.NumberFormat("pt-BR");
@@ -122,8 +123,66 @@ export function DashboardApp() {
         <article className="panel"><PanelTitle icon={<Store size={18} />} title="Equipe" subtitle="Resultado e gorjeta" /><RankRows rows={(data?.staff ?? []).map((s) => ({ key: s.id, name: s.name, value: cents(s.revenue_cents), note: `${s.orders_count} mesa(s), ${cents(s.tips_cents)} em gorjetas` }))} /></article>
         <article className="panel alert-panel"><PanelTitle icon={<Security size={18} />} title="Segurança" subtitle="Alertas antifraude em aberto" /><div className="rows">{data?.alerts.length ? data.alerts.map((alert) => <div className="alert-row" key={alert.id}><WarningAlt size={16} /><div><strong>{alert.reason}</strong><small>{alert.store_name ?? "Loja não identificada"} - {since(alert.raised_at).label}</small></div></div>) : <Empty text="Nenhum alerta em aberto." />}</div></article>
       </section>
+      {user.role === "owner" && <OwnerAdmin />}
     </main>
   </div>;
+}
+
+function OwnerAdmin() {
+  const [owners, setOwners] = useState<Owner[]>([]);
+  const [name, setName] = useState("");
+  const [login, setLogin] = useState("");
+  const [pin, setPin] = useState("");
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    const response = await fetch("/api/panel/owners", { cache: "no-store" });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.detail || "Não foi possível carregar os proprietários.");
+    setOwners(body.owners);
+  }, []);
+
+  useEffect(() => { void load().catch((reason) => setError(reason instanceof Error ? reason.message : "Falha de rede.")); }, [load]);
+
+  async function createOwner(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true); setError(""); setSuccess("");
+    try {
+      const response = await fetch("/api/panel/owners", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, login, pin }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.detail || "Não foi possível cadastrar o proprietário.");
+      setName(""); setLogin(""); setPin("");
+      setSuccess(`${body.owner.name} foi cadastrado como Dono e será sincronizado com os terminais.`);
+      await load();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Falha de rede.");
+    } finally { setBusy(false); }
+  }
+
+  return <section className="owner-admin" aria-label="Proprietários">
+    <article className="panel owner-form-panel">
+      <PanelTitle icon={<Add size={18} />} title="Adicionar outro dono" subtitle="Somente um proprietário autenticado pode conceder este poder" />
+      <form className="owner-form" onSubmit={createOwner}>
+        {error && <InlineNotification kind="error" title="Cadastro não concluído" subtitle={error} lowContrast hideCloseButton />}
+        {success && <InlineNotification kind="success" title="Proprietário cadastrado" subtitle={success} lowContrast hideCloseButton />}
+        <TextInput id="owner-name" labelText="Nome completo" value={name} maxLength={120} onChange={(event) => setName(event.target.value)} required />
+        <TextInput id="owner-login" labelText="Login no PDV" helperText="3 a 40 caracteres: letras minúsculas, números, ponto, hífen ou sublinhado." value={login} maxLength={40} autoComplete="off" onChange={(event) => setLogin(event.target.value.toLowerCase())} required />
+        <TextInput id="owner-pin" labelText="PIN operacional" helperText="6 a 12 dígitos, sem sequências ou repetições previsíveis." type="password" inputMode="numeric" autoComplete="new-password" value={pin} maxLength={12} onChange={(event) => setPin(event.target.value.replace(/\D/g, ""))} required />
+        <Button type="submit" renderIcon={Add} disabled={busy}>{busy ? "Protegendo PIN" : "Cadastrar dono"}</Button>
+        <small>O PIN é transformado em Argon2id antes de ser gravado. Ele nunca volta para esta tela.</small>
+      </form>
+    </article>
+    <article className="panel">
+      <PanelTitle icon={<UserMultiple size={18} />} title="Donos cadastrados" subtitle="Contas operacionais com poder máximo no tenant" />
+      <div className="rows owner-list">{owners.length ? owners.map((owner) => <div className="data-row" key={owner.id}><div><strong>{owner.name}</strong><small>@{owner.login}</small></div><span className={owner.is_active ? "state online" : "state stale"}>{owner.is_active ? "ativo" : "inativo"}</span></div>) : <Empty text="Nenhum proprietário operacional cadastrado." />}</div>
+    </article>
+  </section>;
 }
 
 function Login({ onLogin }: { onLogin: (user: SessionUser) => void }) {

@@ -13,12 +13,16 @@ describeDb("painel contra PostgreSQL real", () => {
   let otherTenant: string;
   let store: string;
   let sessionToken: string;
+  let managerSessionToken: string;
   let GET: (request: Request) => Promise<Response>;
+  let GET_OWNERS: (request: Request) => Promise<Response>;
+  let POST_OWNER: (request: Request) => Promise<Response>;
 
   beforeAll(async () => {
     process.env.DATABASE_URL = APP_URL!;
     process.env.SESSION_SECRET = "dashboard-integration-secret-with-32-chars";
     ({ GET } = await import("../src/app/api/panel/dashboard/route.ts"));
+    ({ GET: GET_OWNERS, POST: POST_OWNER } = await import("../src/app/api/panel/owners/route.ts"));
     admin = postgres(ADMIN_URL!, { max: 1, onnotice: () => {} });
 
     const [t] = await admin<{ id: string }[]>`INSERT INTO tenants (name) VALUES ('Painel Integração') RETURNING id`;
@@ -32,6 +36,10 @@ describeDb("painel contra PostgreSQL real", () => {
     await admin`INSERT INTO panel_users (id, tenant_id, email, name, role, password_hash, can_authorize) VALUES (${user}, ${tenant}, 'dono@teste.local', 'Dono Teste', 'owner', 'hash-inutil', true)`;
     sessionToken = "sessao-dashboard-integracao";
     await admin`INSERT INTO panel_sessions (token_hash, tenant_id, user_id, expires_at) VALUES (${createHash("sha256").update(sessionToken).digest("hex")}, ${tenant}, ${user}, now() + interval '1 hour')`;
+    const manager = randomUUID();
+    await admin`INSERT INTO panel_users (id, tenant_id, email, name, role, password_hash, can_authorize) VALUES (${manager}, ${tenant}, 'gerente@teste.local', 'Gerente Teste', 'manager', 'hash-inutil', true)`;
+    managerSessionToken = "sessao-gerente-integracao";
+    await admin`INSERT INTO panel_sessions (token_hash, tenant_id, user_id, expires_at) VALUES (${createHash("sha256").update(managerSessionToken).digest("hex")}, ${tenant}, ${manager}, now() + interval '1 hour')`;
 
     const staff = randomUUID();
     await admin`INSERT INTO users (id, tenant_id, name, login, role, pin_hash) VALUES (${staff}, ${tenant}, 'João Garçom', 'joao-teste', 'waiter', 'argon2')`;
@@ -89,5 +97,45 @@ describeDb("painel contra PostgreSQL real", () => {
       { headers: { cookie: `erp_session=${sessionToken}` } },
     ));
     expect(response.status).toBe(404);
+  });
+
+  it("somente um dono pode cadastrar outro dono e o PIN nunca volta na resposta", async () => {
+    const payload = JSON.stringify({ name: "Segunda Proprietária", login: "segunda.dona", pin: "84627519" });
+    const denied = await POST_OWNER(new Request("http://localhost/api/panel/owners", {
+      method: "POST", headers: { cookie: `erp_session=${managerSessionToken}`, "content-type": "application/json" }, body: payload,
+    }));
+    expect(denied.status).toBe(403);
+
+    const response = await POST_OWNER(new Request("http://localhost/api/panel/owners", {
+      method: "POST", headers: { cookie: `erp_session=${sessionToken}`, "content-type": "application/json", "x-forwarded-for": "198.51.100.8" }, body: payload,
+    }));
+    expect(response.status).toBe(201);
+    const body = await response.json();
+    expect(body.owner).toMatchObject({ name: "Segunda Proprietária", login: "segunda.dona" });
+    expect(JSON.stringify(body)).not.toContain("84627519");
+    expect(JSON.stringify(body)).not.toContain("argon2");
+
+    const [stored] = await admin<{ role: string; pin_hash: string; max_discount_percent: string }[]>`
+      SELECT role, pin_hash, max_discount_percent FROM users
+       WHERE tenant_id=${tenant} AND login='segunda.dona'
+    `;
+    expect(stored!.role).toBe("owner");
+    expect(stored!.pin_hash).toMatch(/^\$argon2id\$/);
+    expect(Number(stored!.max_discount_percent)).toBe(100);
+    const [event] = await admin<{ event_type: string; ip: string }[]>`
+      SELECT event_type, ip FROM panel_admin_events
+       WHERE tenant_id=${tenant} AND subject_user_id=${body.owner.id}
+    `;
+    expect(event).toEqual({ event_type: "owner_created", ip: "198.51.100.8" });
+  });
+
+  it("lista todos os donos do tenant sem expor hashes", async () => {
+    const response = await GET_OWNERS(new Request("http://localhost/api/panel/owners", {
+      headers: { cookie: `erp_session=${sessionToken}` },
+    }));
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.owners.some((owner: { login: string }) => owner.login === "segunda.dona")).toBe(true);
+    expect(JSON.stringify(body)).not.toContain("pin_hash");
   });
 });
