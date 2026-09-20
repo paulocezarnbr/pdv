@@ -86,6 +86,13 @@ const WRITABLE: Readonly<Record<string, readonly string[]>> = {
     "closed_at", "opening_cents", "closing_cents", "declared_cents",
     "expected_cents", "difference_cents", "blind_close",
   ],
+  customers: [
+    "id", "client_uuid", "name", "phone", "is_active", "created_at", "updated_at",
+  ],
+  cashback_ledger: [
+    "id", "store_id", "client_uuid", "customer_id", "order_id", "entry_type",
+    "amount_cents", "source_credit_id", "expires_at", "actor_user_id", "created_at",
+  ],
   audit_ledger: [
     "id", "store_id", "device_id", "client_uuid", "seq", "event_type",
     "severity", "actor_user_id", "authorizer_user_id", "payload_json",

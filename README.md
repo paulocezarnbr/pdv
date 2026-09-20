@@ -100,6 +100,16 @@ verdes por baixo.
 
 O operador não tira a mão do teclado numa fila.
 
+### HTTPS nos celulares do salão
+
+O certificado local protege PINs e tokens contra captura na rede, mas a CA da
+loja precisa ser confiada uma vez em cada aparelho. Confiar no Windows não
+confia automaticamente nos celulares. No iPhone, instale o perfil e habilite
+"Confiança total" em Ajustes; em frota administrada, prefira MDM/Apple
+Configurator. No Android, instale a CA da loja no armazenamento de credenciais.
+O futuro app nativo usará pinning do certificado do terminal; a versão web não
+contorna avisos TLS, pois ensinar o garçom a ignorá-los anularia a autenticação.
+
 | Tecla | Ação |
 |---|---|
 | `F2` | Registrar item pesado (só habilita com peso estável) |

@@ -35,6 +35,8 @@ SYNCABLE_TABLES: Final[frozenset[str]] = frozenset(
         "stock_movements",
         "audit_ledger",
         "cash_sessions",
+        "customers",
+        "cashback_ledger",
     }
 )
 

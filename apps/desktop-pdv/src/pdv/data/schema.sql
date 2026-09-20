@@ -312,6 +312,43 @@ CREATE TABLE IF NOT EXISTS users (
     updated_at     TEXT NOT NULL
 );
 
+-- Fase 4 — cliente e cashback. O saldo é derivado do ledger; não existe
+-- coluna de saldo que possa ser sobrescrita sem deixar história.
+CREATE TABLE IF NOT EXISTS customers (
+    id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, name TEXT NOT NULL,
+    phone TEXT, is_active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+    client_uuid TEXT NOT NULL UNIQUE, is_synced INTEGER NOT NULL DEFAULT 0,
+    synced_at TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_phone
+    ON customers (tenant_id, phone) WHERE phone IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS cashback_rules (
+    id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, store_id TEXT NOT NULL,
+    percent_basis_points INTEGER NOT NULL CHECK(percent_basis_points BETWEEN 0 AND 10000),
+    max_per_sale_cents INTEGER NOT NULL DEFAULT 0,
+    validity_days INTEGER NOT NULL CHECK(validity_days BETWEEN 1 AND 3650),
+    is_active INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL,
+    UNIQUE (tenant_id, store_id)
+);
+
+CREATE TABLE IF NOT EXISTS cashback_ledger (
+    id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, store_id TEXT NOT NULL,
+    customer_id TEXT NOT NULL, order_id TEXT NOT NULL,
+    entry_type TEXT NOT NULL CHECK(entry_type IN ('credit','debit')),
+    amount_cents INTEGER NOT NULL CHECK(amount_cents > 0),
+    source_credit_id TEXT, expires_at TEXT, created_at TEXT NOT NULL,
+    actor_user_id TEXT NOT NULL, client_uuid TEXT NOT NULL UNIQUE,
+    is_synced INTEGER NOT NULL DEFAULT 0, synced_at TEXT,
+    FOREIGN KEY(customer_id) REFERENCES customers(id),
+    FOREIGN KEY(source_credit_id) REFERENCES cashback_ledger(id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_cashback_credit_order
+    ON cashback_ledger (tenant_id, order_id) WHERE entry_type = 'credit';
+CREATE INDEX IF NOT EXISTS idx_cashback_customer
+    ON cashback_ledger (tenant_id, customer_id, created_at);
+
 -- ===========================================================================
 -- Fase 3 — Servidor local (edge) para o app do garçom e o KDS
 -- ===========================================================================
