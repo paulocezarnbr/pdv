@@ -413,7 +413,8 @@ paralelo.
       e resgate FIFO por lote em ledger append-only. Falta regra por categoria.
 - [x] Créditos pré-pagos com **ledger de saldo** — carga autorizada, consumo
       atômico no recebimento e saldo sempre derivado de lançamentos imutáveis.
-- [ ] Fiado com limite de crédito, bloqueio automático e aging de recebíveis.
+- [x] Fiado com limite de crédito, bloqueio automático, pagamento FIFO e aging
+      de recebíveis vencidos, todo derivado de ledger append-only.
 - [ ] Níveis de desconto (Diamante / Funcionário / Dono) com teto e autorização.
 - [x] Conciliação cega de caixa: o núcleo abre a sessão, soma apenas
       dinheiro líquido de troco, grava o declarado antes de revelar o esperado,

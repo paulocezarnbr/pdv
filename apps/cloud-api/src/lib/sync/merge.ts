@@ -97,6 +97,14 @@ const WRITABLE: Readonly<Record<string, readonly string[]>> = {
     "id", "store_id", "client_uuid", "customer_id", "entry_type",
     "amount_cents", "order_id", "actor_user_id", "authorizer_user_id", "created_at",
   ],
+  customer_credit_accounts: [
+    "customer_id", "client_uuid", "limit_cents", "due_days", "is_active", "updated_at",
+  ],
+  credit_account_ledger: [
+    "id", "store_id", "client_uuid", "customer_id", "entry_type", "amount_cents",
+    "order_id", "source_charge_id", "due_at", "actor_user_id",
+    "authorizer_user_id", "created_at",
+  ],
   audit_ledger: [
     "id", "store_id", "device_id", "client_uuid", "seq", "event_type",
     "severity", "actor_user_id", "authorizer_user_id", "payload_json",

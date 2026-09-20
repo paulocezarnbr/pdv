@@ -115,6 +115,7 @@ contorna avisos TLS, pois ensinar o garçom a ignorá-los anularia a autenticaç
 | `F2` | Registrar item pesado (só habilita com peso estável) |
 | `F3` | Ir para a busca de item unitário (código ou nome) |
 | `F4` | Cancelar item — exige credencial de gerente |
+| `F5` | Configurar limite ou receber Fiado/Pendura |
 | `F6` | Desconto percentual — exige credencial de gerente, limitada ao teto do perfil |
 | `F7` | Configurar cashback (percentual, teto e validade) — exige gerente |
 | `F8` | Painel do salão: pareamento, mesas abertas e fila da cozinha |

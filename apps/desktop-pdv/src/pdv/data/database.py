@@ -25,7 +25,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Final
 
-SCHEMA_VERSION: Final[int] = 8
+SCHEMA_VERSION: Final[int] = 9
 _SCHEMA_FILE: Final[Path] = Path(__file__).with_name("schema.sql")
 
 #: Migration 2 — tabelas do servidor local (Fase 3).
@@ -401,6 +401,33 @@ CREATE INDEX IF NOT EXISTS idx_prepaid_customer
     ON prepaid_ledger(tenant_id, customer_id, created_at);
 """
 
+_MIGRATION_9_CREDIT_ACCOUNT: Final[str] = """
+CREATE TABLE IF NOT EXISTS customer_credit_accounts (
+    customer_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL,
+    limit_cents INTEGER NOT NULL CHECK(limit_cents >= 0),
+    due_days INTEGER NOT NULL CHECK(due_days BETWEEN 1 AND 365),
+    is_active INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL,
+    client_uuid TEXT NOT NULL UNIQUE, is_synced INTEGER NOT NULL DEFAULT 0,
+    synced_at TEXT,
+    FOREIGN KEY(customer_id) REFERENCES customers(id)
+);
+CREATE TABLE IF NOT EXISTS credit_account_ledger (
+    id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, store_id TEXT NOT NULL,
+    customer_id TEXT NOT NULL, entry_type TEXT NOT NULL
+        CHECK(entry_type IN ('charge','payment','forgive')),
+    amount_cents INTEGER NOT NULL CHECK(amount_cents > 0), order_id TEXT,
+    source_charge_id TEXT, due_at TEXT, actor_user_id TEXT NOT NULL,
+    authorizer_user_id TEXT, created_at TEXT NOT NULL,
+    client_uuid TEXT NOT NULL UNIQUE, is_synced INTEGER NOT NULL DEFAULT 0,
+    synced_at TEXT, FOREIGN KEY(customer_id) REFERENCES customers(id),
+    FOREIGN KEY(source_charge_id) REFERENCES credit_account_ledger(id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_credit_charge_order
+    ON credit_account_ledger(tenant_id,order_id) WHERE entry_type='charge';
+CREATE INDEX IF NOT EXISTS idx_credit_customer_due
+    ON credit_account_ledger(tenant_id,customer_id,due_at,created_at);
+"""
+
 
 def _add_column(
     connection: sqlite3.Connection, table: str, column: str, declaration: str
@@ -527,6 +554,9 @@ class Database:
 
         if current < 8:
             connection.executescript(_MIGRATION_8_PREPAID)
+
+        if current < 9:
+            connection.executescript(_MIGRATION_9_CREDIT_ACCOUNT)
 
         if current < SCHEMA_VERSION:
             connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")

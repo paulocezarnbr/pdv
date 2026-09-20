@@ -66,6 +66,7 @@ from pdv.services.checkout import CheckoutService
 from pdv.services.cash_session import CashSessionError, CashSessionService
 from pdv.services.cashback import CashbackError, CashbackService, Customer
 from pdv.services.prepaid import PrepaidError, PrepaidService
+from pdv.services.credit_account import CreditAccountError, CreditAccountService
 from pdv.ui import theme
 from pdv.ui.dialogs import ManagerAuthDialog, PaymentDialog
 from pdv.ui.salon_panel import SalonPanel
@@ -115,6 +116,7 @@ class CounterWindow(QMainWindow):
         self._authorization = AuthorizationService(database, config.tenant_id)
         self._cashback = CashbackService(database, config)
         self._prepaid = PrepaidService(database, config)
+        self._credit_account = CreditAccountService(database, config)
         self._operator_id = EntityId(str(operator.id))
 
         self._weighed: list[Product] = []
@@ -448,6 +450,7 @@ class CounterWindow(QMainWindow):
         QShortcut(QKeySequence("F2"), self, self._register_item)
         QShortcut(QKeySequence("F3"), self, self._focus_unit_search)
         QShortcut(QKeySequence("F4"), self, self._cancel_item)
+        QShortcut(QKeySequence("F5"), self, self._manage_credit_account)
         QShortcut(QKeySequence("F6"), self, self._apply_discount)
         QShortcut(QKeySequence("F7"), self, self._configure_cashback)
         QShortcut(QKeySequence("F8"), self, self._open_salon)
@@ -869,8 +872,13 @@ class CounterWindow(QMainWindow):
             self._prepaid.balance(customer.id)
             if isinstance(customer, Customer) else Cents(0)
         )
+        credit_available = (
+            self._credit_account.position(customer.id).available_cents
+            if isinstance(customer, Customer) else Cents(0)
+        )
         dialog = PaymentDialog(
-            sale.total_cents, parent=self, prepaid_balance_cents=prepaid_balance
+            sale.total_cents, parent=self, prepaid_balance_cents=prepaid_balance,
+            credit_available_cents=credit_available,
         )
         if dialog.exec() != PaymentDialog.DialogCode.Accepted:
             return
@@ -960,6 +968,70 @@ class CounterWindow(QMainWindow):
         QMessageBox.information(
             self, "Crédito pré-pago",
             f"Carga concluída. Saldo de {customer.name}: R$ {format_cents(balance)}",
+        )
+
+    def _manage_credit_account(self) -> None:
+        customer = self._select_customer()
+        if not isinstance(customer, Customer):
+            return
+        action, accepted = QInputDialog.getItem(
+            self, "Fiado/Pendura", "Operação:",
+            ("Configurar limite", "Receber pagamento"), 0, False,
+        )
+        if not accepted:
+            return
+        if action == "Configurar limite":
+            authorizer = ManagerAuthDialog.ask(
+                self._authorization,
+                operation=f"Configurar limite de fiado para {customer.name}.",
+                parent=self,
+            )
+            if authorizer is None:
+                return
+            limit, accepted = QInputDialog.getDouble(
+                self, "Fiado/Pendura", "Limite de crédito (R$):",
+                200.0, 0.0, 999_999.99, 2,
+            )
+            if not accepted:
+                return
+            days, accepted = QInputDialog.getInt(
+                self, "Fiado/Pendura", "Prazo para pagamento (dias):", 30, 1, 365
+            )
+            if not accepted:
+                return
+            try:
+                position = self._credit_account.configure(
+                    customer_id=customer.id,
+                    limit_cents=Cents(int((Decimal(str(limit))*100).quantize(Decimal("1")))),
+                    due_days=days, actor_user_id=self._operator_id,
+                    authorizer_user_id=authorizer.id,
+                )
+            except CreditAccountError as exc:
+                QMessageBox.critical(self, "Fiado/Pendura", str(exc))
+                return
+        else:
+            before = self._credit_account.position(customer.id)
+            amount, accepted = QInputDialog.getDouble(
+                self, "Fiado/Pendura",
+                f"Dívida atual R$ {format_cents(before.outstanding_cents)}. Receber (R$):",
+                0.0, 0.01, 999_999.99, 2,
+            )
+            if not accepted:
+                return
+            try:
+                position = self._credit_account.pay(
+                    customer_id=customer.id,
+                    amount_cents=Cents(int((Decimal(str(amount))*100).quantize(Decimal("1")))),
+                    actor_user_id=self._operator_id,
+                )
+            except CreditAccountError as exc:
+                QMessageBox.critical(self, "Fiado/Pendura", str(exc))
+                return
+        QMessageBox.information(
+            self, "Fiado/Pendura",
+            f"Em aberto: R$ {format_cents(position.outstanding_cents)}\n"
+            f"Disponível: R$ {format_cents(position.available_cents)}\n"
+            f"Vencido: R$ {format_cents(position.overdue_cents)}",
         )
 
     def _close_cash_session(self) -> None:

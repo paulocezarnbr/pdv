@@ -58,6 +58,7 @@ from pdv.services.audit import AuditService
 from pdv.services.cashback import CashbackService
 from pdv.services.payments import record_payments, settle_payments
 from pdv.services.prepaid import PrepaidError, PrepaidService
+from pdv.services.credit_account import CreditAccountError, CreditAccountService
 from pdv.services.pricing import net_weight, price_for_weight
 from pdv.services.stock import StockService, explode_recipe, total_cost_cents
 
@@ -403,6 +404,7 @@ class CheckoutService:
         cashback_credit = None
         cashback = CashbackService(self._db, self._config)
         prepaid = PrepaidService(self._db, self._config)
+        credit_account = CreditAccountService(self._db, self._config)
         prepaid_balance: Cents | None = None
         with self._db.transaction() as connection:
             SaleRepository(connection, self._outbox).close_order(
@@ -431,6 +433,18 @@ class CheckoutService:
                 prepaid_balance = prepaid.redeem_in(
                     connection, customer_id=customer_id, order_id=sale.id,
                     amount_cents=prepaid_amount, actor_user_id=operator_id,
+                )
+
+            credit_amount = Cents(sum(
+                int(payment.amount_cents) for payment in payments
+                if payment.method is PaymentMethod.CREDIT_ACCOUNT
+            ))
+            if int(credit_amount) > 0:
+                if customer_id is None:
+                    raise CreditAccountError("Fiado exige cliente identificado.")
+                credit_account.charge_in(
+                    connection, customer_id=customer_id, order_id=sale.id,
+                    amount_cents=credit_amount, actor_user_id=operator_id,
                 )
 
             record_payments(

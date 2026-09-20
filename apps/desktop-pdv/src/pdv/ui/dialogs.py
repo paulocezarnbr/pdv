@@ -175,7 +175,8 @@ class PaymentDialog(QDialog):
     """
 
     def __init__(self, total_cents: Cents, parent: QWidget | None = None,
-                 *, prepaid_balance_cents: Cents = Cents(0)) -> None:
+                 *, prepaid_balance_cents: Cents = Cents(0),
+                 credit_available_cents: Cents = Cents(0)) -> None:
         super().__init__(parent)
         self._total = int(total_cents)
         self._payments: list[Payment] = []
@@ -205,6 +206,11 @@ class PaymentDialog(QDialog):
             self._method.addItem(
                 f"Crédito pré-pago (saldo R$ {format_cents(prepaid_balance_cents)})",
                 PaymentMethod.PREPAID,
+            )
+        if int(credit_available_cents) > 0:
+            self._method.addItem(
+                f"Fiado/Pendura (disponível R$ {format_cents(credit_available_cents)})",
+                PaymentMethod.CREDIT_ACCOUNT,
             )
         self._method.setMinimumHeight(38)
         entry.addWidget(self._method, stretch=3)
@@ -285,7 +291,10 @@ class PaymentDialog(QDialog):
         method: PaymentMethod = self._method.currentData()
         self._payments.append(Payment(method=method, amount_cents=Cents(cents)))
 
-        label = dict(_METHOD_LABELS).get(method, "Crédito pré-pago")
+        label = dict(_METHOD_LABELS).get(
+            method,
+            "Crédito pré-pago" if method is PaymentMethod.PREPAID else "Fiado/Pendura",
+        )
         self._list.addItem(QListWidgetItem(f"{label} — R$ {format_cents(Cents(cents))}"))
 
         remaining = max(0, self._total - self._paid())
