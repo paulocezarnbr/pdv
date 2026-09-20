@@ -29,6 +29,8 @@ from pdv.data.seed import (
     DEMO_MANAGER_NAME,
     DEMO_OPERATOR_ID,
     DEMO_OPERATOR_NAME,
+    DEMO_OWNER_ID,
+    DEMO_OWNER_NAME,
     seed_demo_data,
 )
 from pdv.data.settings import SettingsStore
@@ -553,6 +555,28 @@ def test_a_remote_cancel_is_a_critical_audit_event(open_sale) -> None:  # noqa: 
     assert entry["severity"] == "critical"
     assert CHANNEL in entry["payload_json"]
     assert DEVICE in entry["payload_json"]
+
+
+def test_owner_cannot_issue_remote_item_cancellation(open_sale) -> None:  # noqa: ANN001
+    database, config, checkout, sale = open_sale
+    item = checkout.current_sale.items[0]
+    InboxRepository(database).accept(
+        _command(
+            kind=CommandKind.CANCEL_ITEM,
+            payload={
+                "order_id": str(sale.id),
+                "order_item_id": str(item.id),
+                "reason": "Tentativa pelo perfil errado",
+            },
+            issued_by=DEMO_OWNER_ID,
+            issued_name=DEMO_OWNER_NAME,
+        )
+    )
+    report = RemoteCommandService(database, config, checkout=checkout).apply_pending()
+    assert report.refused == 1
+    assert database.query_one(
+        "SELECT canceled_at FROM order_items WHERE id=?", (item.id,)
+    )["canceled_at"] is None
 
 
 def test_cancelling_an_item_never_makes_the_total_negative(open_sale) -> None:  # noqa: ANN001

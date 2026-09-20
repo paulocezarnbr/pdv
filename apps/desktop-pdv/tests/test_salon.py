@@ -28,6 +28,8 @@ from pdv.data.seed import (
     DEMO_MANAGER_PIN,
     DEMO_OPERATOR_ID,
     DEMO_OPERATOR_PIN,
+    DEMO_OWNER_LOGIN,
+    DEMO_OWNER_PIN,
     seed_demo_data,
 )
 from pdv.domain.errors import AuthorizationRequiredError
@@ -526,6 +528,15 @@ def test_the_cashier_pin_does_not_open_one(managers: ManagerSessions) -> None:
     """
     with pytest.raises(AuthorizationRequiredError):
         managers.authorize(login="ana", pin=DEMO_OPERATOR_PIN, device_id=PHONE)
+
+
+def test_owner_credential_does_not_become_a_manager_grant(
+    managers: ManagerSessions,
+) -> None:
+    with pytest.raises(AuthorizationRequiredError, match="gerente"):
+        managers.authorize(
+            login=DEMO_OWNER_LOGIN, pin=DEMO_OWNER_PIN, device_id=PHONE
+        )
 
 
 def test_a_wrong_pin_opens_nothing(managers: ManagerSessions) -> None:

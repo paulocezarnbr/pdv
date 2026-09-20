@@ -164,15 +164,34 @@ class AuthorizationService:
     def authorize(self, login: str, pin: str) -> Authorizer:
         """Valida a credencial de quem tem poder de autorizar."""
         identity = self._check(login, pin, require_authorizer=True)
-        return Authorizer(
-            id=identity.id,
-            name=identity.name,
-            role=identity.role,
-            max_discount_percent=identity.max_discount_percent,
-        )
+        return _to_authorizer(identity)
+
+    def authorize_role(
+        self, login: str, pin: str, *, allowed_roles: frozenset[str]
+    ) -> Authorizer:
+        """Autoriza somente quando a credencial pertence ao papel exigido.
+
+        ``can_authorize`` responde se a pessoa tem algum poder. O papel
+        responde *qual* poder. Sem esta segunda verificação, a senha de um
+        gerente serviria como senha de proprietário apenas porque ambas têm o
+        primeiro bit ligado.
+        """
+        identity = self._check(login, pin, require_authorizer=True)
+        if identity.role not in allowed_roles:
+            self._register_failure(identity.login)
+            expected = (
+                "proprietário"
+                if allowed_roles == frozenset({"owner"})
+                else "gerente"
+            )
+            raise AuthorizationRequiredError(
+                f"Esta operação exige a credencial de um {expected}."
+            )
+        return _to_authorizer(identity)
 
     def authorize_discount(
-        self, login: str, pin: str, percent: Decimal
+        self, login: str, pin: str, percent: Decimal,
+        *, allowed_roles: frozenset[str] | None = None,
     ) -> Authorizer:
         """Autoriza um desconto, respeitando o teto do perfil.
 
@@ -180,7 +199,11 @@ class AuthorizationService:
         limite de 30% não concede 50% nem com a senha certa — senão o limite
         seria decorativo.
         """
-        authorizer = self.authorize(login, pin)
+        authorizer = (
+            self.authorize_role(login, pin, allowed_roles=allowed_roles)
+            if allowed_roles is not None
+            else self.authorize(login, pin)
+        )
         if not authorizer.may_discount(percent):
             raise AuthorizationRequiredError(
                 f"{authorizer.name} pode conceder até "
@@ -190,15 +213,20 @@ class AuthorizationService:
 
     # -- consultas ------------------------------------------------------------ #
 
-    def list_authorizers(self) -> list[str]:
+    def list_authorizers(
+        self, allowed_roles: frozenset[str] | None = None
+    ) -> list[str]:
         """Logins que podem autorizar, para preencher o diálogo."""
         rows = self._db.query_all(
-            "SELECT login FROM users "
+            "SELECT login,role FROM users "
             " WHERE tenant_id = ? AND is_active = 1 AND can_authorize = 1 "
             " ORDER BY name",
             (self._tenant_id,),
         )
-        return [str(row["login"]) for row in rows]
+        return [
+            str(row["login"]) for row in rows
+            if allowed_roles is None or str(row["role"]) in allowed_roles
+        ]
 
     def find(self, user_id: EntityId) -> Identity | None:
         row = self._db.query_one(
@@ -485,6 +513,15 @@ def _to_identity(row) -> Identity:  # noqa: ANN001
         role=str(row["role"]),
         can_authorize=bool(int(row["can_authorize"])),
         max_discount_percent=Decimal(str(row["max_discount_percent"] or "0")),
+    )
+
+
+def _to_authorizer(identity: Identity) -> Authorizer:
+    return Authorizer(
+        id=identity.id,
+        name=identity.name,
+        role=identity.role,
+        max_discount_percent=identity.max_discount_percent,
     )
 
 

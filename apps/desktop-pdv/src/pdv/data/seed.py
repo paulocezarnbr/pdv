@@ -17,6 +17,7 @@ from pdv.services.authorization import hash_pin
 def seed_demo_data(database: Database, config: AppConfig) -> None:
     """Popula o banco local se ainda não houver produtos. Idempotente."""
     _seed_default_discount_tiers(database, config)
+    _seed_demo_owner(database, config)
     connection = database.connection
     existing = connection.execute("SELECT COUNT(*) AS total FROM products").fetchone()
     if int(existing["total"]) > 0:
@@ -241,6 +242,30 @@ def _seed_default_discount_tiers(database: Database, config: AppConfig) -> None:
         )
 
 
+def _seed_demo_owner(database: Database, config: AppConfig) -> None:
+    """Garante o proprietário também nas bases demo criadas antes desta fase."""
+    if config.tenant_id != DEMO_TENANT_ID:
+        return
+    if database.query_one(
+        "SELECT id FROM users WHERE tenant_id=? AND role='owner' AND is_active=1",
+        (config.tenant_id,),
+    ) is not None:
+        return
+    with database.transaction() as tx:
+        tx.execute(
+            """
+            INSERT OR IGNORE INTO users
+                (id, tenant_id, name, login, role, can_authorize,
+                 max_discount_percent, pin_hash, updated_at)
+            VALUES (?, ?, ?, ?, 'owner', 1, '100', ?, ?)
+            """,
+            (
+                DEMO_OWNER_ID, config.tenant_id, DEMO_OWNER_NAME,
+                DEMO_OWNER_LOGIN, hash_pin(DEMO_OWNER_PIN), iso(utc_now()),
+            ),
+        )
+
+
 DEMO_TENANT_ID = "11111111-1111-1111-1111-111111111111"
 DEMO_OPERATOR_ID = "44444444-4444-4444-4444-444444444444"
 DEMO_OPERATOR_NAME = "Ana Caixa"
@@ -248,6 +273,9 @@ DEMO_OPERATOR_LOGIN = "ana"
 DEMO_MANAGER_ID = "55555555-5555-5555-5555-555555555555"
 DEMO_MANAGER_NAME = "Bruno Gerente"
 DEMO_MANAGER_LOGIN = "bruno"
+DEMO_OWNER_ID = "88888888-8888-8888-8888-888888888888"
+DEMO_OWNER_NAME = "Olívia Proprietária"
+DEMO_OWNER_LOGIN = "olivia"
 
 #: Garçons com identidade própria. O aparelho é pareado uma vez e fica; quem
 #: troca a cada turno é a **pessoa**. Sem isto, o pedido ficava atribuído ao
@@ -269,5 +297,6 @@ DEMO_WAITER2_LOGIN = "maria"
 #: abrir exceção para a própria demonstração.
 DEMO_OPERATOR_PIN = "705284"
 DEMO_MANAGER_PIN = "483916"
+DEMO_OWNER_PIN = "84627519"
 DEMO_WAITER_PIN = "629471"
 DEMO_WAITER2_PIN = "318264"

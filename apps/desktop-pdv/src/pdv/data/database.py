@@ -25,7 +25,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Final
 
-SCHEMA_VERSION: Final[int] = 11
+SCHEMA_VERSION: Final[int] = 12
 _SCHEMA_FILE: Final[Path] = Path(__file__).with_name("schema.sql")
 
 #: Migration 2 — tabelas do servidor local (Fase 3).
@@ -472,6 +472,37 @@ BEGIN
 END;
 """
 
+_MIGRATION_12_OWNER_TIER_ASSIGNMENT: Final[str] = """
+CREATE TRIGGER IF NOT EXISTS trg_protected_tier_requires_owner_insert
+BEFORE INSERT ON customer_discount_tiers
+WHEN EXISTS (
+    SELECT 1 FROM discount_tiers
+    WHERE id=NEW.tier_id AND tenant_id=NEW.tenant_id
+      AND code IN ('employee','owner')
+ ) AND NOT EXISTS (
+    SELECT 1 FROM users
+    WHERE id=NEW.assigned_by_user_id AND tenant_id=NEW.tenant_id
+      AND role='owner' AND is_active=1
+ )
+BEGIN
+    SELECT RAISE(ABORT, 'protected discount tier requires owner');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_protected_tier_requires_owner_update
+BEFORE UPDATE OF tier_id, assigned_by_user_id ON customer_discount_tiers
+WHEN EXISTS (
+    SELECT 1 FROM discount_tiers
+    WHERE id=NEW.tier_id AND tenant_id=NEW.tenant_id
+      AND code IN ('employee','owner')
+ ) AND NOT EXISTS (
+    SELECT 1 FROM users
+    WHERE id=NEW.assigned_by_user_id AND tenant_id=NEW.tenant_id
+      AND role='owner' AND is_active=1
+ )
+BEGIN
+    SELECT RAISE(ABORT, 'protected discount tier requires owner');
+END;
+"""
+
 
 def _add_column(
     connection: sqlite3.Connection, table: str, column: str, declaration: str
@@ -607,6 +638,9 @@ class Database:
 
         if current < 11:
             connection.executescript(_MIGRATION_11_PROTECTED_DISCOUNT_TIERS)
+
+        if current < 12:
+            connection.executescript(_MIGRATION_12_OWNER_TIER_ASSIGNMENT)
 
         if current < SCHEMA_VERSION:
             connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")

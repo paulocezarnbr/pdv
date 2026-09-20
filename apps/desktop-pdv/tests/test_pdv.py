@@ -14,8 +14,14 @@ import pytest
 from pdv.config import AppConfig, PrinterConfig, StockConfig
 from pdv.data.database import Database
 from pdv.data.repositories import ProductRepository
-from pdv.data.seed import DEMO_MANAGER_ID, DEMO_OPERATOR_ID, seed_demo_data
+from pdv.data.seed import (
+    DEMO_MANAGER_ID,
+    DEMO_OPERATOR_ID,
+    DEMO_OWNER_ID,
+    seed_demo_data,
+)
 from pdv.domain.errors import (
+    AuthorizationRequiredError,
     AuditChainError,
     InsufficientPaymentError,
     InvalidWeightError,
@@ -32,6 +38,7 @@ from pdv.domain.models import (
     RecipeLine,
     ScaleReading,
     ScaleStatus,
+    new_id,
 )
 from pdv.hardware.printer.escpos import EscPosBuilder, format_cents, format_grams
 from pdv.hardware.scale.protocols import (
@@ -40,6 +47,7 @@ from pdv.hardware.scale.protocols import (
     UranoProtocol,
 )
 from pdv.services.checkout import CheckoutService
+from pdv.services.discount_tiers import DiscountTier
 from pdv.services.pricing import net_weight, price_for_weight
 from pdv.services.stock import explode_recipe
 
@@ -390,6 +398,57 @@ def test_cancel_item_restores_stock_and_logs_critical(app) -> None:  # noqa: ANN
     )
     assert critical["severity"] == "critical"
     assert critical["authorizer_user_id"] == DEMO_MANAGER_ID
+
+
+def test_owner_cannot_replace_manager_on_item_cancellation(app) -> None:  # noqa: ANN001
+    database, config, checkout = app
+    product = _weighed_product(database, config)
+    checkout.open_sale(EntityId(DEMO_OPERATOR_ID))
+    checkout.register_weighed_item(
+        product=product,
+        reading=ScaleReading(ScaleStatus.STABLE, Grams(892), "00892"),
+        operator_id=EntityId(DEMO_OPERATOR_ID),
+    )
+
+    with pytest.raises(AuthorizationRequiredError, match="gerente"):
+        checkout.cancel_item(
+            index=0, operator_id=EntityId(DEMO_OPERATOR_ID),
+            authorizer_id=EntityId(DEMO_OWNER_ID), reason="tentativa indevida",
+        )
+    assert checkout.current_sale is not None
+    assert len(checkout.current_sale.items) == 1
+    assert database.query_one(
+        "SELECT canceled_at FROM order_items WHERE id=?",
+        (checkout.current_sale.items[0].id,),
+    )["canceled_at"] is None
+
+
+def test_owner_tier_rejects_manager_and_accepts_owner(app) -> None:  # noqa: ANN001
+    database, config, checkout = app
+    product = _weighed_product(database, config)
+    checkout.open_sale(EntityId(DEMO_OPERATOR_ID))
+    checkout.register_weighed_item(
+        product=product,
+        reading=ScaleReading(ScaleStatus.STABLE, Grams(892), "00892"),
+        operator_id=EntityId(DEMO_OPERATOR_ID),
+    )
+    tier = DiscountTier(
+        id=EntityId(new_id()), code="owner", name="Dono",
+        percent_basis_points=2_000, priority=100, requires_manager=True,
+    )
+
+    with pytest.raises(AuthorizationRequiredError, match="proprietário"):
+        checkout.apply_customer_tier(
+            tier=tier, operator_id=EntityId(DEMO_OPERATOR_ID),
+            authorizer_id=EntityId(DEMO_MANAGER_ID),
+        )
+    assert int(checkout.current_sale.discount_cents) == 0
+
+    discount = checkout.apply_customer_tier(
+        tier=tier, operator_id=EntityId(DEMO_OPERATOR_ID),
+        authorizer_id=EntityId(DEMO_OWNER_ID),
+    )
+    assert int(discount) > 0
 
 
 def test_finalize_produces_printable_receipt(app) -> None:  # noqa: ANN001

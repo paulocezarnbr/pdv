@@ -26,6 +26,12 @@ def tiers(tmp_path: Path):  # noqa: ANN201
     customer = CashbackService(database, config).create_customer(name="Lia", phone="1199")
     service = DiscountTierService(database, config)
     actor = EntityId(new_id())
+    with database.transaction() as connection:
+        connection.execute(
+            "INSERT INTO users(id,tenant_id,name,login,role,can_authorize,"
+            "max_discount_percent,updated_at) VALUES(?,?,?,?, 'owner',1,'100',datetime('now'))",
+            (actor, config.tenant_id, "Proprietária Teste", "owner-test"),
+        )
     yield database, service, customer, actor
     database.close()
 
@@ -159,6 +165,42 @@ def test_reassigning_the_same_protected_tier_is_idempotent(tiers) -> None:  # no
     before = database.query_one("SELECT count(*) n FROM sync_outbox")["n"]
     service.assign(customer_id=customer, tier_id=employee.id, actor_user_id=actor)
     assert database.query_one("SELECT count(*) n FROM sync_outbox")["n"] == before
+
+
+@pytest.mark.parametrize("protected_code", ["employee", "owner"])
+def test_manager_cannot_assign_protected_tiers(
+    tiers, protected_code: str,
+) -> None:  # noqa: ANN001
+    database, service, customer, owner_actor = tiers
+    manager = EntityId(new_id())
+    with database.transaction() as connection:
+        connection.execute(
+            "INSERT INTO users(id,tenant_id,name,login,role,can_authorize,"
+            "max_discount_percent,updated_at) VALUES(?,?,?,?, 'manager',1,'30',datetime('now'))",
+            (manager, "11111111-1111-1111-1111-111111111111", "Gerente", "manager-test"),
+        )
+    protected = service.configure(
+        code=protected_code, name=protected_code.title(), percent=Decimal("15"),
+        priority=100, requires_manager=True, actor_user_id=owner_actor,
+    )
+    with pytest.raises(DiscountTierError, match="Somente um proprietário"):
+        service.assign(customer_id=customer, tier_id=protected.id, actor_user_id=manager)
+    assert service.for_customer(customer) is None
+
+    with pytest.raises(sqlite3.IntegrityError, match="requires owner"):
+        database.connection.execute(
+            "INSERT INTO customer_discount_tiers(customer_id,tenant_id,tier_id,"
+            "assigned_by_user_id,assigned_at,client_uuid) "
+            "VALUES(?,?,?,?,datetime('now'),?)",
+            (
+                customer, "11111111-1111-1111-1111-111111111111",
+                protected.id, manager, new_id(),
+            ),
+        )
+    service.assign(
+        customer_id=customer, tier_id=protected.id, actor_user_id=owner_actor
+    )
+    assert service.for_customer(customer).id == protected.id
 
 
 def test_database_trigger_blocks_direct_change_of_protected_tier(tiers) -> None:  # noqa: ANN001

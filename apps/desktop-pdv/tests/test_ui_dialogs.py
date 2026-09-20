@@ -27,6 +27,8 @@ from pdv.data.seed import (
     DEMO_MANAGER_LOGIN,
     DEMO_MANAGER_PIN,
     DEMO_OPERATOR_PIN,
+    DEMO_OWNER_LOGIN,
+    DEMO_OWNER_PIN,
     seed_demo_data,
 )
 from pdv.domain.models import Cents, PaymentMethod
@@ -245,7 +247,31 @@ def test_only_authorizers_are_listed(qtbot, auth: AuthorizationService) -> None:
 
     logins = [dialog._login.itemText(i) for i in range(dialog._login.count())]
 
-    assert logins == [DEMO_MANAGER_LOGIN]
+    assert logins == [DEMO_MANAGER_LOGIN, DEMO_OWNER_LOGIN]
+
+
+def test_owner_only_dialog_does_not_offer_or_accept_manager(
+    qtbot, auth: AuthorizationService
+) -> None:  # noqa: ANN001
+    dialog = ManagerAuthDialog(
+        auth, operation="Usar nível Dono", allowed_roles=frozenset({"owner"})
+    )
+    qtbot.addWidget(dialog)
+    assert [dialog._login.itemText(i) for i in range(dialog._login.count())] == [
+        DEMO_OWNER_LOGIN
+    ]
+
+    dialog._login.setCurrentText(DEMO_MANAGER_LOGIN)
+    dialog._pin.setText(DEMO_MANAGER_PIN)
+    dialog._try_authorize()
+    assert dialog.authorizer is None
+    assert "proprietário" in dialog._error.text()
+
+    dialog._login.setCurrentText(DEMO_OWNER_LOGIN)
+    dialog._pin.setText(DEMO_OWNER_PIN)
+    dialog._try_authorize()
+    assert dialog.authorizer is not None
+    assert dialog.authorizer.role == "owner"
 
 
 def test_the_standard_buttons_are_in_portuguese(  # noqa: ANN001

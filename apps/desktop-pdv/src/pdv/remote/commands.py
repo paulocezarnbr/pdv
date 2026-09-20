@@ -257,7 +257,9 @@ class RemoteCommandService:
         item_id = _text(command.payload, "order_item_id")
         reason = _text(command.payload, "reason", "Cancelamento remoto exige motivo.")
 
-        self._require_authorizer(command.issued_by_user_id)
+        self._require_authorizer(
+            command.issued_by_user_id, allowed_roles=frozenset({"manager"})
+        )
         self._require_open_order(order_id)
 
         item = self._db.query_one(
@@ -353,9 +355,11 @@ class RemoteCommandService:
             )
         return order
 
-    def _require_authorizer(self, user_id: str) -> Any:
+    def _require_authorizer(
+        self, user_id: str, *, allowed_roles: frozenset[str] | None = None
+    ) -> Any:
         row = self._db.query_one(
-            "SELECT name, can_authorize, max_discount_percent FROM users "
+            "SELECT name, role, can_authorize, max_discount_percent FROM users "
             " WHERE id = ? AND tenant_id = ? AND is_active = 1",
             (user_id, self._config.tenant_id),
         )
@@ -367,6 +371,8 @@ class RemoteCommandService:
             raise CommandRefused(
                 f"{row['name']} não tem permissão para autorizar esta operação."
             )
+        if allowed_roles is not None and str(row["role"]) not in allowed_roles:
+            raise CommandRefused("Cancelamento de item exige autorização de gerente.")
         return row
 
     def _discount_ceiling(self, user_id: str) -> Decimal:

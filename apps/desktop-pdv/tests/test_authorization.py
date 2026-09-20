@@ -23,6 +23,9 @@ from pdv.data.seed import (
     DEMO_MANAGER_ID,
     DEMO_MANAGER_LOGIN,
     DEMO_MANAGER_PIN,
+    DEMO_OWNER_ID,
+    DEMO_OWNER_LOGIN,
+    DEMO_OWNER_PIN,
     DEMO_OPERATOR_ID,
     DEMO_OPERATOR_PIN,
     seed_demo_data,
@@ -163,7 +166,20 @@ def test_a_revoked_user_stops_authorizing(env) -> None:  # noqa: ANN001
 def test_only_authorizers_are_offered_in_the_dialog(env) -> None:  # noqa: ANN001
     _database, _config, auth = env
 
-    assert auth.list_authorizers() == [DEMO_MANAGER_LOGIN]
+    assert auth.list_authorizers() == [DEMO_MANAGER_LOGIN, DEMO_OWNER_LOGIN]
+
+
+def test_only_owner_credential_satisfies_owner_operation(env) -> None:  # noqa: ANN001
+    _database, _config, auth = env
+    with pytest.raises(AuthorizationRequiredError, match="proprietário"):
+        auth.authorize_role(
+            DEMO_MANAGER_LOGIN, DEMO_MANAGER_PIN,
+            allowed_roles=frozenset({"owner"}),
+        )
+    owner = auth.authorize_role(
+        DEMO_OWNER_LOGIN, DEMO_OWNER_PIN, allowed_roles=frozenset({"owner"})
+    )
+    assert owner.id == DEMO_OWNER_ID
 
 
 # --------------------------------------------------------------------------- #

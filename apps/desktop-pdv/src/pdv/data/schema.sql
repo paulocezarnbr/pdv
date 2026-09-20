@@ -431,6 +431,37 @@ BEGIN
     SELECT RAISE(ABORT, 'protected discount tier cannot be removed');
 END;
 
+-- Mesmo um INSERT direto ou uma linha recebida de sincronização precisa
+-- nomear um proprietário ativo como responsável pela classificação especial.
+CREATE TRIGGER IF NOT EXISTS trg_protected_tier_requires_owner_insert
+BEFORE INSERT ON customer_discount_tiers
+WHEN EXISTS (
+    SELECT 1 FROM discount_tiers
+    WHERE id=NEW.tier_id AND tenant_id=NEW.tenant_id
+      AND code IN ('employee','owner')
+ ) AND NOT EXISTS (
+    SELECT 1 FROM users
+    WHERE id=NEW.assigned_by_user_id AND tenant_id=NEW.tenant_id
+      AND role='owner' AND is_active=1
+ )
+BEGIN
+    SELECT RAISE(ABORT, 'protected discount tier requires owner');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_protected_tier_requires_owner_update
+BEFORE UPDATE OF tier_id, assigned_by_user_id ON customer_discount_tiers
+WHEN EXISTS (
+    SELECT 1 FROM discount_tiers
+    WHERE id=NEW.tier_id AND tenant_id=NEW.tenant_id
+      AND code IN ('employee','owner')
+ ) AND NOT EXISTS (
+    SELECT 1 FROM users
+    WHERE id=NEW.assigned_by_user_id AND tenant_id=NEW.tenant_id
+      AND role='owner' AND is_active=1
+ )
+BEGIN
+    SELECT RAISE(ABORT, 'protected discount tier requires owner');
+END;
+
 -- ===========================================================================
 -- Fase 3 — Servidor local (edge) para o app do garçom e o KDS
 -- ===========================================================================

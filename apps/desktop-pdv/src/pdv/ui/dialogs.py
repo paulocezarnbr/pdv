@@ -62,14 +62,23 @@ class ManagerAuthDialog(QDialog):
         *,
         operation: str,
         percent: Decimal | None = None,
+        allowed_roles: frozenset[str] | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self._service = service
         self._percent = percent
+        self._allowed_roles = allowed_roles
         self.authorizer: Authorizer | None = None
 
-        self.setWindowTitle("Autorização de gerente")
+        title = (
+            "Autorização do proprietário"
+            if allowed_roles == frozenset({"owner"})
+            else "Autorização do gerente"
+            if allowed_roles == frozenset({"manager"})
+            else "Autorização"
+        )
+        self.setWindowTitle(title)
         self.setMinimumWidth(420)
 
         layout = QVBoxLayout(self)
@@ -86,7 +95,7 @@ class ManagerAuthDialog(QDialog):
         form = QFormLayout()
         self._login = QComboBox()
         self._login.setEditable(True)
-        self._login.addItems(service.list_authorizers())
+        self._login.addItems(service.list_authorizers(allowed_roles))
         self._login.setMinimumHeight(34)
         form.addRow("Login:", self._login)
 
@@ -134,11 +143,15 @@ class ManagerAuthDialog(QDialog):
             return
 
         try:
-            if self._percent is None:
+            if self._percent is None and self._allowed_roles is not None:
+                self.authorizer = self._service.authorize_role(
+                    login, pin, allowed_roles=self._allowed_roles
+                )
+            elif self._percent is None:
                 self.authorizer = self._service.authorize(login, pin)
             else:
                 self.authorizer = self._service.authorize_discount(
-                    login, pin, self._percent
+                    login, pin, self._percent, allowed_roles=self._allowed_roles
                 )
         except PdvError as exc:
             # A mensagem do serviço já é deliberadamente vaga para credencial
@@ -157,10 +170,14 @@ class ManagerAuthDialog(QDialog):
         *,
         operation: str,
         percent: Decimal | None = None,
+        allowed_roles: frozenset[str] | None = None,
         parent: QWidget | None = None,
     ) -> Authorizer | None:
         """Abre o diálogo e devolve quem autorizou, ou `None` se desistiu."""
-        dialog = cls(service, operation=operation, percent=percent, parent=parent)
+        dialog = cls(
+            service, operation=operation, percent=percent,
+            allowed_roles=allowed_roles, parent=parent,
+        )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return None
         return dialog.authorizer

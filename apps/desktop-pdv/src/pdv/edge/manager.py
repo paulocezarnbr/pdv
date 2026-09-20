@@ -108,7 +108,9 @@ class ManagerSessions:
                 `AuthorizationService` e é deliberadamente genérica — dizer
                 *qual* parte errou entregaria os logins que existem.
         """
-        authorizer = self._auth.authorize(login, pin)
+        authorizer = self._auth.authorize_role(
+            login, pin, allowed_roles=frozenset({"manager"})
+        )
         grant = ManagerGrant(
             token=secrets.token_urlsafe(32),
             authorizer=authorizer,

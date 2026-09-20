@@ -418,7 +418,9 @@ paralelo.
 - [x] Níveis de desconto (Bronze / Prata / Ouro / Diamante / Funcionário /
       Dono) configuráveis, com percentuais padrão conservadores,
       atribuição auditada, aplicação automática e validade. A autorização é
-      configurável nos demais níveis; **Dono sempre exige senha de gerente**.
+      configurável nos demais níveis; **Dono sempre exige senha de
+      proprietário**. Somente o proprietário atribui Funcionário ou Dono;
+      cancelamento de item continua sendo poder específico do gerente.
       Funcionário e Dono são classificações finais: depois de atribuídos, não
       podem ser trocados por outro nível, com trava no serviço e no banco.
 - [x] Conciliação cega de caixa: o núcleo abre a sessão, soma apenas

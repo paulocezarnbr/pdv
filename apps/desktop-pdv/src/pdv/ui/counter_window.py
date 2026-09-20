@@ -726,6 +726,7 @@ class CounterWindow(QMainWindow):
         authorizer = ManagerAuthDialog.ask(
             self._authorization,
             operation=f"Cancelar {product_name} — R$ {value}",
+            allowed_roles=frozenset({"manager"}),
             parent=self,
         )
         if authorizer is None:
@@ -847,13 +848,6 @@ class CounterWindow(QMainWindow):
         )
 
     def _manage_discount_tiers(self) -> None:
-        authorizer = ManagerAuthDialog.ask(
-            self._authorization,
-            operation="Configurar ou atribuir níveis automáticos de desconto.",
-            parent=self,
-        )
-        if authorizer is None:
-            return
         action, accepted = QInputDialog.getItem(
             self, "Níveis de desconto", "Operação:",
             ("Configurar nível", "Atribuir nível ao cliente"), 0, False,
@@ -861,6 +855,13 @@ class CounterWindow(QMainWindow):
         if not accepted:
             return
         if action == "Configurar nível":
+            authorizer = ManagerAuthDialog.ask(
+                self._authorization,
+                operation="Configurar níveis automáticos de desconto.",
+                parent=self,
+            )
+            if authorizer is None:
+                return
             labels = {
                 "Bronze": "bronze", "Prata": "silver", "Ouro": "gold",
                 "Diamante": "diamond", "Funcionário": "employee", "Dono": "owner",
@@ -879,7 +880,7 @@ class CounterWindow(QMainWindow):
                 requires = True
                 QMessageBox.information(
                     self, "Nível Dono",
-                    "O nível Dono sempre exige login e PIN de gerente em cada uso.",
+                    "O nível Dono sempre exige login e PIN de proprietário em cada uso.",
                 )
             else:
                 requires = QMessageBox.question(
@@ -909,6 +910,18 @@ class CounterWindow(QMainWindow):
         if not accepted:
             return
         tier = tiers[names.index(selected)]
+        protected = tier.code in self._discount_tiers.PROTECTED_CODES
+        authorizer = ManagerAuthDialog.ask(
+            self._authorization,
+            operation=(
+                f"Atribuir o nível {tier.name} a {customer.name}."
+                + (" Esta classificação é permanente." if protected else "")
+            ),
+            allowed_roles=frozenset({"owner"}) if protected else None,
+            parent=self,
+        )
+        if authorizer is None:
+            return
         try:
             self._discount_tiers.assign(
                 customer_id=customer.id, tier_id=tier.id, actor_user_id=authorizer.id
@@ -951,6 +964,11 @@ class CounterWindow(QMainWindow):
                     tier_authorizer = ManagerAuthDialog.ask(
                         self._authorization,
                         operation=f"Autorizar nível {tier.name} para {customer.name}.",
+                        allowed_roles=(
+                            frozenset({"owner"})
+                            if tier.code == "owner"
+                            else frozenset({"manager", "owner"})
+                        ),
                         parent=self,
                     )
                     if tier_authorizer is None:

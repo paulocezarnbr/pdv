@@ -34,6 +34,7 @@ from pdv.data.seed import (
     DEMO_MANAGER_PIN,
     DEMO_OPERATOR_LOGIN,
     DEMO_OPERATOR_PIN,
+    DEMO_OWNER_PIN,
     DEMO_WAITER_LOGIN,
     DEMO_WAITER_PIN,
     seed_demo_data,
@@ -341,7 +342,9 @@ def test_the_demo_pins_obey_the_same_policy() -> None:
     Uma demonstração com `1234` ensina `1234`, e a política que recusa o PIN
     fraco do cliente não pode abrir exceção para a própria demonstração.
     """
-    for pin in (DEMO_OPERATOR_PIN, DEMO_MANAGER_PIN, DEMO_WAITER_PIN):
+    for pin in (
+        DEMO_OPERATOR_PIN, DEMO_MANAGER_PIN, DEMO_OWNER_PIN, DEMO_WAITER_PIN,
+    ):
         assert validate_pin(pin) == pin
 
 
@@ -357,6 +360,7 @@ def test_the_pin_is_never_stored_in_the_clear(store) -> None:  # noqa: ANN001
         assert stored.startswith("$argon2id$"), stored[:20]
         assert DEMO_MANAGER_PIN not in stored
         assert DEMO_OPERATOR_PIN not in stored
+        assert DEMO_OWNER_PIN not in stored
 
 
 def test_two_users_with_the_same_pin_get_different_hashes(store) -> None:  # noqa: ANN001

@@ -33,6 +33,7 @@ from pdv.data.repositories import (
     StockRepository,
 )
 from pdv.domain.errors import (
+    AuthorizationRequiredError,
     InsufficientPaymentError,
     InvalidWeightError,
     UnstableWeightError,
@@ -390,11 +391,24 @@ class CheckoutService:
         if sale is None or not sale.items:
             raise InvalidWeightError("Não há venda aberta com itens para aplicar o nível")
         if tier.requires_manager and authorizer_id is None:
-            raise InvalidWeightError("Este nível exige autorização de gerente.")
+            required = "proprietário" if tier.code == "owner" else "gerente"
+            raise AuthorizationRequiredError(
+                f"Este nível exige autorização de {required}."
+            )
         candidate = tier.discount_for(sale.subtotal_cents)
         if int(candidate) <= int(sale.discount_cents):
             return sale.discount_cents
         with self._db.transaction() as connection:
+            if tier.code == "owner":
+                self._require_authorizer_role(
+                    connection, authorizer_id, frozenset({"owner"}),
+                    "O nível Dono exige a senha de um proprietário.",
+                )
+            elif tier.requires_manager:
+                self._require_authorizer_role(
+                    connection, authorizer_id, frozenset({"manager", "owner"}),
+                    "Este nível exige autorização de gerente.",
+                )
             sale.discount_cents = candidate
             SaleRepository(connection, self._outbox).update_totals(
                 sale.id, sale.subtotal_cents, sale.discount_cents, sale.total_cents
@@ -586,6 +600,10 @@ class CheckoutService:
         item = sale.items[index]
 
         with self._db.transaction() as connection:
+            self._require_authorizer_role(
+                connection, authorizer_id, frozenset({"manager"}),
+                "Cancelamento de item exige autorização de gerente.",
+            )
             connection.execute(
                 "UPDATE order_items SET canceled_at = datetime('now'), "
                 "canceled_by_user_id = ?, cancel_reason = ? WHERE id = ?",
@@ -683,6 +701,24 @@ class CheckoutService:
     #: regras, e duas copias da regra de troco divergem na primeira
     #: alteracao. O alias existe para quem ja chamava por este nome.
     _settle_payments = staticmethod(settle_payments)
+
+    def _require_authorizer_role(
+        self, connection, user_id: EntityId | None, roles: frozenset[str],
+        message: str,
+    ) -> None:  # noqa: ANN001
+        if user_id is None:
+            raise AuthorizationRequiredError(message)
+        row = connection.execute(
+            "SELECT role,can_authorize FROM users "
+            "WHERE id=? AND tenant_id=? AND is_active=1",
+            (user_id, self._config.tenant_id),
+        ).fetchone()
+        if (
+            row is None
+            or not int(row["can_authorize"])
+            or str(row["role"]) not in roles
+        ):
+            raise AuthorizationRequiredError(message)
 
     def _audit(self) -> AuditService:
         return AuditService(

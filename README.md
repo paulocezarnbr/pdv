@@ -126,16 +126,18 @@ contorna avisos TLS, pois ensinar o garçom a ignorá-los anularia a autenticaç
 
 Os níveis padrão começam em Bronze 2%, Prata 4%, Ouro 6%, Diamante 10%,
 Funcionário 15% e Dono 20%; todos os percentuais são configuráveis. O nível
-**Dono** é uma exceção de segurança: sempre exige login e PIN de gerente a cada
-aplicação; essa trava é validada no serviço, inclusive para dados recebidos por
-sincronização. Funcionário e Dono são classificações permanentes: depois de
-atribuídas, não podem ser convertidas em outro nível.
+**Dono** é uma exceção de segurança: sempre exige login e PIN de um usuário com
+papel de proprietário a cada aplicação. Somente um proprietário pode atribuir
+os níveis Funcionário ou Dono. Essas travas são validadas no serviço, inclusive
+para dados recebidos por sincronização. Funcionário e Dono são classificações
+permanentes: depois de atribuídas, não podem ser convertidas em outro nível.
 
 A autorização de gerente é validada **offline**, com Argon2id contra a réplica
 local de `users.pin_hash`, e cada tentativa recusada vira evento de auditoria.
-A base de demonstração traz `bruno` / `483916` como gerente (teto de 30%) e
-`ana` / `705284` como caixa — que tem PIN válido e, de propósito, **não** pode
-autorizar: liberar o próprio cancelamento é o furto inteiro em um passo.
+A base de demonstração traz `olivia` / `84627519` como proprietária (teto de
+100%), `bruno` / `483916` como gerente (teto de 30%) e `ana` / `705284` como
+caixa. Cancelar item exige especificamente o gerente; atribuir Funcionário/Dono
+e usar o nível Dono exigem especificamente a proprietária.
 
 ---
 
@@ -165,8 +167,9 @@ Decisões que valem registro:
 | Mesa desativa, nunca apaga | Comandas antigas apontam para ela; apagar a linha custaria todo o relatório de faturamento por mesa. |
 
 O PIN de gerente é validado **offline**, com o mesmo Argon2id e o mesmo
-bloqueio progressivo do balcão. `bruno` / `1234` na base de demonstração;
-`ana` / `1111` tem PIN válido e, de propósito, **não** autoriza.
+bloqueio progressivo do balcão. Na base de demonstração, use `bruno` / `483916`
+para gerente; a senha de proprietário é `olivia` / `84627519`.
+
 ---
 
 ## Sistema visual

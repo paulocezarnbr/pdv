@@ -102,6 +102,16 @@ class DiscountTierService:
             ).fetchone()
             if target is None:
                 raise DiscountTierError("Nível não existe ou está inativo.")
+            if target["code"] in self.PROTECTED_CODES:
+                actor = connection.execute(
+                    "SELECT role FROM users WHERE id=? AND tenant_id=? AND is_active=1",
+                    (actor_user_id, self._config.tenant_id),
+                ).fetchone()
+                if actor is None or str(actor["role"]) != "owner":
+                    raise DiscountTierError(
+                        "Somente um proprietário pode atribuir os níveis "
+                        "Funcionário ou Dono."
+                    )
             existing = connection.execute(
                 "SELECT c.client_uuid,c.tier_id,t.code AS current_code "
                 "FROM customer_discount_tiers c "
