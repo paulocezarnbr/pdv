@@ -407,6 +407,30 @@ CREATE TABLE IF NOT EXISTS customer_discount_tiers (
     FOREIGN KEY(tier_id) REFERENCES discount_tiers(id)
 );
 
+-- Funcionário e Dono representam vínculos permanentes, não progressão de
+-- fidelidade. A regra no banco também barra SQL direto e código antigo.
+CREATE TRIGGER IF NOT EXISTS trg_protected_discount_tier_no_change
+BEFORE UPDATE OF tier_id ON customer_discount_tiers
+WHEN OLD.tier_id <> NEW.tier_id
+ AND EXISTS (
+    SELECT 1 FROM discount_tiers
+    WHERE id = OLD.tier_id AND tenant_id = OLD.tenant_id
+      AND code IN ('employee', 'owner')
+ )
+BEGIN
+    SELECT RAISE(ABORT, 'protected discount tier cannot be changed');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_protected_discount_tier_no_delete
+BEFORE DELETE ON customer_discount_tiers
+WHEN EXISTS (
+    SELECT 1 FROM discount_tiers
+    WHERE id = OLD.tier_id AND tenant_id = OLD.tenant_id
+      AND code IN ('employee', 'owner')
+ )
+BEGIN
+    SELECT RAISE(ABORT, 'protected discount tier cannot be removed');
+END;
+
 -- ===========================================================================
 -- Fase 3 — Servidor local (edge) para o app do garçom e o KDS
 -- ===========================================================================

@@ -909,9 +909,13 @@ class CounterWindow(QMainWindow):
         if not accepted:
             return
         tier = tiers[names.index(selected)]
-        self._discount_tiers.assign(
-            customer_id=customer.id, tier_id=tier.id, actor_user_id=authorizer.id
-        )
+        try:
+            self._discount_tiers.assign(
+                customer_id=customer.id, tier_id=tier.id, actor_user_id=authorizer.id
+            )
+        except DiscountTierError as exc:
+            QMessageBox.critical(self, "Níveis de desconto", str(exc))
+            return
         self.statusBar().showMessage(f"{customer.name}: nível {tier.name}", 6000)
 
     def _open_tables(self) -> None:

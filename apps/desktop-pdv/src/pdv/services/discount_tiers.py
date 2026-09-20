@@ -35,6 +35,7 @@ class DiscountTier:
 
 class DiscountTierService:
     CODES = ("bronze", "silver", "gold", "diamond", "employee", "owner")
+    PROTECTED_CODES = frozenset({"employee", "owner"})
 
     def __init__(self, database: Database, config: AppConfig) -> None:
         self._db, self._config = database, config
@@ -92,17 +93,29 @@ class DiscountTierService:
 
     def assign(self, *, customer_id: EntityId, tier_id: EntityId,
                actor_user_id: EntityId) -> None:
-        if self._db.query_one(
-            "SELECT id FROM discount_tiers WHERE id=? AND tenant_id=? AND is_active=1",
-            (tier_id,self._config.tenant_id),
-        ) is None:
-            raise DiscountTierError("Nível não existe ou está inativo.")
         now = iso(utc_now())
         with self._db.transaction() as connection:
-            existing = connection.execute(
-                "SELECT client_uuid FROM customer_discount_tiers WHERE customer_id=?",
-                (customer_id,),
+            target = connection.execute(
+                "SELECT id,code FROM discount_tiers WHERE id=? AND tenant_id=? "
+                "AND store_id=? AND is_active=1",
+                (tier_id, self._config.tenant_id, self._config.store_id),
             ).fetchone()
+            if target is None:
+                raise DiscountTierError("Nível não existe ou está inativo.")
+            existing = connection.execute(
+                "SELECT c.client_uuid,c.tier_id,t.code AS current_code "
+                "FROM customer_discount_tiers c "
+                "JOIN discount_tiers t ON t.id=c.tier_id "
+                "WHERE c.customer_id=? AND c.tenant_id=?",
+                (customer_id, self._config.tenant_id),
+            ).fetchone()
+            if existing and existing["tier_id"] == tier_id:
+                return
+            if existing and existing["current_code"] in self.PROTECTED_CODES:
+                raise DiscountTierError(
+                    "Clientes classificados como Funcionário ou Dono não podem "
+                    "mudar para outro nível."
+                )
             client_uuid = EntityId(existing["client_uuid"] if existing else new_id())
             connection.execute(
                 "INSERT INTO customer_discount_tiers(customer_id,tenant_id,tier_id,"

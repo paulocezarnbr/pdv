@@ -128,7 +128,8 @@ Os níveis padrão começam em Bronze 2%, Prata 4%, Ouro 6%, Diamante 10%,
 Funcionário 15% e Dono 20%; todos os percentuais são configuráveis. O nível
 **Dono** é uma exceção de segurança: sempre exige login e PIN de gerente a cada
 aplicação; essa trava é validada no serviço, inclusive para dados recebidos por
-sincronização.
+sincronização. Funcionário e Dono são classificações permanentes: depois de
+atribuídas, não podem ser convertidas em outro nível.
 
 A autorização de gerente é validada **offline**, com Argon2id contra a réplica
 local de `users.pin_hash`, e cada tentativa recusada vira evento de auditoria.

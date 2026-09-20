@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 from decimal import Decimal
 from pathlib import Path
 
@@ -126,3 +127,61 @@ def test_demo_seed_creates_all_default_tiers_without_overwriting_them(
         assert database.query_one("SELECT count(*) n FROM discount_tiers")["n"] == 6
     finally:
         database.close()
+
+
+@pytest.mark.parametrize("protected_code", ["employee", "owner"])
+def test_employee_and_owner_cannot_be_changed_to_another_tier(
+    tiers, protected_code: str,
+) -> None:  # noqa: ANN001
+    _, service, customer, actor = tiers
+    protected = service.configure(
+        code=protected_code, name=protected_code.title(), percent=Decimal("15"),
+        priority=100, requires_manager=True, actor_user_id=actor,
+    )
+    gold = service.configure(
+        code="gold", name="Ouro", percent=Decimal("6"), priority=30,
+        requires_manager=False, actor_user_id=actor,
+    )
+    service.assign(customer_id=customer, tier_id=protected.id, actor_user_id=actor)
+
+    with pytest.raises(DiscountTierError, match="não podem mudar"):
+        service.assign(customer_id=customer, tier_id=gold.id, actor_user_id=actor)
+    assert service.for_customer(customer).id == protected.id
+
+
+def test_reassigning_the_same_protected_tier_is_idempotent(tiers) -> None:  # noqa: ANN001
+    database, service, customer, actor = tiers
+    employee = service.configure(
+        code="employee", name="Funcionário", percent=Decimal("15"), priority=50,
+        requires_manager=True, actor_user_id=actor,
+    )
+    service.assign(customer_id=customer, tier_id=employee.id, actor_user_id=actor)
+    before = database.query_one("SELECT count(*) n FROM sync_outbox")["n"]
+    service.assign(customer_id=customer, tier_id=employee.id, actor_user_id=actor)
+    assert database.query_one("SELECT count(*) n FROM sync_outbox")["n"] == before
+
+
+def test_database_trigger_blocks_direct_change_of_protected_tier(tiers) -> None:  # noqa: ANN001
+    database, service, customer, actor = tiers
+    owner = service.configure(
+        code="owner", name="Dono", percent=Decimal("20"), priority=100,
+        requires_manager=True, actor_user_id=actor,
+    )
+    bronze = service.configure(
+        code="bronze", name="Bronze", percent=Decimal("2"), priority=10,
+        requires_manager=False, actor_user_id=actor,
+    )
+    service.assign(customer_id=customer, tier_id=owner.id, actor_user_id=actor)
+
+    with pytest.raises(sqlite3.IntegrityError, match="protected discount tier"):
+        database.connection.execute(
+            "UPDATE customer_discount_tiers SET tier_id=? WHERE customer_id=?",
+            (bronze.id, customer),
+        )
+    assert service.for_customer(customer).id == owner.id
+
+    with pytest.raises(sqlite3.IntegrityError, match="protected discount tier"):
+        database.connection.execute(
+            "DELETE FROM customer_discount_tiers WHERE customer_id=?", (customer,)
+        )
+    assert service.for_customer(customer).id == owner.id

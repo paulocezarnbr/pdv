@@ -25,7 +25,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Final
 
-SCHEMA_VERSION: Final[int] = 10
+SCHEMA_VERSION: Final[int] = 11
 _SCHEMA_FILE: Final[Path] = Path(__file__).with_name("schema.sql")
 
 #: Migration 2 — tabelas do servidor local (Fase 3).
@@ -448,6 +448,30 @@ CREATE TABLE IF NOT EXISTS customer_discount_tiers (
 );
 """
 
+_MIGRATION_11_PROTECTED_DISCOUNT_TIERS: Final[str] = """
+CREATE TRIGGER IF NOT EXISTS trg_protected_discount_tier_no_change
+BEFORE UPDATE OF tier_id ON customer_discount_tiers
+WHEN OLD.tier_id <> NEW.tier_id
+ AND EXISTS (
+    SELECT 1 FROM discount_tiers
+    WHERE id = OLD.tier_id AND tenant_id = OLD.tenant_id
+      AND code IN ('employee', 'owner')
+ )
+BEGIN
+    SELECT RAISE(ABORT, 'protected discount tier cannot be changed');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_protected_discount_tier_no_delete
+BEFORE DELETE ON customer_discount_tiers
+WHEN EXISTS (
+    SELECT 1 FROM discount_tiers
+    WHERE id = OLD.tier_id AND tenant_id = OLD.tenant_id
+      AND code IN ('employee', 'owner')
+ )
+BEGIN
+    SELECT RAISE(ABORT, 'protected discount tier cannot be removed');
+END;
+"""
+
 
 def _add_column(
     connection: sqlite3.Connection, table: str, column: str, declaration: str
@@ -580,6 +604,9 @@ class Database:
 
         if current < 10:
             connection.executescript(_MIGRATION_10_DISCOUNT_TIERS)
+
+        if current < 11:
+            connection.executescript(_MIGRATION_11_PROTECTED_DISCOUNT_TIERS)
 
         if current < SCHEMA_VERSION:
             connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
