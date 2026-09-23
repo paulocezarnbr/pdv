@@ -35,7 +35,10 @@ class CloudFiscalAuthError(FiscalCloudError):
 class CloudFiscalDocument:
     request_uuid: str
     order_id: str
-    status: Literal["processing", "unknown", "authorized", "rejected", "canceled"]
+    status: Literal[
+        "processing", "unknown", "authorized", "rejected", "canceled", "not_required"
+    ]
+    #: Zero quando `not_required`: nenhuma série foi tocada.
     series: int
     number: int
     access_key: str | None = None
@@ -103,7 +106,7 @@ class HttpCloudFiscalGateway:
             return CloudFiscalDocument(
                 request_uuid=str(body["request_uuid"]), order_id=str(body["order_id"]),
                 status=str(body["status"]),  # type: ignore[arg-type]
-                series=int(body["series"]), number=int(body["number"]),
+                series=int(body.get("series") or 0), number=int(body.get("number") or 0),
                 access_key=body.get("access_key"), protocol=body.get("protocol"),
                 reason=body.get("provider_reason"),
             )
@@ -113,7 +116,7 @@ class HttpCloudFiscalGateway:
 
 @dataclass(frozen=True, slots=True)
 class IssueDecision:
-    mode: Literal["cloud", "local_contingency", "unknown"]
+    mode: Literal["cloud", "local_contingency", "unknown", "not_required"]
     cloud: CloudFiscalDocument | None = None
     local: FiscalDocument | None = None
     message: str = ""
@@ -125,8 +128,22 @@ class FiscalCoordinator:
         self._local = local
 
     def issue(self, *, request_uuid: str, order_id: EntityId) -> IssueDecision:
+        # Primeiro a pergunta que não depende da rede. Uma cortesia de 100%
+        # feita offline não pode chegar ao ramo de contingência abaixo e
+        # consumir um número da série local.
+        if not self._local.requires_document(order_id):
+            return IssueDecision(
+                "not_required",
+                message="Venda com total zero: não se emite NFC-e.",
+            )
         try:
             document = self._cloud.issue(request_uuid=request_uuid, order_id=str(order_id))
+            if document.status == "not_required":
+                # A nuvem é a autoridade sobre o pedido sincronizado; se ela
+                # viu total zero, não há nota, mesmo que a leitura local
+                # divirja.
+                return IssueDecision("not_required", cloud=document,
+                                     message=document.reason or "")
             return IssueDecision("cloud", cloud=document)
         except CloudDefinitelyOffline:
             local = self._local.reserve(

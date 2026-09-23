@@ -26,6 +26,31 @@ export interface FiscalDocumentOut {
   authorized_at: string | null;
 }
 
+/**
+ * A venda fechou com total zero — desconto de 100% ou produto sem preço.
+ *
+ * Não é erro, é desfecho: "venda concluída, sem nota". Uma NFC-e de R$ 0,00
+ * não tem o que tributar e seria rejeitada pela SEFAZ depois de já ter
+ * consumido um número da série, que então exigiria inutilização formal. Por
+ * isso a checagem acontece antes de qualquer reserva.
+ *
+ * A trilha continua existindo onde ela importa: o desconto de 100% passou pela
+ * autorização de gerente/dono no terminal e está no ledger de auditoria.
+ */
+export class FiscalNotRequired extends Error {
+  constructor(message = "Venda com total zero: não se emite NFC-e.") {
+    super(message);
+    this.name = "FiscalNotRequired";
+  }
+}
+
+export interface FiscalNotRequiredOut {
+  request_uuid: string;
+  order_id: string;
+  status: "not_required";
+  provider_reason: string;
+}
+
 interface DocumentRow {
   id: string;
   tenant_id: string;
@@ -88,16 +113,35 @@ export async function issueFiscalDocument(
   requestUuid: string,
   orderId: string,
   provider?: FiscalProvider,
-): Promise<{ document: FiscalDocumentOut; created: boolean }> {
-  // O provedor é resolvido ANTES da reserva. Resolvido como parâmetro
-  // padrão, ele era construído antes de tudo e, sem as variáveis fiscais,
-  // estourava um erro genérico (500) que o terminal trata como resultado
-  // ambíguo. Aqui a ausência vira um 503 claro, e nenhum número é consumido.
-  const fiscal = provider ?? defaultProvider();
-
-  const prepared = await reserve(device, requestUuid, orderId);
-  if (!prepared.created) return { document: out(prepared.row), created: false };
-  return { document: out(await transmit(device, prepared.row, prepared.intent, fiscal)), created: true };
+): Promise<{ document: FiscalDocumentOut | FiscalNotRequiredOut; created: boolean }> {
+  // A ordem é: a venda precisa de nota? -> o serviço fiscal está configurado?
+  // -> reserva o número. O provedor é resolvido DENTRO da reserva, depois da
+  // validação da venda e antes de tocar na série: assim uma cortesia de 100%
+  // recebe "não precisa de nota" mesmo com o fiscal desligado, e a ausência
+  // do serviço vira 503 sem consumir número.
+  let fiscal: FiscalProvider | undefined = provider;
+  try {
+    const prepared = await reserve(device, requestUuid, orderId, () => {
+      fiscal ??= defaultProvider();
+    });
+    if (!prepared.created) return { document: out(prepared.row), created: false };
+    return {
+      document: out(await transmit(device, prepared.row, prepared.intent, fiscal!)),
+      created: true,
+    };
+  } catch (error) {
+    if (!(error instanceof FiscalNotRequired)) throw error;
+    console.info("[fiscal] venda com total zero; nenhuma NFC-e", { order: orderId });
+    return {
+      document: {
+        request_uuid: requestUuid,
+        order_id: orderId,
+        status: "not_required",
+        provider_reason: error.message,
+      },
+      created: false,
+    };
+  }
 }
 
 /**
@@ -201,7 +245,7 @@ export async function fiscalDocumentStatus(
     // reserva: não há o que retransmitir agora, e o documento continua como
     // estava. Recusar a consulta com 409 faria o terminal ler um erro onde só
     // existe "ainda sem decisão".
-    if (error instanceof ApiError) return out(row);
+    if (error instanceof ApiError || error instanceof FiscalNotRequired) return out(row);
     throw error;
   }
 
@@ -215,6 +259,7 @@ async function reserve(
   device: DeviceContext,
   requestUuid: string,
   orderId: string,
+  beforeReservation: () => void = () => {},
 ): Promise<{ row: DocumentRow; intent: FiscalIntent; created: boolean }> {
   return withTenant(device.tenantId, async (tx) => {
     const existing = await tx<DocumentRow[]>`
@@ -229,6 +274,7 @@ async function reserve(
     }
 
     const { order, config, items } = await readEmissionInputs(tx, device, orderId);
+    beforeReservation();
 
     const seriesRows = await tx<{ id: string; series: number; next_number: string }[]>`
       SELECT id, series, next_number FROM fiscal_series
@@ -296,6 +342,11 @@ async function readEmissionInputs(
   const order = orders[0];
   if (!order) throw new ApiError(404, "Venda paga não encontrada neste terminal.");
   if (order.status !== "paid") throw new ApiError(409, "Somente venda paga emite NFC-e.");
+  // Antes da configuração e dos perfis tributários: uma cortesia não precisa
+  // de nota, então não faz sentido recusá-la por falta de NCM num produto.
+  const total = Number(order.total_cents);
+  if (total < 0) throw new ApiError(409, "Venda com total negativo; corrija antes de emitir.");
+  if (total === 0) throw new FiscalNotRequired();
 
   const configurations = await tx<ConfigRow[]>`
     SELECT * FROM fiscal_configurations

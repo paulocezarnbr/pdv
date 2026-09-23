@@ -468,6 +468,11 @@ paralelo.
   motor roda uma vez; `IN_FLIGHT` nunca é retransmitido. As quatro regras
   foram verificadas por mutação.
 
+- [x] **Venda com total zero não emite NFC-e** (desconto de 100% ou produto de
+      preço zero). Desfecho `not_required` na nuvem, no terminal e na
+      contingência offline, sem consumir número da série; 99% de desconto
+      continua emitindo, e total negativo é recusado como defeito. A cortesia
+      segue rastreável pela autorização do desconto no ledger de auditoria.
 - [x] **DANFE NFC-e 80 mm** com as nove divisões do manual, contingência e
       homologação visíveis, e recusa de documento incoerente com a própria
       chave de acesso. Dígito verificador conferido contra o PyNFe em 5.000

@@ -100,6 +100,35 @@ checagens acontecem antes da reserva, e não depois:
    já ter consumido um número real da série, e cada buraco exigiria
    inutilização formal na SEFAZ.
 
+## Venda com total zero não emite nota
+
+Desconto de 100% (cortesia, degustação, consumo da equipe) ou produto de preço
+zero fecham a venda com total R$ 0,00, e **não geram NFC-e**. Uma nota de valor
+zero não tem o que tributar e seria rejeitada pela SEFAZ depois de já ter
+consumido um número da série — que então exigiria inutilização formal.
+
+O desfecho é `not_required`: não é erro nem estado pendente, e ninguém tenta de
+novo. A regra vale nos três lugares onde uma nota pode nascer:
+
+| Onde | Como |
+|---|---|
+| Nuvem (`POST /api/fiscal/issue`) | Responde `200 {"status":"not_required"}` sem criar documento nem tocar na série. |
+| Terminal (`FiscalCoordinator`) | Pergunta `requires_document` **antes** de falar com a nuvem — uma cortesia feita offline não pode cair no ramo de contingência. |
+| Contingência (`FiscalService.reserve`) | Levanta `FiscalNotRequired` antes de ler a série, mesmo que alguém a chame direto. |
+
+A ordem das checagens na nuvem é: *a venda precisa de nota?* → *o serviço
+fiscal está configurado?* → *reserva*. Assim a cortesia recebe "não precisa de
+nota" mesmo com o fiscal desligado, em vez de um 503 que o caixa mostraria como
+erro.
+
+- A regra é sobre o total **zero**, não sobre ter desconto: 99% de desconto
+  ainda é venda com valor e ainda emite, pelo valor com desconto.
+- Total **negativo** é defeito, não cortesia: recusado com erro (409 na nuvem,
+  `FiscalError` no terminal), nunca silenciado.
+- A trilha não se perde: o desconto de 100% exige autorização de gerente/dono
+  e fica no ledger de auditoria. É ali — e não numa nota de R$ 0,00 — que se
+  confere quem liberou a cortesia.
+
 ## Próxima fatia fiscal
 
 - [x] Reconciliação automática dos documentos que nunca chegaram ao serviço.

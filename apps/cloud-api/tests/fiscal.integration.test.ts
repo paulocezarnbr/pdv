@@ -9,7 +9,12 @@ import {
   type FiscalIntent,
   type FiscalProviderResult,
 } from "../src/lib/fiscal/provider.ts";
-import { fiscalDocumentStatus, issueFiscalDocument } from "../src/lib/fiscal/service.ts";
+import {
+  fiscalDocumentStatus,
+  issueFiscalDocument,
+  type FiscalDocumentOut,
+  type FiscalNotRequiredOut,
+} from "../src/lib/fiscal/service.ts";
 import { ApiError } from "../src/lib/http.ts";
 
 const ADMIN_URL = process.env.TEST_DATABASE_URL;
@@ -157,6 +162,28 @@ describeDb("emissão fiscal contra PostgreSQL real", () => {
 
   const later = () => new Date(Date.now() + 60_000);
 
+  /** Estreita o resultado: nos testes de emissão, a venda TEM valor. */
+  function issued(doc: FiscalDocumentOut | FiscalNotRequiredOut): FiscalDocumentOut {
+    if (doc.status === "not_required") throw new Error("esperava documento emitido");
+    return doc as FiscalDocumentOut;
+  }
+
+  /** Venda paga com o total escolhido — zero é a cortesia de 100%. */
+  async function orderWithTotal(itemCents: number, totalCents: number): Promise<string> {
+    const id = randomUUID();
+    await admin`INSERT INTO orders
+      (id,tenant_id,store_id,device_id,client_uuid,local_number,status,
+       subtotal_cents,discount_cents,total_cents)
+      VALUES (${id},${tenant},${store},${device},${randomUUID()},1,'paid',
+              ${itemCents},${itemCents - totalCents},${totalCents})`;
+    await admin`INSERT INTO order_items
+      (id,tenant_id,order_id,client_uuid,product_id,product_name,quantity,
+       unit_price_cents,total_cents,created_at)
+      VALUES (${randomUUID()},${tenant},${id},${randomUUID()},'p1','Cafe','1',
+              ${itemCents},${itemCents},now())`;
+    return id;
+  }
+
   afterAll(async () => {
     if (!admin) return;
     // A imutabilidade fiscal vale inclusive para o administrador. Só o banco
@@ -183,8 +210,8 @@ describeDb("emissão fiscal contra PostgreSQL real", () => {
     const request = randomUUID();
     const first = await issueFiscalDocument(context, request, order, provider);
     const repeated = await issueFiscalDocument(context, request, order, provider);
-    expect(first.document.number).toBe(1);
-    expect(repeated.document.document_id).toBe(first.document.document_id);
+    expect(issued(first.document).number).toBe(1);
+    expect(issued(repeated.document).document_id).toBe(issued(first.document).document_id);
     expect(provider.calls).toBe(1);
     const [series] = await admin<{ next_number: string }[]>`
       SELECT next_number FROM fiscal_series WHERE tenant_id=${tenant}`;
@@ -294,5 +321,79 @@ describeDb("emissão fiscal contra PostgreSQL real", () => {
       if (saved.url) process.env.FISCAL_SERVICE_URL = saved.url;
       if (saved.token) process.env.FISCAL_SERVICE_TOKEN = saved.token;
     }
+  });
+  it("venda com desconto de 100% não emite nota e não consome número", async () => {
+    // Uma NFC-e de R$ 0,00 não tem o que tributar e seria rejeitada depois de
+    // já ter consumido um número da série — que então exigiria inutilização.
+    const before = await nextNumber();
+    const provider = new ScriptedProvider(AUTHORIZED, NOT_FOUND);
+
+    const result = await issueFiscalDocument(
+      context, randomUUID(), await orderWithTotal(700, 0), provider,
+    );
+
+    expect(result.document.status).toBe("not_required");
+    expect(result.created).toBe(false);
+    expect(provider.authorizeCalls).toBe(0);
+    expect(await nextNumber()).toBe(before);
+    const [docs] = await admin<{ total: string }[]>`
+      SELECT count(*) AS total FROM fiscal_documents WHERE tenant_id=${tenant}
+        AND order_id IN (SELECT id FROM orders WHERE tenant_id=${tenant} AND total_cents=0)`;
+    expect(Number(docs!.total)).toBe(0);
+  });
+
+  it("produto de preço zero também não emite", async () => {
+    const provider = new ScriptedProvider(AUTHORIZED, NOT_FOUND);
+
+    const result = await issueFiscalDocument(
+      context, randomUUID(), await orderWithTotal(0, 0), provider,
+    );
+
+    expect(result.document.status).toBe("not_required");
+    expect(provider.authorizeCalls).toBe(0);
+  });
+
+  it("desconto parcial continua emitindo, pelo valor com desconto", async () => {
+    // A regra é sobre o total ZERO, não sobre ter desconto: 99% de desconto
+    // ainda é uma venda com valor, e ainda precisa de nota.
+    const provider = new ScriptedProvider(AUTHORIZED, NOT_FOUND);
+
+    const result = await issueFiscalDocument(
+      context, randomUUID(), await orderWithTotal(700, 7), provider,
+    );
+
+    expect(result.document.status).toBe("authorized");
+    expect(provider.authorizeCalls).toBe(1);
+  });
+
+  it("cortesia não precisa de nota nem com o serviço fiscal desligado", async () => {
+    // A ordem das checagens importa: sem ela, a cortesia receberia 503
+    // "fiscal não configurado", e o caixa mostraria um erro onde não há nada
+    // de errado.
+    const saved = {
+      url: process.env.FISCAL_SERVICE_URL,
+      token: process.env.FISCAL_SERVICE_TOKEN,
+    };
+    delete process.env.FISCAL_SERVICE_URL;
+    delete process.env.FISCAL_SERVICE_TOKEN;
+    try {
+      const result = await issueFiscalDocument(
+        context, randomUUID(), await orderWithTotal(700, 0),
+      );
+      expect(result.document.status).toBe("not_required");
+    } finally {
+      if (saved.url) process.env.FISCAL_SERVICE_URL = saved.url;
+      if (saved.token) process.env.FISCAL_SERVICE_TOKEN = saved.token;
+    }
+  });
+
+  it("total negativo é defeito, não cortesia", async () => {
+    const error = await issueFiscalDocument(
+      context, randomUUID(), await orderWithTotal(700, -100),
+      new ScriptedProvider(AUTHORIZED, NOT_FOUND),
+    ).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).status).toBe(409);
   });
 });

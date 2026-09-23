@@ -24,6 +24,25 @@ class FiscalError(RuntimeError):
     """Configuração ou venda incompatível com a emissão fiscal."""
 
 
+class FiscalNotRequired(FiscalError):
+    """A venda fechou com total zero: não há documento fiscal a emitir.
+
+    Acontece com desconto de 100% (cortesia, degustação, consumo da equipe) ou
+    com produto de preço zero. A NFC-e documenta uma operação com valor; uma
+    nota de R$ 0,00 não tem o que tributar e seria rejeitada pela SEFAZ depois
+    de já ter consumido um número da série — que então precisaria de
+    inutilização formal.
+
+    É uma exceção **própria**, e não `FiscalError` genérico, porque quem chama
+    precisa tratá-la como desfecho normal ("venda concluída, sem nota"), nunca
+    como falha a repetir: tentar de novo não muda o total.
+
+    A trilha não se perde: o desconto de 100% já passou pela autorização de
+    gerente/dono e está no ledger de auditoria. É ali, e não numa nota de valor
+    zero, que se confere quem liberou a cortesia.
+    """
+
+
 @dataclass(frozen=True, slots=True)
 class FiscalDocument:
     id: EntityId
@@ -85,6 +104,21 @@ class FiscalService:
                  self._config.device_id, model, series, environment, now),
             )
 
+    def requires_document(self, order_id: EntityId) -> bool:
+        """A venda precisa de NFC-e? Falso quando o total fechou em zero.
+
+        Consultado ANTES de falar com a nuvem: uma venda de cortesia feita com
+        a internet fora não pode cair na série de contingência só porque a
+        pergunta "precisa de nota?" dependia da rede para ser respondida.
+        """
+        row = self._db.query_one(
+            "SELECT total_cents FROM orders WHERE id=? AND tenant_id=?",
+            (order_id, self._config.tenant_id),
+        )
+        if row is None:
+            raise FiscalError("Venda não encontrada neste tenant.")
+        return _requires_document(int(row["total_cents"]))
+
     def reserve(
         self, *, order_id: EntityId, online: bool, model: int = 65,
         contingency_reason: str | None = None,
@@ -98,7 +132,7 @@ class FiscalService:
                 return _document(existing)
 
             order = connection.execute(
-                "SELECT tenant_id,store_id,device_id,status FROM orders WHERE id=?",
+                "SELECT tenant_id,store_id,device_id,status,total_cents FROM orders WHERE id=?",
                 (order_id,),
             ).fetchone()
             if order is None or order["tenant_id"] != self._config.tenant_id:
@@ -107,6 +141,13 @@ class FiscalService:
                 raise FiscalError("A venda pertence a outro terminal; emissão recusada.")
             if order["status"] != "paid":
                 raise FiscalError("Somente uma venda paga pode reservar documento fiscal.")
+            # Antes de tocar na série: uma venda de total zero não pode consumir
+            # número de contingência, nem por engano de quem chamou.
+            if not _requires_document(int(order["total_cents"])):
+                raise FiscalNotRequired(
+                    "Venda com total zero (desconto de 100% ou item sem preço): "
+                    "não se emite NFC-e."
+                )
 
             series_row = connection.execute(
                 "SELECT * FROM fiscal_series WHERE tenant_id=? AND store_id=? "
@@ -149,6 +190,13 @@ class FiscalService:
             ).fetchone()
             assert row is not None
             return _document(row)
+
+
+def _requires_document(total_cents: int) -> bool:
+    """Zero não emite; negativo é defeito, e defeito não vira nota nem silêncio."""
+    if total_cents < 0:
+        raise FiscalError("Venda com total negativo: corrija antes de qualquer emissão.")
+    return total_cents > 0
 
 
 def _document(item: sqlite3.Row) -> FiscalDocument:

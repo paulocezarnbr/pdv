@@ -8,7 +8,7 @@ import pytest
 from pdv.config import AppConfig
 from pdv.data.database import SCHEMA_VERSION, Database
 from pdv.domain.models import EntityId, iso, new_id, utc_now
-from pdv.fiscal import FiscalError, FiscalService
+from pdv.fiscal import FiscalError, FiscalNotRequired, FiscalService
 
 
 @pytest.fixture()
@@ -20,7 +20,10 @@ def env(tmp_path: Path):  # noqa: ANN201
     return database, config, FiscalService(database, config)
 
 
-def _paid_order(database: Database, config: AppConfig) -> EntityId:
+def _paid_order(
+    database: Database, config: AppConfig, *, total_cents: int = 1000,
+    subtotal_cents: int = 1000,
+) -> EntityId:
     order_id, now = new_id(), iso(utc_now())
     with database.transaction() as connection:
         local_number = database.next_counter(connection, "order_local_number")
@@ -29,9 +32,9 @@ def _paid_order(database: Database, config: AppConfig) -> EntityId:
             "(id,tenant_id,store_id,device_id,local_number,channel,status,operator_id,"
             "subtotal_cents,total_cents,opened_at,closed_at,created_at,updated_at,"
             "origin_device_id,client_uuid) VALUES (?,?,?,?,?,'counter','paid','operator',"
-            "1000,1000,?,?,?,?,?,?)",
+            "?,?,?,?,?,?,?,?)",
             (order_id, config.tenant_id, config.store_id, config.device_id, local_number,
-             now, now, now, now, config.device_id, new_id()),
+             subtotal_cents, total_cents, now, now, now, now, config.device_id, new_id()),
         )
     return order_id
 
@@ -137,3 +140,67 @@ def test_fiscal_history_cannot_be_deleted_or_rewritten(env) -> None:  # noqa: AN
         database.connection.execute("DELETE FROM fiscal_documents WHERE id=?", (document.id,))
     with pytest.raises(Exception, match="immutable"):
         database.connection.execute("UPDATE fiscal_events SET event_type='forged'")
+
+
+# --------------------------------------------------------------------------- #
+# Venda com total zero
+# --------------------------------------------------------------------------- #
+
+
+def _next_number(database: Database) -> int:
+    row = database.connection.execute("SELECT next_number FROM fiscal_series").fetchone()
+    return int(row["next_number"])
+
+
+def test_a_hundred_percent_discount_does_not_consume_a_contingency_number(env) -> None:  # noqa: ANN001
+    """Desconto de 100%: a venda fecha, mas não há nota — nem de contingência.
+
+    Uma NFC-e de R$ 0,00 seria rejeitada depois de consumir o número, e o
+    buraco na série exigiria inutilização formal na SEFAZ.
+    """
+    database, config, service = env
+    service.configure_series(series=101)
+    courtesy = _paid_order(database, config, subtotal_cents=1000, total_cents=0)
+    before = _next_number(database)
+
+    with pytest.raises(FiscalNotRequired):
+        service.reserve(order_id=courtesy, online=False)
+
+    assert _next_number(database) == before
+    assert database.connection.execute(
+        "SELECT count(*) FROM fiscal_documents WHERE order_id=?", (courtesy,)
+    ).fetchone()[0] == 0
+
+
+def test_a_zero_priced_product_does_not_need_a_document(env) -> None:  # noqa: ANN001
+    database, config, service = env
+    free = _paid_order(database, config, subtotal_cents=0, total_cents=0)
+
+    assert service.requires_document(free) is False
+
+
+def test_a_partial_discount_still_needs_a_document(env) -> None:  # noqa: ANN001
+    """A regra é sobre o total ZERO, não sobre ter desconto."""
+    database, config, service = env
+    almost = _paid_order(database, config, subtotal_cents=1000, total_cents=1)
+
+    assert service.requires_document(almost) is True
+
+
+def test_not_required_is_distinguishable_from_a_real_failure(env) -> None:  # noqa: ANN001
+    """Quem chama trata `FiscalNotRequired` como desfecho, não como erro a repetir.
+
+    Ela herda de `FiscalError` para não escapar de um `except FiscalError`
+    antigo — mas é uma classe própria justamente para poder ser separada.
+    """
+    assert issubclass(FiscalNotRequired, FiscalError)
+    assert FiscalNotRequired is not FiscalError
+
+
+def test_a_negative_total_is_a_defect_not_a_courtesy(env) -> None:  # noqa: ANN001
+    database, config, service = env
+    broken = _paid_order(database, config, subtotal_cents=1000, total_cents=-50)
+
+    with pytest.raises(FiscalError) as caught:
+        service.requires_document(broken)
+    assert not isinstance(caught.value, FiscalNotRequired)
