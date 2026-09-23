@@ -1,12 +1,32 @@
+# =============================================================================
+# Dependências do PDV — as versões que foram TESTADAS e EMPACOTADAS
+# =============================================================================
+#
+# Até esta revisão, os pins deste arquivo não eram o que rodava. A suíte e o
+# `PDV.exe` usavam PySide6 6.11, pydantic 2.13 e httpx 0.28, enquanto aqui
+# constavam 6.7, 2.8 e 0.27 — versões que nunca passaram pelos testes, e das
+# quais a primeira nem instala em Python 3.14. Uma máquina nova rodando
+# `pip install -r requirements.txt` falharia, ou montaria um PDV diferente do
+# que foi verificado.
+#
+# A regra agora: este arquivo é o que a CI instala num ambiente limpo antes de
+# rodar a suíte. Se um pin aqui não passar, a CI quebra — não a loja.
+#
+# Python: 3.14 (o mesmo do build do instalador).
+
 # --- App Desktop PDV (Windows) ---
-PySide6==6.7.2          # UI (LGPL: permite distribuicao comercial fechada)
+PySide6==6.11.2         # UI (LGPL: permite distribuicao comercial fechada)
 pyserial==3.5           # Balanca via COM/USB-serial
-httpx==0.27.0           # Cliente de sincronizacao
-pydantic==2.8.2         # Validacao de config e DTOs de sync
+httpx==0.28.1           # Cliente de sincronizacao
+pydantic==2.13.5        # Validacao de config e DTOs de sync
 
 # --- Impressao termica ---
-pywin32==306; sys_platform == "win32"   # win32print RAW (rota primaria no Windows)
-python-escpos==3.1      # Rota alternativa via libusb (Linux / terminal dedicado)
+pywin32==312; sys_platform == "win32"   # win32print RAW (rota primaria no Windows)
+# Rota alternativa via libusb, para terminal dedicado em Linux. No Windows a
+# impressão sai pelo spooler (pywin32) e esta biblioteca não é importada — o
+# import é tardio, dentro do backend. Instalá-la no Windows só acrescentaria
+# pyusb e libusb ao pacote sem que nada os usasse.
+python-escpos==3.1; sys_platform != "win32"
 
 # --- Servidor local (LAN: mobile garcom + KDS) ---
 # Versoes efetivamente exercitadas: o servidor sobe, pareia, recebe pedido e
@@ -32,8 +52,9 @@ lxml==6.1.3             # XML/XSD
 pyOpenSSL==26.1.0       # certificado A1 / TLS mútuo
 requests==2.33.0        # transporte usado internamente pelo PyNFe
 
-# --- Dev ---
-pytest==8.3.2
+# --- Build e dev ---
+pyinstaller==6.19.0     # a versão que produziu o PDV.exe verificado pelo --selftest
+pytest==9.1.1
 pytest-qt==4.5.0
 mypy==1.11.1
 ruff==0.5.7

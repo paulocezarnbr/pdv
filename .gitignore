@@ -53,3 +53,7 @@ apps/cloud-api/node_modules/
 apps/cloud-api/.next/
 apps/cloud-api/next-env.d.ts
 apps/cloud-api/tsconfig.tsbuildinfo
+
+# Relatórios gerados pela CI (ver .github/workflows/ci.yml)
+apps/desktop-pdv/report.xml
+apps/cloud-api/vitest.json

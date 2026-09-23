@@ -1,0 +1,231 @@
+# =============================================================================
+# CI do monorepo — PDV (Python), retaguarda (Next.js) e serviço fiscal (Python)
+# =============================================================================
+#
+# Cada job existe por causa de um defeito real, encontrado numa revisão em que
+# tudo parecia verde na máquina de quem escreveu:
+#
+# * 15 testes de integração da nuvem **pulavam em silêncio** sem Postgres, e o
+#   resumo continuava verde. Aqui o Postgres existe e teste pulado REPROVA.
+# * um teste dependia de `DATABASE_URL` sem declarar: passava para quem tinha a
+#   variável no terminal e falhava para todo o resto.
+# * o `requirements.txt` do PDV não era o que rodava: os pins nunca tinham
+#   passado pela suíte, e o primeiro deles nem instalava em Python 3.14.
+#
+# Por isso os jobs instalam SÓ o que está pinado, num ambiente limpo, e rodam
+# no runtime que vai para produção.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  desktop:
+    name: PDV (Windows, Python 3.14)
+    # Windows e não Linux: o PDV é um app Windows (pywin32, spooler, DPAPI). Um
+    # verde em Ubuntu diria pouco sobre o que roda no caixa.
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: apps/desktop-pdv
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: apps/desktop-pdv/requirements.txt
+
+      # Node entra no job do PDV por causa do contrato criptográfico: o teste
+      # executa a assinatura da nuvem (TypeScript) e compara byte a byte com a
+      # do terminal. Sem Node ele pularia — e aqui pular reprova.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Instalar exatamente os pins
+        run: python -m pip install -r requirements.txt
+
+      - name: Suíte completa
+        env:
+          QT_QPA_PLATFORM: offscreen
+          PYTHONPATH: src
+        run: python -m pytest -q -p no:cacheprovider --junitxml=report.xml
+
+      - name: Nenhum teste pode ter pulado
+        shell: python
+        run: |
+          import sys, xml.etree.ElementTree as ET
+          suite = ET.parse("report.xml").getroot()
+          suite = suite if suite.tag == "testsuite" else suite.find("testsuite")
+          skipped = int(suite.get("skipped", 0))
+          print(f"{suite.get('tests')} testes, {skipped} pulados")
+          if skipped:
+              sys.exit("Teste pulado não prova nada. Ver o motivo com pytest -rs.")
+
+  # ---------------------------------------------------------------------------
+  cloud:
+    name: Retaguarda (Next.js + Postgres real)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/cloud-api
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: erp
+          POSTGRES_PASSWORD: erp
+          POSTGRES_DB: erp
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U erp -d erp"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      APP_DB_PASSWORD: senha-de-ci-do-papel-app
+      TEST_DATABASE_URL: postgres://erp:erp@localhost:5432/erp
+      TEST_APP_DATABASE_URL: postgres://erp_app:senha-de-ci-do-papel-app@localhost:5432/erp
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: apps/cloud-api/package-lock.json
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Tipagem
+        run: npx tsc --noEmit
+
+      - name: Auditoria de dependências de produção
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Migrations num banco vazio
+        env:
+          DATABASE_URL: postgres://erp:erp@localhost:5432/erp
+        run: node --experimental-strip-types scripts/migrate.ts
+
+      # O papel `erp_app` NÃO é superusuário. É o único jeito de o teste de RLS
+      # provar alguma coisa: superusuário ignora política, com ou sem FORCE.
+      - name: Testes contra Postgres real
+        run: npx vitest run --reporter=default --reporter=json --outputFile=vitest.json
+
+      - name: Nenhum teste pode ter pulado
+        run: |
+          node -e '
+            const r = require("./vitest.json");
+            const skipped = r.numPendingTests + r.numTodoTests;
+            console.log(`${r.numTotalTests} testes, ${skipped} pulados`);
+            if (skipped > 0) {
+              console.error("Teste pulado não prova nada.");
+              process.exit(1);
+            }'
+
+      # SEM nenhuma variável de ambiente, de propósito. Uma versão anterior
+      # exigia DATABASE_URL no build só para fazer o parse da URL, o que
+      # obrigaria a gravar a credencial de produção na imagem.
+      - name: Build sem segredo nenhum
+        run: env -i PATH="$PATH" HOME="$HOME" npm run build
+
+  # ---------------------------------------------------------------------------
+  fiscal:
+    name: Serviço fiscal (Python 3.13)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/fiscal-service
+    steps:
+      - uses: actions/checkout@v4
+
+      # 3.13 e não 3.14: é o runtime do Dockerfile. Os pins deste serviço não
+      # instalam em 3.14 (pydantic-core ainda sem wheel), e testar num Python
+      # diferente do de produção não diria nada sobre produção.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: apps/fiscal-service/requirements-dev.txt
+
+      - run: python -m pip install -r requirements-dev.txt
+
+      - name: Testes
+        env:
+          PYTHONPATH: src
+        run: python -m pytest -q -p no:cacheprovider
+
+  # ---------------------------------------------------------------------------
+  e2e:
+    name: Ponta a ponta pela imagem Docker
+    # Depois da nuvem: não adianta construir a imagem de um código que já
+    # reprovou nos testes.
+    needs: cloud
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Postgres
+        run: |
+          docker run -d --name erp-pg-test -p 55432:5432 \
+            -e POSTGRES_USER=erp -e POSTGRES_PASSWORD=erp -e POSTGRES_DB=erp \
+            postgres:17-alpine
+          for i in $(seq 1 30); do
+            docker exec erp-pg-test pg_isready -U erp -d erp && break
+            sleep 1
+          done
+
+      - name: Construir a imagem
+        run: docker build -t erp-cloud-api:test apps/cloud-api
+
+      # Sem as variáveis do serviço fiscal, de propósito: a retaguarda precisa
+      # ficar saudável sem ele. Uma versão anterior respondia 503 no health e
+      # o deploy nunca ficava verde no Coolify.
+      - name: Subir a retaguarda como no Coolify
+        run: |
+          docker run -d --name erp-api-test -p 3111:3000 \
+            --add-host=host.docker.internal:host-gateway \
+            -e ADMIN_DATABASE_URL="postgres://erp:erp@host.docker.internal:55432/erp" \
+            -e DATABASE_URL="postgres://erp_app:senha-de-ci-do-papel-app@host.docker.internal:55432/erp" \
+            -e APP_DB_PASSWORD="senha-de-ci-do-papel-app" \
+            -e SESSION_SECRET="chave-de-sessao-de-ci" \
+            -e APP_VERSION="${GITHUB_SHA::8}" \
+            erp-cloud-api:test
+          for i in $(seq 1 60); do
+            curl -fs http://localhost:3111/api/health > health.json && break
+            sleep 1
+          done
+          cat health.json
+
+      - name: O health diz o que precisa dizer
+        run: |
+          python - <<'EOF'
+          import json, sys
+          health = json.load(open("health.json"))
+          expected = {"database": "ok", "tenant_isolation": "ativo", "fiscal": "desligado"}
+          wrong = {k: health.get(k) for k, v in expected.items() if health.get(k) != v}
+          if wrong:
+              sys.exit(f"health inesperado: {wrong}")
+          print("health ok:", expected)
+          EOF
+
+      - name: O fluxo do terminal
+        run: python apps/cloud-api/scripts/e2e.py
+
+      - name: Log do contêiner, se algo falhou
+        if: failure()
+        run: docker logs erp-api-test
