@@ -468,6 +468,22 @@ paralelo.
   motor roda uma vez; `IN_FLIGHT` nunca é retransmitido. As quatro regras
   foram verificadas por mutação.
 
+- [x] **DANFE NFC-e 80 mm** com as nove divisões do manual, contingência e
+      homologação visíveis, e recusa de documento incoerente com a própria
+      chave de acesso. Dígito verificador conferido contra o PyNFe em 5.000
+      chaves; as oito recusas verificadas por mutação.
+- [x] **Autoteste do pacote cobre o fiscal.** `PDV.exe --selftest` carrega a
+      tabela de municípios do PyNFe (lida por caminho, invisível ao
+      PyInstaller), confere a licença LGPL embarcada e monta um DANFE em PC850.
+      Sem isso, um pacote incompleto funcionaria por meses e quebraria na
+      primeira NFC-e da loja.
+
+### Fase 0 — CI (complemento)
+- [x] GitHub Actions com as três suítes, Postgres real e **teste pulado
+      reprova**. Os pins do `requirements.txt` passaram a ser as versões
+      testadas e empacotadas — antes não eram, e o primeiro nem instalava em
+      Python 3.14. Verificado num ambiente limpo: 457 testes com os pins.
+
 ### Fase 6 — IA & Canais (Sprint 17–20)
 - [ ] Cardápio QR com upsell contextual.
 - [ ] WhatsApp Cloud API + LLM anotador (com confirmação humana obrigatória).

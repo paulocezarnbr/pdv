@@ -33,6 +33,11 @@ _METHOD_LABELS: dict[PaymentMethod, str] = {
     PaymentMethod.CASHBACK: "Cashback",
 }
 
+#: Público porque o DANFE NFC-e (`fiscal/danfe.py`) usa os mesmos rótulos: o
+#: consumidor que recebe o cupom e a nota da mesma venda não pode ler "Cartão
+#: Débito" num e "Débito" no outro.
+METHOD_LABELS = _METHOD_LABELS
+
 
 @dataclass(frozen=True, slots=True)
 class ReceiptContext:

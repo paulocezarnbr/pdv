@@ -107,7 +107,14 @@ checagens acontecem antes da reserva, e não depois:
       (depende do motor real).
 - [ ] Gerador/assinador XML NFC-e 4.00 com QR Code v3 e validação XSD.
 - [ ] Credenciais A1/CSC e cadastro tributário em tela exclusiva do dono.
-- [ ] DANFE NFC-e 80 mm com indicação visível de contingência.
+- [x] DANFE NFC-e 80 mm com indicação visível de contingência
+      (`pdv/fiscal/danfe.py`). Imprime só o que veio do documento autorizado,
+      nunca monta o QR Code, e **recusa** imprimir documento incoerente: chave
+      com dígito verificador errado, de outro CNPJ ou modelo, série/número ou
+      tipo de emissão divergentes da chave, emissão normal sem protocolo,
+      contingência com protocolo, ou pagamentos que não fecham o total. Ainda
+      não ligado ao caixa: depende do motor real extrair `qrCode` e `urlChave`
+      do XML autorizado.
 - [ ] Homologação formal RJ/SVRS antes de liberar `production` — exige o
       certificado A1 e o CSC da loja, emitidos pela SEFAZ-RJ.
 

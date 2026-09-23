@@ -188,6 +188,72 @@ def _qt() -> str:
     return "janelas importáveis"
 
 
+def _fiscal_engine() -> str:
+    """O PyNFe e o que ele abre por caminho em tempo de execução.
+
+    O motor fiscal só é importado quando o tenant habilita NFC-e. Sem esta
+    verificação, um pacote sem a pasta `data/` do PyNFe funcionaria no caixa
+    por meses e quebraria no dia da primeira emissão: a tabela de municípios do
+    IBGE é lida por caminho relativo ao `__file__` da biblioteca, e o analisador
+    do PyInstaller não enxerga isso.
+    """
+    import importlib.metadata
+
+    from pynfe.utils import carregar_arquivo_municipios
+
+    rio = carregar_arquivo_municipios(33)  # RJ
+    if rio.get("3304557") is None:  # código IBGE do município do Rio de Janeiro
+        raise RuntimeError("a tabela de municípios do PyNFe veio incompleta")
+
+    # A LGPL do PyNFe exige que os avisos acompanhem o binário redistribuído.
+    # `copy_metadata` no spec é o que os traz; sem ele, isto levanta.
+    version = importlib.metadata.version("PyNFe")
+    return f"PyNFe {version}, {len(rio)} municípios do RJ, licença presente"
+
+
+def _danfe() -> str:
+    """Monta um DANFE NFC-e completo e confere o que só o pacote pode quebrar.
+
+    A codificação PC850 (acentos da impressora) e o QR Code nativo passam por
+    tabelas de codec que o PyInstaller pode deixar de fora.
+    """
+    from datetime import datetime, timezone
+    from decimal import Decimal
+
+    from pdv.config import PrinterConfig
+    from pdv.domain.models import PaymentMethod
+    from pdv.fiscal.danfe import (
+        DanfeIssuer,
+        DanfeItem,
+        DanfePayment,
+        NfceDanfe,
+        access_key_check_digit,
+        build_nfce_danfe,
+    )
+
+    base = "33" "2609" "12345678000190" "65" "001" "000000001" "9" "12345678"
+    qr = "https://exemplo.invalid/qrcode?p=autoteste"
+    payload = build_nfce_danfe(
+        NfceDanfe(
+            issuer=DanfeIssuer("Autoteste Ltda", "12345678000190", "1", "Rua A, 1"),
+            environment="homologation",
+            emission="offline_contingency",
+            series=1,
+            number=1,
+            issued_at=datetime.now(timezone.utc),
+            items=(DanfeItem("X", "Café", Decimal("1"), "UN", 700, 700),),
+            payments=(DanfePayment(PaymentMethod.CASH, 700),),
+            access_key=base + access_key_check_digit(base),
+            consultation_url="exemplo.invalid/consulta",
+            qr_code=qr,
+        ),
+        PrinterConfig(),
+    )
+    if qr.encode() not in payload or "CONTINGÊNCIA".encode("cp850") not in payload:
+        raise RuntimeError("o DANFE saiu sem o QR Code ou sem a acentuação")
+    return f"{len(payload)} bytes, QR e PC850"
+
+
 CHECKS: tuple[Check, ...] = (
     ("schema.sql", "o caixa não abre: falha na primeira migration", _schema),
     ("migrations", "o banco da loja fica numa versão inconsistente", _migrations),
@@ -197,6 +263,9 @@ CHECKS: tuple[Check, ...] = (
     ("uvicorn", "o servidor do salão morre ao subir", _uvicorn),
     ("rotas do salão", "o app do garçom não lança pedido", _edge_app),
     ("impressora", "a venda fecha e o cupom não sai", _printer),
+    ("motor fiscal", "a primeira NFC-e da loja falha meses depois da instalação",
+     _fiscal_engine),
+    ("DANFE NFC-e", "a nota sai sem QR Code ou com acentos ilegíveis", _danfe),
     ("porta serial", "a balança não é encontrada", _serial),
     ("interface", "o PDV não abre janela nenhuma", _qt),
 )
