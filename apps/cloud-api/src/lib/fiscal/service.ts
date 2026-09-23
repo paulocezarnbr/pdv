@@ -1,5 +1,6 @@
 import type { DeviceContext } from "@/lib/auth/device";
-import { withTenant } from "@/lib/db";
+import { withTenant, type Tx } from "@/lib/db";
+import { env } from "@/lib/env";
 import { ApiError } from "@/lib/http";
 import {
   FiscalProviderUnavailable,
@@ -86,14 +87,35 @@ export async function issueFiscalDocument(
   device: DeviceContext,
   requestUuid: string,
   orderId: string,
-  provider: FiscalProvider = new PythonFiscalProvider(),
+  provider?: FiscalProvider,
 ): Promise<{ document: FiscalDocumentOut; created: boolean }> {
+  // O provedor é resolvido ANTES da reserva. Resolvido como parâmetro
+  // padrão, ele era construído antes de tudo e, sem as variáveis fiscais,
+  // estourava um erro genérico (500) que o terminal trata como resultado
+  // ambíguo. Aqui a ausência vira um 503 claro, e nenhum número é consumido.
+  const fiscal = provider ?? defaultProvider();
+
   const prepared = await reserve(device, requestUuid, orderId);
   if (!prepared.created) return { document: out(prepared.row), created: false };
+  return { document: out(await transmit(device, prepared.row, prepared.intent, fiscal)), created: true };
+}
+
+/**
+ * Chama o provedor e grava o resultado. Separado de `issueFiscalDocument`
+ * porque a reconciliação também precisa dele: um documento que ficou
+ * `processing` porque o processo caiu entre reservar e transmitir é
+ * retransmitido por aqui, com o MESMO número e o MESMO `request_uuid`.
+ */
+async function transmit(
+  device: DeviceContext,
+  row: DocumentRow,
+  intent: FiscalIntent,
+  provider: FiscalProvider,
+): Promise<DocumentRow> {
 
   let result: FiscalProviderResult;
   try {
-    result = await provider.authorize(prepared.intent);
+    result = await provider.authorize(intent);
   } catch (error) {
     if (!(error instanceof FiscalProviderUnavailable)) throw error;
     result = {
@@ -103,14 +125,35 @@ export async function issueFiscalDocument(
     };
   }
 
-  const settled = await settle(device.tenantId, prepared.row.id, result);
-  return { document: out(settled), created: true };
+  return settle(device.tenantId, row.id, result);
 }
+
+function defaultProvider(): FiscalProvider {
+  if (!env.fiscalConfigured) {
+    throw new ApiError(
+      503,
+      "Emissão fiscal não configurada nesta retaguarda. Nenhum número foi reservado.",
+    );
+  }
+  return new PythonFiscalProvider();
+}
+
+/**
+ * Quanto um documento ainda não concluído espera antes de ser retransmitido
+ * na reconciliação.
+ *
+ * A retransmissão é segura em qualquer momento — o serviço fiscal reivindica o
+ * `request_uuid` atomicamente e executa o motor uma vez só. A espera existe
+ * para não disputar com a própria chamada original ainda em voo, o que
+ * dobraria a carga e sujaria o log com uma corrida que não é defeito.
+ */
+const RETRANSMIT_AFTER_MS = 10_000;
 
 export async function fiscalDocumentStatus(
   device: DeviceContext,
   requestUuid: string,
-  provider: FiscalProvider = new PythonFiscalProvider(),
+  provider?: FiscalProvider,
+  now: Date = new Date(),
 ): Promise<FiscalDocumentOut> {
   const rows = await withTenant(device.tenantId, (tx) => tx<DocumentRow[]>`
     SELECT * FROM fiscal_documents
@@ -120,18 +163,52 @@ export async function fiscalDocumentStatus(
   if (!rows[0]) throw new ApiError(404, "Solicitação fiscal não encontrada.");
   const row = rows[0];
   if (row.status !== "unknown" && row.status !== "processing") return out(row);
+  if (!provider && !env.fiscalConfigured) return out(row);
+  const fiscal = provider ?? new PythonFiscalProvider();
 
   // O request anterior pode ter sido autorizado e perdido apenas a resposta.
   // Consulta o ledger idempotente do serviço antes de qualquer novo envio.
   let result: FiscalProviderResult;
   try {
-    result = await provider.query(requestUuid);
+    result = await fiscal.query(requestUuid);
   } catch (error) {
     if (error instanceof FiscalProviderUnavailable) return out(row);
     throw error;
   }
-  if (result.status === "unknown") return out(row);
-  return out(await settle(device.tenantId, row.id, result));
+  if (result.status !== "unknown") return out(await settle(device.tenantId, row.id, result));
+
+  // Os dois `unknown` têm consequências opostas, e é o serviço fiscal quem
+  // sabe qual é qual:
+  //
+  // * `NOT_FOUND` — a chamada nunca chegou lá. O motor não rodou e a SEFAZ não
+  //   viu nada. É o documento cujo processo caiu entre reservar o número e
+  //   transmitir, que antes ficava `processing` para sempre. Retransmite com o
+  //   MESMO número e o MESMO `request_uuid`.
+  // * qualquer outro código (`IN_FLIGHT`, `ENGINE_FAILURE`) — o motor pode ter
+  //   transmitido. Retransmitir poderia autorizar duas notas para uma venda;
+  //   fica `unknown` até uma consulta por chave na SEFAZ.
+  if (result.code !== "NOT_FOUND") return out(row);
+  if (now.getTime() - row.issued_at.getTime() < RETRANSMIT_AFTER_MS) return out(row);
+
+  let intent: FiscalIntent;
+  try {
+    intent = await withTenant(device.tenantId, async (tx) => {
+      const { order, config, items } = await readEmissionInputs(tx, device, row.order_id);
+      return makeIntent(device, row, order.total_cents, config, items);
+    });
+  } catch (error) {
+    // Configuração desligada, produção bloqueada ou item sem perfil desde a
+    // reserva: não há o que retransmitir agora, e o documento continua como
+    // estava. Recusar a consulta com 409 faria o terminal ler um erro onde só
+    // existe "ainda sem decisão".
+    if (error instanceof ApiError) return out(row);
+    throw error;
+  }
+
+  console.info("[fiscal] retransmitindo documento que nunca chegou ao serviço", {
+    document: row.id, series: row.series, number: row.number,
+  });
+  return out(await transmit(device, row, intent, fiscal));
 }
 
 async function reserve(
@@ -151,36 +228,7 @@ async function reserve(
       return { row: existing[0], intent: {} as FiscalIntent, created: false };
     }
 
-    const orders = await tx<{ id: string; status: string; total_cents: string }[]>`
-      SELECT id, status, total_cents FROM orders
-       WHERE id=${orderId}::uuid AND tenant_id=${device.tenantId}
-         AND store_id=${device.storeId} AND device_id=${device.deviceId}
-       FOR SHARE
-    `;
-    const order = orders[0];
-    if (!order) throw new ApiError(404, "Venda paga não encontrada neste terminal.");
-    if (order.status !== "paid") throw new ApiError(409, "Somente venda paga emite NFC-e.");
-
-    const configurations = await tx<ConfigRow[]>`
-      SELECT * FROM fiscal_configurations
-       WHERE tenant_id=${device.tenantId} AND store_id=${device.storeId}
-       FOR SHARE
-    `;
-    const config = configurations[0];
-    validateConfiguration(config);
-
-    const items = await tx<ItemRow[]>`
-      SELECT oi.product_id, oi.product_name, oi.quantity, oi.unit_price_cents,
-             oi.total_cents, fp.ncm, fp.cfop, fp.cest, fp.unit_code, fp.origin,
-             fp.csosn, fp.cst_icms, fp.cst_pis, fp.cst_cofins
-        FROM order_items oi
-        LEFT JOIN fiscal_product_profiles fp
-          ON fp.tenant_id=oi.tenant_id AND fp.product_id=oi.product_id
-       WHERE oi.tenant_id=${device.tenantId} AND oi.order_id=${orderId}::uuid
-         AND oi.canceled_at IS NULL
-       ORDER BY oi.created_at, oi.id
-    `;
-    validateItems(items);
+    const { order, config, items } = await readEmissionInputs(tx, device, orderId);
 
     const seriesRows = await tx<{ id: string; series: number; next_number: string }[]>`
       SELECT id, series, next_number FROM fiscal_series
@@ -221,9 +269,56 @@ async function reserve(
     return {
       row: inserted[0],
       created: true,
-      intent: makeIntent(device, inserted[0], order.total_cents, config!, items),
+      intent: makeIntent(device, inserted[0], order.total_cents, config, items),
     };
   });
+}
+
+/**
+ * Pedido, configuração e itens de uma emissão, já validados.
+ *
+ * Uma função só para a reserva e para a reconciliação, de propósito: a
+ * retransmissão de um documento preso passa pelas MESMAS checagens da
+ * primeira emissão — inclusive a trava de produção. Duas cópias da validação
+ * divergiriam, e a que diverge seria a do caminho raro, que é o menos testado.
+ */
+async function readEmissionInputs(
+  tx: Tx,
+  device: DeviceContext,
+  orderId: string,
+): Promise<{ order: { total_cents: string }; config: ConfigRow; items: ItemRow[] }> {
+  const orders = await tx<{ id: string; status: string; total_cents: string }[]>`
+    SELECT id, status, total_cents FROM orders
+     WHERE id=${orderId}::uuid AND tenant_id=${device.tenantId}
+       AND store_id=${device.storeId} AND device_id=${device.deviceId}
+     FOR SHARE
+  `;
+  const order = orders[0];
+  if (!order) throw new ApiError(404, "Venda paga não encontrada neste terminal.");
+  if (order.status !== "paid") throw new ApiError(409, "Somente venda paga emite NFC-e.");
+
+  const configurations = await tx<ConfigRow[]>`
+    SELECT * FROM fiscal_configurations
+     WHERE tenant_id=${device.tenantId} AND store_id=${device.storeId}
+     FOR SHARE
+  `;
+  const config = configurations[0];
+  validateConfiguration(config);
+
+  const items = await tx<ItemRow[]>`
+    SELECT oi.product_id, oi.product_name, oi.quantity, oi.unit_price_cents,
+           oi.total_cents, fp.ncm, fp.cfop, fp.cest, fp.unit_code, fp.origin,
+           fp.csosn, fp.cst_icms, fp.cst_pis, fp.cst_cofins
+      FROM order_items oi
+      LEFT JOIN fiscal_product_profiles fp
+        ON fp.tenant_id=oi.tenant_id AND fp.product_id=oi.product_id
+     WHERE oi.tenant_id=${device.tenantId} AND oi.order_id=${orderId}::uuid
+       AND oi.canceled_at IS NULL
+     ORDER BY oi.created_at, oi.id
+  `;
+  validateItems(items);
+
+  return { order, config, items };
 }
 
 async function settle(
@@ -259,6 +354,18 @@ async function settle(
 
 function validateConfiguration(config: ConfigRow | undefined): asserts config is ConfigRow {
   if (!config?.enabled) throw new ApiError(409, "Emissão fiscal não habilitada para esta loja.");
+  // Antes da reserva, e esse é o ponto: a trava de homologação do motor vive
+  // no serviço fiscal, que só é chamado DEPOIS de o número ser consumido.
+  // Sem esta checagem, uma loja em `production` queimaria um número real por
+  // venda, o motor travado rejeitaria, e cada buraco exigiria inutilização
+  // formal na SEFAZ. Ver `env.fiscalProductionEnabled`.
+  if (config.environment === "production" && !env.fiscalProductionEnabled) {
+    throw new ApiError(
+      409,
+      "Emissão em produção bloqueada: o motor fiscal ainda não foi homologado. " +
+        "Nenhum número foi consumido.",
+    );
+  }
   const required = [config.certificate_ref, config.csc_ref, config.csc_id, config.cnpj,
     config.state_registration, config.tax_regime, config.legal_name];
   if (required.some((value) => value === null || value === "")) {

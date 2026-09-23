@@ -89,3 +89,57 @@ def test_engine_exception_becomes_unknown_without_leaking_secret(tmp_path: Path)
                                     headers={"Authorization": "Bearer secret"})
     assert response.json()["status"] == "unknown"
     assert "senha-a1" not in response.text
+
+
+# --------------------------------------------------------------------------- #
+# Os dois "unknown" da consulta
+# --------------------------------------------------------------------------- #
+#
+# Antes a consulta respondia NOT_SETTLED tanto para "nunca recebi" quanto para
+# "recebi e nao conclui". A nuvem nao tinha como saber qual dos dois, e o
+# documento cujo processo caiu entre reservar o numero e transmitir ficava
+# preso para sempre. As consequencias sao opostas, entao os codigos tambem.
+
+
+def test_status_of_a_request_never_received_is_not_found(tmp_path: Path) -> None:
+    """Nunca chegou: a nuvem pode retransmitir com o mesmo numero."""
+    http, engine = client(tmp_path)
+    headers = {"Authorization": "Bearer secret"}
+
+    response = http.post("/v1/fiscal/status", json={"request_uuid": "nunca-visto"},
+                         headers=headers)
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "unknown"
+    assert response.json()["code"] == "NOT_FOUND"
+    assert engine.calls == 0
+
+
+def test_status_of_a_request_claimed_but_unsettled_is_in_flight(tmp_path: Path) -> None:
+    """Chegou e nao concluiu: o motor pode ter transmitido. NAO retransmitir."""
+    store = ResultStore(tmp_path / "state.sqlite3")
+    # O processo caiu depois de reivindicar e antes de gravar o resultado.
+    assert store.claim("req-1", "doc-1")
+    http = TestClient(create_app(engine=FakeEngine(), store=store, token="secret"))
+
+    response = http.post("/v1/fiscal/status", json={"request_uuid": "req-1"},
+                         headers={"Authorization": "Bearer secret"})
+
+    assert response.json()["status"] == "unknown"
+    assert response.json()["code"] == "IN_FLIGHT"
+
+
+def test_retransmitting_a_not_found_request_runs_the_engine_once(tmp_path: Path) -> None:
+    """A retransmissao e segura porque o `claim` e a unica porta do motor."""
+    http, engine = client(tmp_path)
+    headers = {"Authorization": "Bearer secret"}
+
+    assert http.post("/v1/fiscal/status", json={"request_uuid": "req-1"},
+                     headers=headers).json()["code"] == "NOT_FOUND"
+    first = http.post("/v1/fiscal/authorize", json=intent(), headers=headers)
+    # A chamada original, atrasada na rede, chega depois da retransmissao.
+    late = http.post("/v1/fiscal/authorize", json=intent(), headers=headers)
+
+    assert first.json()["status"] == "authorized"
+    assert late.json() == first.json()
+    assert engine.calls == 1

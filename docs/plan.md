@@ -448,11 +448,25 @@ paralelo.
 - [x] Numeração de série por PDV, nunca compartilhada entre estações. A reserva
       usa `BEGIN IMMEDIATE`, chave única por terminal/modelo/série/número e
       devolve o mesmo documento quando a mesma venda é reenviada.
+- [x] **Reconciliação do documento preso.** O serviço fiscal distingue
+      `NOT_FOUND` (a chamada nunca chegou — seguro retransmitir com o mesmo
+      número) de `IN_FLIGHT` (pode ter chegado à SEFAZ — não retransmite). Antes
+      os dois eram `unknown` indistintos, e o documento cujo processo caiu entre
+      reservar e transmitir ficava `processing` para sempre.
+- [x] **Travas antes da reserva:** sem serviço fiscal configurado a emissão
+      responde 503 sem consumir número, e `production` exige
+      `FISCAL_PRODUCTION_ENABLED` — o motor ainda travado não pode queimar
+      numeração real que depois exigiria inutilização.
+- [x] **Retaguarda saudável sem o fiscal.** As variáveis do serviço fiscal
+      deixaram de ser obrigatórias no processo; `/api/health` publica
+      `fiscal: desligado | somente homologação | produção liberada`.
 - **Aceite parcial entregue:** 16 vendas reservadas concorrentemente recebem
   os números 1–16 sem repetição; 12 tentativas concorrentes da mesma venda
   geram um único documento e consomem um único número. No PostgreSQL real, o
   reenvio chama o provedor uma vez; timeout vira `unknown` e continua sem uma
-  segunda emissão.
+  segunda emissão. Documento preso é retransmitido com o mesmo número e o
+  motor roda uma vez; `IN_FLIGHT` nunca é retransmitido. As quatro regras
+  foram verificadas por mutação.
 
 ### Fase 6 — IA & Canais (Sprint 17–20)
 - [ ] Cardápio QR com upsell contextual.

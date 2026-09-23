@@ -52,10 +52,21 @@ def create_app(
     @application.post("/v1/fiscal/status", response_model=FiscalResult)
     def status(query: StatusRequest, _auth: None = Depends(authorized)) -> FiscalResult:
         result = state.get(query.request_uuid)
-        if result is None:
-            return FiscalResult(status="unknown", code="NOT_SETTLED",
-                                reason="Solicitação não concluída neste serviço.")
-        return result
+        if result is not None:
+            return result
+        # Dois `unknown` diferentes, com consequências opostas para quem
+        # pergunta. Antes eram o mesmo código, e isso deixava preso para sempre
+        # o documento cujo processo caiu entre reservar o número e transmitir.
+        if not state.known(query.request_uuid):
+            # Nunca chegou aqui: o motor não foi acionado, a SEFAZ não viu nada.
+            # A nuvem pode retransmitir com o MESMO número e o MESMO
+            # `request_uuid` — o `claim` acima impede execução dupla.
+            return FiscalResult(status="unknown", code="NOT_FOUND",
+                                reason="Solicitação nunca recebida por este serviço.")
+        # Chegou e não concluiu: o motor pode ter transmitido. Retransmitir
+        # poderia autorizar duas notas; só uma consulta na SEFAZ resolve.
+        return FiscalResult(status="unknown", code="IN_FLIGHT",
+                            reason="Solicitação iniciada e não concluída; consulte a SEFAZ.")
 
     return application
 

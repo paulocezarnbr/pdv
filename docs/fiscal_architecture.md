@@ -62,13 +62,54 @@ v3, regras da NT 2025.002 e cenários do RJ/SVRS passarem na suíte homologada.
 
 `authorized → evento de cancelamento → canceled`
 
+## Reconciliação: os dois `unknown`
+
+O serviço fiscal responde `unknown` em dois casos com consequências opostas, e
+por isso eles têm códigos diferentes:
+
+| Código | O que aconteceu | O que a nuvem faz |
+|---|---|---|
+| `NOT_FOUND` | A chamada de autorização **nunca chegou** ao serviço. O motor não rodou; a SEFAZ não viu nada. | Retransmite com o **mesmo** número e o **mesmo** `request_uuid`, depois de 10 s. |
+| `IN_FLIGHT` | O serviço reivindicou a solicitação e não concluiu. O motor pode ter transmitido. | **Não** retransmite. Fica `unknown` até a consulta por chave na SEFAZ. |
+| `ENGINE_FAILURE` | O motor lançou exceção depois de iniciar. | Idem `IN_FLIGHT`. |
+
+Antes os dois primeiros eram o mesmo código (`NOT_SETTLED`), e o documento cujo
+processo caiu entre reservar o número e transmitir ficava `processing` para
+sempre. A retransmissão é segura por construção: o `claim` do serviço fiscal é a
+única porta do motor, então uma chamada original atrasada na rede e a
+retransmissão disputam o mesmo `request_uuid` e o motor roda uma vez.
+
+A retransmissão passa pelas **mesmas** validações da primeira emissão
+(`readEmissionInputs`), inclusive a trava de produção.
+
+**Restrição operacional:** o estado do serviço fiscal é um SQLite num volume.
+Ele precisa rodar com **uma réplica só** — duas réplicas com volumes separados
+não compartilhariam o `claim`, e a garantia acima deixaria de valer.
+
+## Travas antes da reserva
+
+A nuvem reserva o número **antes** de chamar o serviço fiscal. Por isso duas
+checagens acontecem antes da reserva, e não depois:
+
+1. **Serviço fiscal configurado.** Sem `FISCAL_SERVICE_URL`/`TOKEN`, a emissão
+   responde 503 e nenhum número é consumido. A retaguarda continua saudável — a
+   sincronização não depende de NFC-e.
+2. **Produção liberada.** Com `environment='production'` e sem
+   `FISCAL_PRODUCTION_ENABLED=true`, a emissão é recusada com 409. Sem esta
+   trava, o motor (travado em homologação) rejeitaria cada venda depois de ela
+   já ter consumido um número real da série, e cada buraco exigiria
+   inutilização formal na SEFAZ.
+
 ## Próxima fatia fiscal
 
-- Gerador/assinador XML NFC-e 4.00 com QR Code v3 e validação XSD.
-- Consulta por chave e reconciliação automática dos documentos `unknown`.
-- Credenciais A1/CSC e cadastro tributário em tela exclusiva do dono.
-- DANFE NFC-e 80 mm com indicação visível de contingência.
-- Homologação formal RJ/SVRS antes de liberar `production`.
+- [x] Reconciliação automática dos documentos que nunca chegaram ao serviço.
+- [ ] Consulta por chave na SEFAZ, para resolver `IN_FLIGHT` e `ENGINE_FAILURE`
+      (depende do motor real).
+- [ ] Gerador/assinador XML NFC-e 4.00 com QR Code v3 e validação XSD.
+- [ ] Credenciais A1/CSC e cadastro tributário em tela exclusiva do dono.
+- [ ] DANFE NFC-e 80 mm com indicação visível de contingência.
+- [ ] Homologação formal RJ/SVRS antes de liberar `production` — exige o
+      certificado A1 e o CSC da loja, emitidos pela SEFAZ-RJ.
 
 SAT CF-e (modelo 59) permanece um adaptador separado: o hardware e o protocolo
 não serão tratados como se fossem NFC-e.

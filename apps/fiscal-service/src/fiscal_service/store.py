@@ -42,6 +42,21 @@ class ResultStore:
                 (result.model_dump_json(), request_uuid),
             )
 
+    def known(self, request_uuid: str) -> bool:
+        """Esta solicitação chegou a ser reivindicada aqui, concluída ou não?
+
+        É a pergunta que separa os dois `unknown` que antes eram um só. Se a
+        linha não existe, a chamada de autorização **nunca chegou** a este
+        serviço — o motor não foi acionado e a SEFAZ não viu nada. Se existe e
+        não foi concluída, o motor pode ter transmitido, e só uma consulta na
+        SEFAZ resolve.
+        """
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT 1 FROM fiscal_results WHERE request_uuid=?", (request_uuid,),
+            ).fetchone()
+        return row is not None
+
     def get(self, request_uuid: str) -> FiscalResult | None:
         with self._connect() as db:
             row = db.execute(

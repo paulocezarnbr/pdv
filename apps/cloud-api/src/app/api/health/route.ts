@@ -13,7 +13,7 @@
  */
 
 import { pingDatabase, rlsStatus } from "@/lib/db";
-import { assertEnv } from "@/lib/env";
+import { assertEnv, env } from "@/lib/env";
 import { json } from "@/lib/http";
 
 // Nada aqui pode ser cacheado nem pré-renderizado: a resposta é sobre o estado
@@ -53,6 +53,14 @@ export async function GET(): Promise<Response> {
     // Não derruba o healthcheck — o filtro da aplicação continua valendo —,
     // mas fica à vista em vez de escondido.
     tenant_isolation: database.ok ? await rlsStatus() : "desconhecido",
+    // Estado, não requisito. A emissão fiscal ainda está sob trava de
+    // homologação, e a sincronização não depende dela: um deploy sem o
+    // serviço fiscal precisa ficar verde. Ver `lib/env.ts`.
+    fiscal: !env.fiscalConfigured
+      ? "desligado"
+      : env.fiscalProductionEnabled
+        ? "produção liberada"
+        : "somente homologação",
   };
 
   if (!database.ok) {

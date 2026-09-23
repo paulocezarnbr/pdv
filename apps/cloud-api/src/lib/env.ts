@@ -32,14 +32,25 @@
  * na primeira requisição — e o build não precisa de segredo nenhum.
  */
 
-const REQUIRED = [
-  "DATABASE_URL",
-  "SESSION_SECRET",
-  "FISCAL_SERVICE_URL",
-  "FISCAL_SERVICE_TOKEN",
-] as const;
+const REQUIRED = ["DATABASE_URL", "SESSION_SECRET"] as const;
 
-type RequiredName = (typeof REQUIRED)[number];
+/**
+ * O serviço fiscal fica FORA da lista obrigatória, e a diferença importa.
+ *
+ * Numa versão anterior as duas variáveis fiscais eram obrigatórias, e o
+ * `/api/health` passava a responder 503 sem elas. O efeito era que um deploy
+ * sem o serviço fiscal — que ainda está sob trava de homologação, ver
+ * `docs/fiscal_architecture.md` — nunca ficava verde no Coolify, e a
+ * sincronização (o caminho antifraude, que não depende de NFC-e) ficava
+ * refém de um recurso que ainda não pode ser usado em produção.
+ *
+ * Agora a ausência do fiscal é um estado visível (`fiscal: "desligado"` no
+ * health, 503 com mensagem clara em `/api/fiscal/*`) e não uma falha do
+ * processo inteiro.
+ */
+const FISCAL = ["FISCAL_SERVICE_URL", "FISCAL_SERVICE_TOKEN"] as const;
+
+type RequiredName = (typeof REQUIRED)[number] | (typeof FISCAL)[number];
 
 function required(name: RequiredName): string {
   const value = process.env[name];
@@ -112,6 +123,26 @@ export const env = {
 
   get fiscalTimeoutMs(): number {
     return optionalInt("FISCAL_SERVICE_TIMEOUT_MS", 20_000);
+  },
+
+  /** As duas variáveis do serviço fiscal estão presentes. */
+  get fiscalConfigured(): boolean {
+    return FISCAL.every((name) => Boolean(process.env[name]?.trim()));
+  },
+
+  /**
+   * Liberação explícita para emitir no ambiente de **produção** da SEFAZ.
+   *
+   * Existe porque a trava de homologação vive no serviço fiscal, e a nuvem
+   * reserva o número **antes** de chamá-lo. Sem esta variável, uma loja
+   * configurada como `production` queimaria um número real da série a cada
+   * venda, o motor travado o rejeitaria, e cada buraco na numeração exigiria
+   * inutilização formal na SEFAZ. A trava daqui age antes da reserva.
+   *
+   * Só deve ser ligada depois que o motor passar na homologação RJ/SVRS.
+   */
+  get fiscalProductionEnabled(): boolean {
+    return process.env.FISCAL_PRODUCTION_ENABLED === "true";
   },
 } as const;
 

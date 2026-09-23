@@ -46,6 +46,7 @@ apps/desktop-pdv/packaging/redist/*.exe
 # versionar os dois guardaria o mesmo arquivo duas vezes — e no Windows, onde
 # o git não materializa symlink, guardaria uma cópia de verdade.
 .claude/skills/
+apps/fiscal-service/data/
 
 # Nuvem (Next.js)
 apps/cloud-api/node_modules/
