@@ -530,6 +530,17 @@ paralelo.
       testadas e empacotadas — antes não eram, e o primeiro nem instalava em
       Python 3.14. Verificado num ambiente limpo: 457 testes com os pins.
 
+### Fase 5.5 — Implantação e site institucional
+- [x] **Retaguarda no ar pelo Coolify** em `app.dolceaffettopoolbar.com.br`:
+      projeto `erp-food`, PostgreSQL 17 privado (sem porta pública) e a imagem
+      de `apps/cloud-api`, com migrations na subida, `erp_app` sem
+      superusuário e healthcheck em `/api/health`. Segredos gerados na criação
+      e gravados só no Coolify.
+- [ ] **Site institucional** em `dolceaffettopoolbar.com.br` — planejamento
+      em [`site_institucional.md`](./site_institucional.md): páginas, cardápio
+      lido do ERP por rota pública só de leitura, SEO local e quatro fases com
+      aceite.
+
 ### Fase 6 — IA & Canais (Sprint 17–20)
 - [ ] Cardápio QR com upsell contextual.
 - [ ] WhatsApp Cloud API + LLM anotador (com confirmação humana obrigatória).
