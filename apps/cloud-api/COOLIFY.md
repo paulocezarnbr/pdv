@@ -121,17 +121,26 @@ versão anterior, que funcionava, para colocar no ar uma que não funciona.
 Configure em **Health Check**:
 
 ```
+Host:     127.0.0.1
 Path:     /api/health
-Interval: 30
+Port:     3000
+Interval: 10
 Timeout:  5
-Retries:  3
-Start period: 40
+Retries:  12
+Start period: 120
 ```
 
-O `start period` de 40 s existe porque as migrations rodam antes do servidor
-atender. Um valor curto derrubaria o contêiner no meio de uma migration longa,
-deixando o schema pela metade — que é o estado do qual não se sai sem restaurar
-backup.
+**Host `127.0.0.1`, e não o padrão `localhost`.** O Coolify testa de dentro do
+contêiner com `wget`, e no Alpine `localhost` resolve primeiro para `::1`
+(IPv6). O Next escuta só em IPv4 (`HOSTNAME=0.0.0.0` no Dockerfile): com
+`localhost`, a API sobe, imprime "Ready", e o healthcheck recebe "Connection
+refused" até esgotar as tentativas — o Coolify desfaz o deploy de uma versão
+que estava funcionando. Foi o que aconteceu no primeiro deploy de produção.
+
+O `start period` de 120 s existe porque as migrations rodam antes do servidor
+atender, e no primeiro deploy são todas de uma vez. Um valor curto derrubaria o
+contêiner no meio de uma migration longa, deixando o schema pela metade — que é
+o estado do qual não se sai sem restaurar backup.
 
 ---
 

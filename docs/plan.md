@@ -658,8 +658,12 @@ paralelo.
       `erp-food`, PostgreSQL 17 privado (sem porta pública) e a imagem de
       `apps/cloud-api`, com migrations na subida, `erp_app` sem superusuário e
       healthcheck em `/api/health`; segredos gerados na criação e gravados só
-      no Coolify. **Falta:** o primeiro deploy saudável (o healthcheck venceu
-      durante as migrations) e o registro DNS do domínio no Registro.br.
+      no Coolify. Deploy **saudável** (19 migrations na subida; o healthcheck
+      do Coolify precisava de host `127.0.0.1` — ver `COOLIFY.md` §4).
+      **Falta:** o domínio. O servidor só aceita HTTPS vindo do Cloudflare
+      (a porta 443 não responde direto), e `dolceaffettopoolbar.com.br` ainda
+      usa o DNS do Registro.br: é preciso colocá-lo no Cloudflare, como o
+      `rsrassessoria.com.br`, com `app` proxied para o servidor.
 - [ ] **Site institucional** em `dolceaffettopoolbar.com.br` — planejamento
       em [`site_institucional.md`](./site_institucional.md): páginas, cardápio
       lido do ERP por rota pública só de leitura, SEO local e quatro fases com
