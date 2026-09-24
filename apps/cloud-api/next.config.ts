@@ -36,7 +36,14 @@ const config: NextConfig = {
               "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; " +
               "form-action 'self'; object-src 'none'; img-src 'self' data:; " +
               "font-src 'self' data:; style-src 'self' 'unsafe-inline'; " +
-              "script-src 'self' 'unsafe-inline'; connect-src 'self'",
+              // `unsafe-eval` SÓ fora de produção: o Fast Refresh do `next dev`
+              // avalia código por string, e sem isto o painel nem hidrata
+              // localmente — fica parado em "Verificando sessão", impossível de
+              // testar. O build de produção não usa eval e não recebe a
+              // exceção.
+              `script-src 'self' 'unsafe-inline'${
+                process.env.NODE_ENV === "production" ? "" : " 'unsafe-eval'"
+              }; connect-src 'self'`,
           },
           {
             key: "Permissions-Policy",

@@ -48,3 +48,26 @@ body { margin: 0; min-height: 100dvh; background: #0f1114; color: #f4f4f4; font-
 @media (max-width: 1050px) { .triple-grid { grid-template-columns: 1fr 1fr; }.alert-panel { grid-column: 1 / -1; }.owner-admin { grid-template-columns: 1fr; }.metrics { grid-template-columns: 1fr 1fr; }.metric:nth-child(3) { border-left: 0; }.metric:nth-child(n+3) { border-top: 1px solid #393939; } }
 @media (max-width: 760px) { .dashboard-main { padding: 24px 16px 48px; }.page-heading { align-items: stretch; flex-direction: column; }.filters { min-width: 0; grid-template-columns: 1fr; }.operations-grid, .triple-grid, .owner-admin { grid-template-columns: 1fr; }.alert-panel { grid-column: auto; }.metrics { grid-template-columns: 1fr; }.metric + .metric { border-left: 0; border-top: 1px solid #393939; padding-left: 0; }.login-page { grid-template-columns: 1fr; }.login-context { min-height: 42dvh; padding: 32px 24px; border-right: 0; border-bottom: 1px solid #393939; }.login-context h1 { font-size: 2.6rem; }.login-form { padding: 32px 24px; width: 100%; }.operator > span { display: none; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; } }
+
+/* -- Fiscal --------------------------------------------------------------- */
+.fiscal-admin { margin-top: 32px; display: grid; gap: 16px; }
+.fiscal-heading { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; }
+.fiscal-heading h2 { margin: 4px 0 6px; font-size: 1.75rem; font-weight: 400; letter-spacing: -.02em; }
+.fiscal-heading p { margin: 0; color: #c6c6c6; }
+.fiscal-heading .cds--select { min-width: 240px; }
+.fiscal-grid { display: grid; grid-template-columns: minmax(380px, 1fr) minmax(0, 1fr); gap: 16px; }
+.fiscal-form { padding: 20px 16px; display: grid; gap: 16px; }
+.fiscal-form > small { color: #8d8d8d; line-height: 1.45; }
+.form-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.form-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.product-form { border-top: 1px solid #393939; background: #1c1c1c; }
+.fiscal-row-end { display: flex !important; align-items: center; gap: 4px; }
+.fiscal-blockers { border-left: 3px solid #f1c21b; background: #1c1c1c; padding: 14px 16px; }
+.fiscal-blockers strong { display: flex; align-items: center; gap: 8px; color: #f1c21b; }
+.fiscal-blockers ul { margin: 8px 0 0; padding-left: 24px; color: #c6c6c6; line-height: 1.6; }
+.fiscal-ready { display: flex; align-items: center; gap: 8px; border-left: 3px solid #42be65; background: #1c1c1c; padding: 14px 16px; color: #42be65; }
+/* SweetAlert2 no tema do painel: sem isto, todo aviso sairia branco no meio da tela escura. */
+.swal2-popup { border: 1px solid #393939; border-radius: 0; font-family: inherit; }
+.swal2-styled { border-radius: 0 !important; }
+@media (max-width: 1050px) { .fiscal-grid { grid-template-columns: 1fr; } }
+@media (max-width: 760px) { .fiscal-heading { flex-direction: column; align-items: stretch; } .form-pair { grid-template-columns: 1fr; } }

@@ -4,6 +4,9 @@ import { Button, InlineLoading, InlineNotification, Select, SelectItem, TextInpu
 import { Add, ChartLine, Logout, Renew, Restaurant, Security, Store, UserMultiple, WarningAlt } from "@carbon/icons-react";
 import { FormEvent, useCallback, useEffect, useState, type ReactNode } from "react";
 
+import { fail, toast } from "./alerts";
+import { FiscalAdmin } from "./fiscal-admin";
+
 type SessionUser = { name: string; email: string; role: string };
 type Summary = { revenue_cents: string; tips_cents: string; discount_cents: string; orders_count: string; avg_ticket_cents: string; cmv_cents: string };
 type Dashboard = {
@@ -123,7 +126,7 @@ export function DashboardApp() {
         <article className="panel"><PanelTitle icon={<Store size={18} />} title="Equipe" subtitle="Resultado e gorjeta" /><RankRows rows={(data?.staff ?? []).map((s) => ({ key: s.id, name: s.name, value: cents(s.revenue_cents), note: `${s.orders_count} mesa(s), ${cents(s.tips_cents)} em gorjetas` }))} /></article>
         <article className="panel alert-panel"><PanelTitle icon={<Security size={18} />} title="Segurança" subtitle="Alertas antifraude em aberto" /><div className="rows">{data?.alerts.length ? data.alerts.map((alert) => <div className="alert-row" key={alert.id}><WarningAlt size={16} /><div><strong>{alert.reason}</strong><small>{alert.store_name ?? "Loja não identificada"} - {since(alert.raised_at).label}</small></div></div>) : <Empty text="Nenhum alerta em aberto." />}</div></article>
       </section>
-      {user.role === "owner" && <OwnerAdmin />}
+      {user.role === "owner" && <><OwnerAdmin /><FiscalAdmin stores={data?.stores ?? []} /></>}
     </main>
   </div>;
 }
@@ -133,8 +136,6 @@ function OwnerAdmin() {
   const [name, setName] = useState("");
   const [login, setLogin] = useState("");
   const [pin, setPin] = useState("");
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -144,11 +145,11 @@ function OwnerAdmin() {
     setOwners(body.owners);
   }, []);
 
-  useEffect(() => { void load().catch((reason) => setError(reason instanceof Error ? reason.message : "Falha de rede.")); }, [load]);
+  useEffect(() => { void load().catch((reason) => fail(reason instanceof Error ? reason.message : "Falha de rede.", "Proprietários indisponíveis")); }, [load]);
 
   async function createOwner(event: FormEvent) {
     event.preventDefault();
-    setBusy(true); setError(""); setSuccess("");
+    setBusy(true);
     try {
       const response = await fetch("/api/panel/owners", {
         method: "POST",
@@ -158,10 +159,10 @@ function OwnerAdmin() {
       const body = await response.json();
       if (!response.ok) throw new Error(body.detail || "Não foi possível cadastrar o proprietário.");
       setName(""); setLogin(""); setPin("");
-      setSuccess(`${body.owner.name} foi cadastrado como Dono e será sincronizado com os terminais.`);
+      await toast(`${body.owner.name} cadastrado como Dono`);
       await load();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Falha de rede.");
+      await fail(reason instanceof Error ? reason.message : "Falha de rede.", "Cadastro não concluído");
     } finally { setBusy(false); }
   }
 
@@ -169,8 +170,6 @@ function OwnerAdmin() {
     <article className="panel owner-form-panel">
       <PanelTitle icon={<Add size={18} />} title="Adicionar outro dono" subtitle="Somente um proprietário autenticado pode conceder este poder" />
       <form className="owner-form" onSubmit={createOwner}>
-        {error && <InlineNotification kind="error" title="Cadastro não concluído" subtitle={error} lowContrast hideCloseButton />}
-        {success && <InlineNotification kind="success" title="Proprietário cadastrado" subtitle={success} lowContrast hideCloseButton />}
         <TextInput id="owner-name" labelText="Nome completo" value={name} maxLength={120} onChange={(event) => setName(event.target.value)} required />
         <TextInput id="owner-login" labelText="Login no PDV" helperText="3 a 40 caracteres: letras minúsculas, números, ponto, hífen ou sublinhado." value={login} maxLength={40} autoComplete="off" onChange={(event) => setLogin(event.target.value.toLowerCase())} required />
         <TextInput id="owner-pin" labelText="PIN operacional" helperText="6 a 12 dígitos, sem sequências ou repetições previsíveis." type="password" inputMode="numeric" autoComplete="new-password" value={pin} maxLength={12} onChange={(event) => setPin(event.target.value.replace(/\D/g, ""))} required />

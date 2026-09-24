@@ -477,6 +477,12 @@ paralelo.
       homologação visíveis, e recusa de documento incoerente com a própria
       chave de acesso. Dígito verificador conferido contra o PyNFe em 5.000
       chaves; as oito recusas verificadas por mutação.
+- [x] **Cadastro fiscal na tela do dono.** Emitente, série, referências do
+      A1/CSC no cofre e perfil tributário de cada produto, com a lista do que
+      ainda impede a primeira nota. O certificado e a senha nunca passam pela
+      API; CNPJ, município, CFOP e CSOSN/CST × regime são conferidos no
+      cadastro, e não na venda. Só o dono acessa, e tudo é auditado. Nove
+      regras verificadas por mutação.
 - [x] **Autoteste do pacote cobre o fiscal.** `PDV.exe --selftest` carrega a
       tabela de municípios do PyNFe (lida por caminho, invisível ao
       PyInstaller), confere a licença LGPL embarcada e monta um DANFE em PC850.

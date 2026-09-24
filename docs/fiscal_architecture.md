@@ -129,13 +129,51 @@ erro.
   e fica no ledger de auditoria. É ali — e não numa nota de R$ 0,00 — que se
   confere quem liberou a cortesia.
 
+## Cadastro fiscal pelo painel
+
+Só o **dono** lê e altera. O cadastro decide em nome de qual CNPJ as notas
+saem, e a responsabilidade tributária é dele: gerente recebe 403 nas duas
+rotas.
+
+- **O certificado, a senha e o CSC nunca passam por esta API.** O painel guarda
+  apenas o *nome* da referência no cofre do serviço fiscal
+  (`loja-centro/a1.pfx`). Um corpo com campo que pareça segredo (`senha`,
+  `password`, `pfx`, `p12`, `pem`, `base64`…) é recusado com 422 **antes** de
+  qualquer validação, e nada é gravado. Referências absolutas ou com `..` são
+  recusadas, com as mesmas regras do `SecretResolver` do serviço fiscal.
+- **Erro de cadastro é acusado no cadastro, não na venda.** O CNPJ tem os
+  dígitos verificadores conferidos; o município precisa ter o prefixo IBGE da
+  UF; `ISENTO` não serve de inscrição estadual para emitente de NFC-e.
+- **O perfil do produto é do contador; o sistema confere, não sugere.** NCM
+  com 8 dígitos, CFOP de operação interna (5xxx: NFC-e é venda dentro do
+  estado), CEST com 7 dígitos quando houver, e **exatamente um** entre CSOSN e
+  CST de ICMS, coerente com o regime das lojas: Simples e MEI usam CSOSN;
+  Regime Normal usa CST. Um tenant com lojas em regimes diferentes aceita os
+  dois.
+- **Emissão desligada salva parcial.** Dá para preencher o emitente antes de ter
+  o A1. Para **ligar** a emissão, as três referências (certificado, CSC e ID do
+  CSC) passam a ser obrigatórias. Ligar a emissão e mudar para produção pedem
+  confirmação explícita na tela.
+- **Produção continua travada** enquanto `FISCAL_PRODUCTION_ENABLED` não for
+  `true`: a tela recusa o cadastro em vez de aceitar e deixar a primeira venda
+  falhar.
+- **A série não muda depois de emitir.** Trocar a série normal de uma loja que
+  já tem documento responde 409.
+- **Tudo é auditado.** Cada alteração grava `fiscal_config_updated` ou
+  `fiscal_profile_updated` em `panel_admin_events`, que a aplicação pode
+  inserir mas não alterar.
+- A tela lista **o que ainda impede a primeira nota**: cadastro ausente, série,
+  emissão desligada, produtos sem perfil completo e serviço fiscal não
+  configurado na retaguarda.
+
 ## Próxima fatia fiscal
 
 - [x] Reconciliação automática dos documentos que nunca chegaram ao serviço.
 - [ ] Consulta por chave na SEFAZ, para resolver `IN_FLIGHT` e `ENGINE_FAILURE`
       (depende do motor real).
 - [ ] Gerador/assinador XML NFC-e 4.00 com QR Code v3 e validação XSD.
-- [ ] Credenciais A1/CSC e cadastro tributário em tela exclusiva do dono.
+- [x] Cadastro fiscal em tela exclusiva do dono (`/api/panel/fiscal` e
+      `/api/panel/fiscal/products`). Detalhes em "Cadastro fiscal pelo painel".
 - [x] DANFE NFC-e 80 mm com indicação visível de contingência
       (`pdv/fiscal/danfe.py`). Imprime só o que veio do documento autorizado,
       nunca monta o QR Code, e **recusa** imprimir documento incoerente: chave

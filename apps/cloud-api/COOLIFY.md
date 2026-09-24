@@ -212,6 +212,27 @@ valida esse filtro contra o tenant da sessão; trocar o UUID na URL não permite
 consultar outra empresa. Os números são atualizados automaticamente a cada
 30 segundos, e o horário do último dado fica sempre visível.
 
+### Cadastro fiscal (NFC-e)
+
+Logado como dono, a seção **Fiscal** do painel cadastra o emitente de cada loja
+e o perfil tributário de cada produto, e lista o que ainda impede a primeira
+nota. O **arquivo** do certificado A1, a senha e o CSC não entram no painel:
+eles vão para o cofre do serviço fiscal, e o painel guarda só o nome da
+referência (por exemplo, `loja-centro/a1.pfx`). A tela recusa qualquer campo
+que pareça segredo.
+
+A retaguarda sobe e o painel funciona **sem** o serviço fiscal. Para emitir,
+cadastre também:
+
+```
+FISCAL_SERVICE_URL=http://<servico-fiscal-interno>:8081
+FISCAL_SERVICE_TOKEN=<o mesmo token configurado no serviço fiscal>
+```
+
+`FISCAL_PRODUCTION_ENABLED=true` só depois da homologação na SEFAZ. Sem ela, a
+tela recusa o ambiente de produção, e o `/api/health` mostra
+`"fiscal": "somente homologação"`.
+
 ---
 
 ## Atualizar
