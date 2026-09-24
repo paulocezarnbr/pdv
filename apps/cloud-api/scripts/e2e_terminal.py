@@ -149,6 +149,36 @@ orders.add_item(order_id=mistake.id, client_uuid=EntityId(new_id()),
                 product_id=cafe_id, quantity=Decimal(1))
 orders.cancel_order(order_id=mistake.id, authorizer_id=manager,
                     authorizer_name="Bruno", reason="mesa errada")
+# Dividir e juntar: cada operação vira `update` de item e de conta, e a nuvem
+# só aceita item mudando entre comandas abertas do mesmo terminal.
+def open_with(label: str, count: int):  # noqa: ANN201
+    order = orders.open_order(client_uuid=EntityId(new_id()), operator_id=operator,
+                              table_id=tables.find_by_label(label).id, origin_device_id=phone)
+    for _ in range(count):
+        orders.add_item(order_id=order.id, client_uuid=EntityId(new_id()),
+                        product_id=cafe_id, quantity=Decimal(1))
+    return orders.get_order(order.id)
+
+
+def live(order_id: str) -> list[EntityId]:
+    return [EntityId(str(r["id"])) for r in database.query_all(
+        "SELECT id FROM order_items WHERE order_id = ? AND canceled_at IS NULL ORDER BY created_at",
+        (order_id,))]
+
+
+four, five = open_with("Mesa 4", 3), open_with("Mesa 5", 1)
+orders.move_items(source_order_id=four.id, target_order_id=five.id, item_ids=live(four.id)[:1],
+                  operator_id=operator, operator_name="Ana")
+unit = int(cafe.price_cents)
+part = orders.settle_items(order_id=four.id, item_ids=live(four.id)[:1],
+                           payments=(Payment(PaymentMethod.PIX, Cents(unit)),),
+                           operator_id=operator, operator_name="Ana")
+orders.merge_orders(source_order_id=four.id, target_order_id=five.id,
+                    operator_id=operator, operator_name="Ana")
+five_total = int(orders.get_order(five.id).total_cents)
+orders.settle(order_id=five.id, payments=(Payment(PaymentMethod.CASH, Cents(five_total)),),
+              operator_id=operator, operator_name="Ana")
+
 # O mapa do salão também sobe: a nuvem não tinha a tabela, e cada mesa criada
 # ia para a quarentena do terminal para sempre.
 varanda = tables.create(label="Deck 1", area="Deck", seats=2)
@@ -192,6 +222,24 @@ check("com os itens cancelados",
       psql(f"SELECT count(*) FROM order_items WHERE order_id = '{mistake.id}' "
            "AND canceled_at IS NULL") == "0")
 
+row = order_row(part.order.id)
+check("a parte paga chegou como venda própria da Mesa 4",
+      row[0] == "paid" and row[3] == str(unit) and row[5] == "Mesa 4", str(row))
+row = order_row(four.id)
+check("a comanda juntada chegou fechada e zerada", row[0] == "canceled" and row[3] == "0", str(row))
+row = order_row(five.id)
+check("a comanda que recebeu tudo chegou paga com a soma",
+      row[0] == "paid" and row[3] == str(five_total) == str(3 * unit), str(row))
+local_items = {str(r["id"]): str(r["order_id"]) for r in database.query_all(
+    "SELECT id, order_id FROM order_items WHERE order_id IN (?, ?, ?)",
+    (four.id, five.id, part.order.id))}
+cloud_items = dict(line.split("|") for line in subprocess.run(
+    [*PG, "SELECT id || '|' || order_id FROM order_items WHERE order_id IN "
+          f"('{four.id}', '{five.id}', '{part.order.id}')"],
+    capture_output=True, text=True, check=True).stdout.split())
+check("cada item está na mesma comanda no PDV e na nuvem", local_items == cloud_items,
+      f"{local_items} != {cloud_items}")
+
 check("a mesa nova chegou com o nome atualizado",
       psql(f"SELECT label FROM store_tables WHERE id = '{varanda.id}'") == "Deck A")
 
@@ -223,7 +271,7 @@ check("o reenvio é reconhecido e quitado",
       len(replay.acks) == len(pending) and all(a.status.is_settled for a in replay.acks),
       str(replay.acks)[:200])
 check("o lote reenviado não criou pedido novo",
-      psql(f"SELECT count(*) FROM orders WHERE tenant_id = '{tenant}'") == "4")
+      psql(f"SELECT count(*) FROM orders WHERE tenant_id = '{tenant}'") == "7")
 
 print()
 if failures:

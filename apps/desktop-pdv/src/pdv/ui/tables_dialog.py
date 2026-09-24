@@ -15,6 +15,14 @@ para sempre no mapa, e o jeito de liberá-la era *cancelar a comanda*: apagar a
 venda para poder sentar o próximo cliente. O vetor de furto do salão virava o
 procedimento normal da casa, com a justificativa pronta.
 
+Dividir e juntar
+----------------
+
+Três gestos do dia a dia de salão, todos aqui e nenhum no celular: **pagar
+parte** (o casal que acerta só o que consumiu), **mover itens** (o garçom lançou
+na mesa errada) e **juntar comandas** (duas mesas encostadas viram uma conta).
+A regra de cada um mora em `TableOrderService`; esta tela só escolhe.
+
 A gorjeta entra aqui, e não no celular
 --------------------------------------
 
@@ -26,6 +34,8 @@ que é o que torna a divisão do fim da noite conferível em vez de combinada.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
@@ -35,6 +45,7 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QHBoxLayout,
     QHeaderView,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QMessageBox,
@@ -173,6 +184,16 @@ class TablesDialog(QDialog):
         receive.clicked.connect(self._receive)
         row.addWidget(receive, stretch=2)
 
+        for label, handler in (
+            ("Pagar parte", self._receive_part),
+            ("Mover itens", self._move_items),
+            ("Juntar comandas", self._merge),
+        ):
+            button = QPushButton(label)
+            button.setMinimumHeight(46)
+            button.clicked.connect(handler)
+            row.addWidget(button, stretch=1)
+
         close = QPushButton("Fechar   ·   ESC")
         close.setMinimumHeight(46)
         close.clicked.connect(self.reject)
@@ -306,6 +327,136 @@ class TablesDialog(QDialog):
         self._announce(settled)
         self.refresh()
 
+    # -- dividir e juntar ------------------------------------------------------ #
+
+    def _receive_part(self) -> None:
+        order = self._require_selected("Pagar parte")
+        if order is None:
+            return
+        picked = ItemPickerDialog.ask(
+            self._orders.list_items(EntityId(str(order.id))),
+            title=f"{order.table_label} — o que este cliente vai pagar",
+            confirm="Ir para a gorjeta",
+            parent=self,
+        )
+        if picked is None:
+            return
+        ids, part = picked
+
+        # A gorjeta e o pagamento enxergam só a parte: é ela que o cliente
+        # confere, e 10% da mesa inteira cobrados de quem pediu um café é o
+        # erro que ninguém percebe até a reclamação.
+        tip = TipDialog.ask(
+            replace(order, total_cents=Cents(part), item_count=len(ids)), parent=self
+        )
+        if tip is None:
+            return
+        payment = PaymentDialog(Cents(part + int(tip)), parent=self)
+        if payment.exec() != PaymentDialog.DialogCode.Accepted:
+            return
+
+        try:
+            settled = self._orders.settle_items(
+                order_id=EntityId(str(order.id)),
+                item_ids=ids,
+                payments=payment.payments,
+                operator_id=EntityId(str(self._operator.id)),
+                operator_name=self._operator.name,
+                tip_cents=tip,
+            )
+        except PdvError as exc:
+            QMessageBox.critical(self, "Não foi possível receber", str(exc))
+            return
+
+        if self._on_receipt is not None and settled.receipt:
+            self._on_receipt(settled.receipt, f"Mesa {settled.order.local_number:06d}")
+        self._announce(settled)
+        self.refresh()
+
+    def _move_items(self) -> None:
+        source = self._require_selected("Mover itens")
+        if source is None:
+            return
+        target = self._pick_target(source, "Mover itens para qual comanda?")
+        if target is None:
+            return
+        picked = ItemPickerDialog.ask(
+            self._orders.list_items(EntityId(str(source.id))),
+            title=f"{source.table_label} → {target.table_label}: quais itens",
+            confirm="Mover",
+            parent=self,
+        )
+        if picked is None:
+            return
+        try:
+            self._orders.move_items(
+                source_order_id=EntityId(str(source.id)),
+                target_order_id=EntityId(str(target.id)),
+                item_ids=picked[0],
+                operator_id=EntityId(str(self._operator.id)),
+                operator_name=self._operator.name,
+            )
+        except PdvError as exc:
+            QMessageBox.critical(self, "Não foi possível mover", str(exc))
+            return
+        self.refresh()
+
+    def _merge(self) -> None:
+        source = self._require_selected("Juntar comandas")
+        if source is None:
+            return
+        target = self._pick_target(
+            source, f"Juntar a {source.table_label} em qual comanda?"
+        )
+        if target is None:
+            return
+        together = int(source.total_cents) + int(target.total_cents)
+        confirm = QMessageBox.question(
+            self,
+            "Juntar comandas",
+            f"Passar os {source.item_count} itens da {source.table_label} "
+            f"(R$ {format_cents(Cents(int(source.total_cents)))}) para a "
+            f"{target.table_label}?\n\nA conta da {target.table_label} fica em "
+            f"R$ {format_cents(Cents(together))} e a {source.table_label} é "
+            "liberada.",
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            self._orders.merge_orders(
+                source_order_id=EntityId(str(source.id)),
+                target_order_id=EntityId(str(target.id)),
+                operator_id=EntityId(str(self._operator.id)),
+                operator_name=self._operator.name,
+            )
+        except PdvError as exc:
+            QMessageBox.critical(self, "Não foi possível juntar", str(exc))
+            return
+        self.refresh()
+
+    def _require_selected(self, title: str) -> TableOrder | None:
+        order = self._selected_order()
+        if order is None:
+            QMessageBox.information(self, title, "Selecione uma mesa na lista.")
+        return order
+
+    def _pick_target(self, source: TableOrder, prompt: str) -> TableOrder | None:
+        others = [o for o in self._rows if str(o.id) != str(source.id)]
+        if not others:
+            QMessageBox.information(
+                self, "Sem destino", "Não há outra comanda aberta no salão."
+            )
+            return None
+        labels = [
+            f"{o.table_label} · comanda {o.local_number:05d} · "
+            f"R$ {format_cents(Cents(int(o.total_cents)))}"
+            for o in others
+        ]
+        choice, accepted = QInputDialog.getItem(self, "Destino", prompt, labels, 0, False)
+        if not accepted:
+            return None
+        return others[labels.index(choice)]
+
     def _announce(self, settled: SettledOrder) -> None:
         order = settled.order
         pieces = [
@@ -350,6 +501,109 @@ class TablesDialog(QDialog):
             if item is not None and str(item.data(Qt.ItemDataRole.UserRole)) == key:
                 self._table.selectRow(row)
                 return
+
+
+class ItemPickerDialog(QDialog):
+    """Escolher itens da comanda, com o total do que foi marcado à vista.
+
+    O total muda a cada marca porque é ele que o cliente confere antes de
+    pagar a parte dele — escolher às cegas e descobrir o valor só no
+    pagamento é voltar atrás com a fila parada.
+    """
+
+    def __init__(
+        self,
+        items: list[dict[str, object]],
+        *,
+        title: str,
+        confirm: str,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        # Cancelado não se escolhe: já saiu da conta, e movê-lo ou cobrá-lo
+        # seria desfazer um cancelamento autorizado por gerente.
+        self._items = [i for i in items if not i["canceled"]]
+        self.selected: list[EntityId] = []
+        self.total_cents = 0
+
+        self.setWindowTitle(title)
+        self.setMinimumSize(560, 420)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(theme.SPACE_4, theme.SPACE_4, theme.SPACE_4, theme.SPACE_4)
+        layout.setSpacing(theme.SPACE_3)
+
+        self._table = QTableWidget(len(self._items), 3)
+        self._table.setHorizontalHeaderLabels(["Item", "Qtd", "Valor"])
+        self._table.verticalHeader().setVisible(False)
+        self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self._table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
+        header = self._table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        for column in (1, 2):
+            header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
+        for row, item in enumerate(self._items):
+            name = QTableWidgetItem(str(item["product_name"]))
+            name.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
+            name.setCheckState(Qt.CheckState.Unchecked)
+            self._table.setItem(row, 0, name)
+            self._table.setItem(row, 1, QTableWidgetItem(str(item["quantity"])))
+            value = QTableWidgetItem(f"R$ {format_cents(Cents(int(item['total_cents'])))}")
+            value.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            self._table.setItem(row, 2, value)
+        self._table.itemChanged.connect(self._refresh_total)
+        layout.addWidget(self._table, stretch=1)
+
+        self._total = QLabel("")
+        self._total.setFont(theme.font(theme.SIZE_TITLE, theme.WEIGHT_SEMIBOLD, mono=True))
+        self._total.setAlignment(Qt.AlignmentFlag.AlignRight)
+        layout.addWidget(self._total)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        self._ok = buttons.button(QDialogButtonBox.StandardButton.Ok)
+        self._ok.setText(confirm)
+        self._ok.setObjectName("primary")
+        self._ok.setMinimumHeight(44)
+        buttons.button(QDialogButtonBox.StandardButton.Cancel).setText("Voltar")
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+        self._refresh_total()
+
+    def check(self, row: int, checked: bool = True) -> None:
+        """Marca uma linha (usado pelos testes da tela)."""
+        self._table.item(row, 0).setCheckState(
+            Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked
+        )
+
+    def _refresh_total(self) -> None:
+        rows = [
+            row for row in range(self._table.rowCount())
+            if self._table.item(row, 0) is not None
+            and self._table.item(row, 0).checkState() == Qt.CheckState.Checked
+        ]
+        self.selected = [EntityId(str(self._items[row]["id"])) for row in rows]
+        self.total_cents = sum(int(self._items[row]["total_cents"]) for row in rows)
+        self._total.setText(
+            f"{len(rows)} item(ns) · R$ {format_cents(Cents(self.total_cents))}"
+        )
+        self._ok.setEnabled(bool(rows))
+
+    @classmethod
+    def ask(
+        cls,
+        items: list[dict[str, object]],
+        *,
+        title: str,
+        confirm: str,
+        parent: QWidget | None = None,
+    ) -> tuple[list[EntityId], int] | None:
+        """Devolve os itens marcados e o total deles, ou `None` se voltou."""
+        dialog = cls(items, title=title, confirm=confirm, parent=parent)
+        if dialog.exec() != QDialog.DialogCode.Accepted or not dialog.selected:
+            return None
+        return dialog.selected, dialog.total_cents
 
 
 class TipDialog(QDialog):
@@ -515,4 +769,10 @@ def _elapsed(opened_at: str | None) -> str:
     return f"{seconds // 3600}h{(seconds % 3600) // 60:02d}"
 
 
-__all__ = ["REFRESH_MS", "SUGGESTED_TIP_PERCENT", "TablesDialog", "TipDialog"]
+__all__ = [
+    "REFRESH_MS",
+    "SUGGESTED_TIP_PERCENT",
+    "ItemPickerDialog",
+    "TablesDialog",
+    "TipDialog",
+]

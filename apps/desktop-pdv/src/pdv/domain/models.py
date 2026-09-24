@@ -278,6 +278,11 @@ class AuditEventType(Enum):
     # sinal de segurança, e misturá-la com evento de operação a esconderia
     # justamente no relatório onde ela precisa aparecer.
     REMOTE_COMMAND_REFUSED = "remote_command_refused"
+    # Dividir e juntar conta. Tipos próprios pelo mesmo motivo: item que muda
+    # de comanda é dinheiro mudando de quem paga, e escondê-lo num
+    # `price_override` genérico o tiraria do relatório de quem mexeu na conta.
+    ITEMS_TRANSFERRED = "items_transferred"
+    ORDER_MERGED = "order_merged"
 
 
 class AuditSeverity(Enum):

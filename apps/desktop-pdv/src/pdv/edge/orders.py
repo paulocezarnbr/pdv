@@ -352,63 +352,10 @@ class TableOrderService:
         charged = Cents(int(order.total_cents) + int(tip))
         settled = settle_payments(payments, charged)
 
-        now = iso(utc_now())
         with self._db.transaction() as connection:
-            connection.execute(
-                "UPDATE orders SET status = 'paid', closed_at = ?, updated_at = ?, "
-                "       tip_cents = ?, is_synced = 0 "
-                " WHERE id = ? AND status = 'open'",
-                (now, now, int(tip), order_id),
-            )
-            record_payments(
-                connection,
-                self._outbox,
-                order_id=order_id,
-                tenant_id=EntityId(self._config.tenant_id),
-                payments=settled,
-            )
-            self._outbox.enqueue(
-                connection,
-                entity_table="orders",
-                entity_id=order_id,
-                client_uuid=EntityId(new_id()),
-                operation="update",
-                payload={
-                    "id": order_id,
-                    "status": "paid",
-                    "closed_at": now,
-                    "subtotal_cents": int(order.subtotal_cents),
-                    "discount_cents": int(order.discount_cents),
-                    "total_cents": int(order.total_cents),
-                    "tip_cents": int(tip),
-                    "table_id": order.table_id,
-                    "served_by_user_id": order.operator_id,
-                },
-            )
-            # O recebimento da mesa entra no ledger como venda fechada, igual
-            # ao do balcão: são a mesma coisa vista de dois lugares, e separá-las
-            # faria o faturamento do dia depender de somar dois relatórios.
-            self._audit().append(
-                connection,
-                event_type=AuditEventType.SALE_CLOSED,
-                actor_user_id=operator_id,
-                severity=AuditSeverity.INFO,
-                payload={
-                    "order_id": order_id,
-                    "local_number": order.local_number,
-                    "channel": "waiter",
-                    "table_label": order.table_label,
-                    "served_by_user_id": order.operator_id,
-                    "served_by_name": order.waiter_name,
-                    "received_by_name": operator_name,
-                    "items": order.item_count,
-                    "total_cents": int(order.total_cents),
-                    "tip_cents": int(tip),
-                    "payments": [
-                        {"method": p.method.value, "amount_cents": int(p.amount_cents)}
-                        for p in settled
-                    ],
-                },
+            self._close_paid(
+                connection, order, settled, tip,
+                operator_id=operator_id, operator_name=operator_name,
             )
 
         self._hub.publish(
@@ -435,6 +382,86 @@ class TableOrderService:
             tip_cents=tip,
             charged_cents=charged,
             receipt=self._receipt(closed, settled, operator_name),
+        )
+
+    def _close_paid(
+        self,
+        connection: sqlite3.Connection,
+        order: TableOrder,
+        settled: tuple[Payment, ...],
+        tip: Cents,
+        *,
+        operator_id: EntityId,
+        operator_name: str,
+        split_from: TableOrder | None = None,
+    ) -> None:
+        """Fecha a comanda como paga, dentro da transação do chamador.
+
+        Um lugar só para o recebimento inteiro e para o parcial: as duas
+        portas precisam gravar exatamente as mesmas coisas — pagamentos, envio
+        à nuvem e venda fechada no ledger —, ou o relatório do dia somaria
+        as duas de jeitos diferentes.
+        """
+        now = iso(utc_now())
+        connection.execute(
+            "UPDATE orders SET status = 'paid', closed_at = ?, updated_at = ?, "
+            "       tip_cents = ?, is_synced = 0 "
+            " WHERE id = ? AND status = 'open'",
+            (now, now, int(tip), order.id),
+        )
+        record_payments(
+            connection,
+            self._outbox,
+            order_id=order.id,
+            tenant_id=EntityId(self._config.tenant_id),
+            payments=settled,
+        )
+        self._outbox.enqueue(
+            connection,
+            entity_table="orders",
+            entity_id=order.id,
+            client_uuid=EntityId(new_id()),
+            operation="update",
+            payload={
+                "id": order.id,
+                "status": "paid",
+                "closed_at": now,
+                "subtotal_cents": int(order.subtotal_cents),
+                "discount_cents": int(order.discount_cents),
+                "total_cents": int(order.total_cents),
+                "tip_cents": int(tip),
+                "table_id": order.table_id,
+                "served_by_user_id": order.operator_id,
+            },
+        )
+        # O recebimento da mesa entra no ledger como venda fechada, igual ao
+        # do balcão: são a mesma coisa vista de dois lugares, e separá-las
+        # faria o faturamento do dia depender de somar dois relatórios.
+        payload: dict[str, object] = {
+            "order_id": order.id,
+            "local_number": order.local_number,
+            "channel": "waiter",
+            "table_label": order.table_label,
+            "served_by_user_id": order.operator_id,
+            "served_by_name": order.waiter_name,
+            "received_by_name": operator_name,
+            "items": order.item_count,
+            "total_cents": int(order.total_cents),
+            "tip_cents": int(tip),
+            "payments": [
+                {"method": p.method.value, "amount_cents": int(p.amount_cents)}
+                for p in settled
+            ],
+        }
+        if split_from is not None:
+            payload["split_from_order_id"] = split_from.id
+            payload["split_from_local_number"] = split_from.local_number
+        self._audit().append(
+            connection,
+            event_type=AuditEventType.SALE_CLOSED,
+            actor_user_id=operator_id,
+            severity=AuditSeverity.INFO,
+            payload=payload,
         )
 
     def _receipt(
@@ -721,6 +748,339 @@ class TableOrderService:
             )
         )
         return self.get_order(order_id)
+
+    # -- dividir e juntar ----------------------------------------------------- #
+    #
+    # Operação de caixa, com gaveta por perto — nunca do celular. O que as três
+    # garantem, e os testes cobram:
+    #
+    # * **O dinheiro não some nem aparece.** A soma das comandas envolvidas é a
+    #   mesma antes e depois; o item muda de conta, não de preço.
+    # * **O item leva a cozinha junto.** O ticket do KDS passa a apontar para a
+    #   comanda nova, ou o corredor entrega o prato na mesa que não o pediu.
+    # * **A mesa continua com uma comanda aberta só.** O pagamento parcial nasce
+    #   e é pago na mesma transação; juntar fecha a comanda que ficou vazia.
+    # * **Quem mexeu fica no ledger**, com as comandas e os itens.
+
+    def move_items(
+        self,
+        *,
+        source_order_id: EntityId,
+        target_order_id: EntityId,
+        item_ids: list[EntityId],
+        operator_id: EntityId,
+        operator_name: str,
+    ) -> tuple[TableOrder, TableOrder]:
+        """Passa itens de uma comanda aberta para outra.
+
+        O caso de todo dia: o garçom lançou na mesa errada, ou um casal da mesa
+        grande resolveu pagar à parte na mesa ao lado.
+        """
+        source, target = self._two_open(source_order_id, target_order_id)
+        ids = self._live_items(source, item_ids)
+
+        with self._db.transaction() as connection:
+            moved = self._move(connection, ids, source.id, target.id)
+            self._audit().append(
+                connection,
+                event_type=AuditEventType.ITEMS_TRANSFERRED,
+                actor_user_id=operator_id,
+                severity=AuditSeverity.WARNING,
+                payload={
+                    "from_order_id": source.id,
+                    "from_local_number": source.local_number,
+                    "from_table": source.table_label,
+                    "to_order_id": target.id,
+                    "to_local_number": target.local_number,
+                    "to_table": target.table_label,
+                    "item_ids": [str(i) for i in ids],
+                    "total_cents": moved,
+                    "operator_name": operator_name,
+                },
+            )
+
+        self._publish_move(source, target, len(ids), moved)
+        return self.get_order(source.id), self.get_order(target.id)
+
+    def merge_orders(
+        self,
+        *,
+        source_order_id: EntityId,
+        target_order_id: EntityId,
+        operator_id: EntityId,
+        operator_name: str,
+    ) -> TableOrder:
+        """Junta a comanda de origem na de destino e libera a mesa de origem.
+
+        A comanda de origem fecha **zerada e sem itens vivos**. O registro
+        continua (`canceled`, que é o estado de "não virou venda" que a nuvem
+        conhece), mas no ledger ela aparece como junção, com o destino — e não
+        como cancelamento, que é outro evento e outro alarme.
+        """
+        source, target = self._two_open(source_order_id, target_order_id)
+        live = [
+            EntityId(str(row["id"]))
+            for row in self._db.query_all(
+                "SELECT id FROM order_items WHERE order_id = ? AND canceled_at IS NULL",
+                (source.id,),
+            )
+        ]
+
+        now = iso(utc_now())
+        with self._db.transaction() as connection:
+            moved = self._move(connection, live, source.id, target.id) if live else 0
+            connection.execute(
+                "UPDATE orders SET status = 'canceled', closed_at = ?, "
+                "subtotal_cents = 0, discount_cents = 0, total_cents = 0, "
+                "bill_requested_at = NULL, updated_at = ?, is_synced = 0 "
+                "WHERE id = ? AND status = 'open'",
+                (now, now, source.id),
+            )
+            self._outbox.enqueue(
+                connection,
+                entity_table="orders",
+                entity_id=source.id,
+                client_uuid=EntityId(new_id()),
+                operation="update",
+                payload={
+                    "id": source.id,
+                    "status": "canceled",
+                    "closed_at": now,
+                    "subtotal_cents": 0,
+                    "discount_cents": 0,
+                    "total_cents": 0,
+                    "bill_requested_at": None,
+                },
+            )
+            self._audit().append(
+                connection,
+                event_type=AuditEventType.ORDER_MERGED,
+                actor_user_id=operator_id,
+                severity=AuditSeverity.WARNING,
+                payload={
+                    "from_order_id": source.id,
+                    "from_local_number": source.local_number,
+                    "from_table": source.table_label,
+                    "to_order_id": target.id,
+                    "to_local_number": target.local_number,
+                    "to_table": target.table_label,
+                    "items": len(live),
+                    "total_cents": moved,
+                    "operator_name": operator_name,
+                },
+            )
+
+        self._publish_move(source, target, len(live), moved)
+        self._hub.publish(Event("order.merged", {
+            "order_id": source.id, "into_order_id": target.id,
+            "from_table": source.table_label, "to_table": target.table_label,
+        }))
+        return self.get_order(target.id)
+
+    def settle_items(
+        self,
+        *,
+        order_id: EntityId,
+        item_ids: list[EntityId],
+        payments: tuple[Payment, ...],
+        operator_id: EntityId,
+        operator_name: str,
+        tip_cents: Cents = Cents(0),
+    ) -> SettledOrder:
+        """Recebe **parte** da conta: os itens escolhidos, e só eles.
+
+        Os itens saem para uma comanda nova da mesma mesa, que nasce e é paga
+        na mesma transação — a mesa nunca fica com duas comandas abertas, e cada
+        pagante leva o próprio cupom (e a própria nota). O resto continua na
+        comanda original, aberto.
+
+        Escolher todos os itens é o recebimento inteiro, pelo caminho de
+        sempre.
+
+        Raises:
+            OrderClosedError: comanda fechada, ou item que não é dela (inclusive
+                um já pago num clique anterior — repetir não cobra de novo).
+            InsufficientPaymentError: o pagamento não fecha a parte.
+        """
+        order = self._require_open(order_id)
+        ids = self._live_items(order, item_ids)
+        live_total = int(self._db.query_one(
+            "SELECT COUNT(*) AS n FROM order_items WHERE order_id = ? AND canceled_at IS NULL",
+            (order.id,),
+        )["n"])
+        if len(ids) == live_total:
+            return self.settle(
+                order_id=order.id, payments=payments, operator_id=operator_id,
+                operator_name=operator_name, tip_cents=tip_cents,
+            )
+
+        part = self._items_total(ids)
+        tip = Cents(max(0, int(tip_cents)))
+        charged = Cents(part + int(tip))
+        settled = settle_payments(payments, charged)
+
+        child_id = EntityId(new_id())
+        with self._db.transaction() as connection:
+            local_number = self._db.next_counter(connection, "order_local_number")
+            SaleRepository(connection, self._outbox).create_order(
+                order_id=child_id,
+                client_uuid=EntityId(new_id()),
+                tenant_id=EntityId(self._config.tenant_id),
+                store_id=EntityId(self._config.store_id),
+                device_id=EntityId(self._config.device_id),
+                # A venda é de quem atendeu a mesa, não de quem recebeu: a
+                # parte paga continua no resultado do garçom.
+                operator_id=order.operator_id or operator_id,
+                local_number=local_number,
+                channel="waiter",
+                origin_device_id=EntityId(self._config.device_id),
+                table_id=order.table_id,
+                table_label=order.table_label,
+            )
+            self._move(connection, ids, order.id, child_id)
+            child = self.get_order(child_id)
+            self._close_paid(
+                connection, child, settled, tip,
+                operator_id=operator_id, operator_name=operator_name,
+                split_from=order,
+            )
+
+        self._hub.publish(Event("order.split_paid", {
+            "order_id": order.id, "part_order_id": child_id,
+            "table_label": order.table_label, "total_cents": part,
+            "tip_cents": int(tip),
+        }))
+        logger.info(
+            "Parte da %s recebida: comanda %s, R$ %.2f",
+            order.table_label, local_number, part / 100,
+        )
+        closed = self.get_order(child_id)
+        return SettledOrder(
+            order=closed,
+            payments=settled,
+            tip_cents=tip,
+            charged_cents=charged,
+            receipt=self._receipt(closed, settled, operator_name),
+        )
+
+    def _two_open(
+        self, source_id: EntityId, target_id: EntityId
+    ) -> tuple[TableOrder, TableOrder]:
+        if str(source_id) == str(target_id):
+            raise OrderClosedError("Origem e destino são a mesma comanda.")
+        source = self._require_open(source_id)
+        target = self._require_open(target_id)
+        for order in (source, target):
+            # Desconto é da comanda inteira; repartir itens de uma comanda com
+            # desconto obrigaria a decidir quanto do desconto vai junto — e
+            # essa decisão não é do caixa no meio do movimento.
+            if int(order.discount_cents):
+                raise OrderClosedError(
+                    f"A comanda {order.local_number} tem desconto. Remova-o "
+                    "antes de dividir ou juntar."
+                )
+        return source, target
+
+    def _live_items(self, order: TableOrder, item_ids: list[EntityId]) -> list[EntityId]:
+        """Os itens pedidos, conferidos: vivos, e desta comanda."""
+        wanted = list(dict.fromkeys(str(i) for i in item_ids))
+        if not wanted:
+            raise OrderClosedError("Escolha ao menos um item.")
+        marks = ",".join("?" for _ in wanted)
+        found = {
+            str(row["id"])
+            for row in self._db.query_all(
+                f"SELECT id FROM order_items WHERE order_id = ? "
+                f"AND canceled_at IS NULL AND id IN ({marks})",
+                (order.id, *wanted),
+            )
+        }
+        missing = [i for i in wanted if i not in found]
+        if missing:
+            raise OrderClosedError(
+                f"{len(missing)} item(ns) não estão vivos na comanda "
+                f"{order.local_number} — já foram cancelados, pagos ou movidos."
+            )
+        return [EntityId(i) for i in wanted]
+
+    def _items_total(self, ids: list[EntityId]) -> int:
+        marks = ",".join("?" for _ in ids)
+        row = self._db.query_one(
+            f"SELECT COALESCE(SUM(total_cents), 0) AS total FROM order_items "
+            f"WHERE id IN ({marks})",
+            tuple(str(i) for i in ids),
+        )
+        return int(row["total"])
+
+    def _move(
+        self,
+        connection: sqlite3.Connection,
+        ids: list[EntityId],
+        source_id: EntityId,
+        target_id: EntityId,
+    ) -> int:
+        """Muda os itens de comanda, com a cozinha, e recalcula as duas contas.
+
+        O total é **recalculado** da soma dos itens vivos, e não subtraído e
+        somado: uma conta mantida por incremento que erra uma vez erra para
+        sempre, e aqui é o lugar onde ela seria conferida pelo cliente.
+        """
+        marks = ",".join("?" for _ in ids)
+        params = tuple(str(i) for i in ids)
+        moved = int(connection.execute(
+            f"SELECT COALESCE(SUM(total_cents), 0) FROM order_items WHERE id IN ({marks})",
+            params,
+        ).fetchone()[0])
+        connection.execute(
+            f"UPDATE order_items SET order_id = ?, is_synced = 0 WHERE id IN ({marks})",
+            (target_id, *params),
+        )
+        connection.execute(
+            f"UPDATE kds_tickets SET order_id = ?, updated_at = ? "
+            f"WHERE order_item_id IN ({marks})",
+            (target_id, iso(utc_now()), *params),
+        )
+        # Os itens antes das contas: na nuvem, item só muda para comanda que
+        # ainda está aberta, e a origem pode fechar logo em seguida.
+        for item_id in ids:
+            self._outbox.enqueue(
+                connection,
+                entity_table="order_items",
+                entity_id=item_id,
+                client_uuid=EntityId(new_id()),
+                operation="update",
+                payload={"id": item_id, "order_id": target_id},
+            )
+        now = iso(utc_now())
+        for order_id in (source_id, target_id):
+            subtotal = int(connection.execute(
+                "SELECT COALESCE(SUM(total_cents), 0) FROM order_items "
+                "WHERE order_id = ? AND canceled_at IS NULL",
+                (order_id,),
+            ).fetchone()[0])
+            connection.execute(
+                "UPDATE orders SET subtotal_cents = ?, total_cents = ? - discount_cents, "
+                "updated_at = ?, is_synced = 0 WHERE id = ?",
+                (subtotal, subtotal, now, order_id),
+            )
+            self._outbox.enqueue(
+                connection,
+                entity_table="orders",
+                entity_id=order_id,
+                client_uuid=EntityId(new_id()),
+                operation="update",
+                payload={"id": order_id, "subtotal_cents": subtotal, "total_cents": subtotal},
+            )
+        return moved
+
+    def _publish_move(
+        self, source: TableOrder, target: TableOrder, count: int, total: int
+    ) -> None:
+        self._hub.publish(Event("order.items_moved", {
+            "from_order_id": source.id, "from_table": source.table_label,
+            "to_order_id": target.id, "to_table": target.table_label,
+            "items": count, "total_cents": total,
+        }))
 
     # -- itens ---------------------------------------------------------------- #
 

@@ -390,8 +390,16 @@ Cobertura por camada: 22 testes de aplicação, 14 de transporte e ciclo
       offline pelo mesmo Argon2id do balcão, vale 10 minutos e só no aparelho
       que a pediu. O celular fica no balcão desbloqueado a noite inteira; uma
       sessão que durasse o turno seria promover o aparelho a gerente.
-- [ ] Transferir **itens** entre comandas (juntar e dividir conta) — é operação
-      de caixa, com gaveta por perto, e entra na Fase 4.
+- [x] **Dividir e juntar conta**, no caixa (Mesas do salão): *pagar parte*
+      (os itens escolhidos viram uma comanda da mesma mesa, paga na mesma
+      transação, com cupom e venda próprios — a mesa nunca fica com duas
+      comandas abertas), *mover itens* entre comandas abertas (o ticket da
+      cozinha vai junto) e *juntar comandas* (a de origem fecha zerada e a mesa
+      se libera). A soma das contas não muda, o total é recalculado dos itens
+      vivos, a venda da parte continua do garçom, e o ledger registra
+      `items_transferred` e `order_merged` — junção não é cancelamento.
+      Dezenove testes, oito regras verificadas por mutação, e o e2e confere na
+      nuvem que cada item está na mesma comanda que no PDV.
 - [ ] Mapa de salão com posição das mesas (arrastar no layout).
 
 **Aceite:** ✅ percorrido no navegador contra o servidor real — parear, entrar
