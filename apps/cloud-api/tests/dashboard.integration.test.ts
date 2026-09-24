@@ -51,6 +51,9 @@ describeDb("painel contra PostgreSQL real", () => {
     await admin`INSERT INTO order_items (id, tenant_id, order_id, client_uuid, product_name, total_cents, created_at) VALUES (${item}, ${tenant}, ${order}, ${randomUUID()}, 'Torta de chocolate', 4000, now() - interval '20 minutes')`;
     await admin`INSERT INTO order_item_ingredients (id, tenant_id, order_item_id, client_uuid, inventory_item_id, inventory_item_name, consumed_mg, unit_cost_cents) VALUES (${randomUUID()}, ${tenant}, ${item}, ${randomUUID()}, 'chocolate', 'Chocolate', 100000, 900)`;
     await admin`INSERT INTO fraud_alerts (tenant_id, store_id, device_id, reason) VALUES (${tenant}, ${store}, ${device}, 'Tentativa de reescrita')`;
+    // Dois comandos pendentes; um deles parado no caixa, esperando aceite.
+    await admin`INSERT INTO remote_commands (command_uuid, tenant_id, store_id, device_id, kind, payload_json, issued_by_user_id, signature, status) VALUES (${randomUUID()}, ${tenant}, ${store}, ${device}, 'apply_discount', '{}', ${manager}, 'assinatura', 'pending')`;
+    await admin`INSERT INTO remote_commands (command_uuid, tenant_id, store_id, device_id, kind, payload_json, issued_by_user_id, signature, status, awaiting_confirmation_at, awaiting_message) VALUES (${randomUUID()}, ${tenant}, ${store}, ${device}, 'cancel_item', '{}', ${manager}, 'assinatura', 'pending', now(), 'espera o caixa')`;
 
     await admin`INSERT INTO orders (id, tenant_id, store_id, device_id, client_uuid, local_number, status, total_cents, opened_at, closed_at) VALUES (${randomUUID()}, ${otherTenant}, ${otherStore!.id}, ${randomUUID()}, ${randomUUID()}, 99, 'paid', 999999, now() - interval '20 minutes', now() - interval '5 minutes')`;
   });
@@ -67,6 +70,7 @@ describeDb("painel contra PostgreSQL real", () => {
         await admin`DELETE FROM order_items WHERE tenant_id = ${id}`;
         await admin`DELETE FROM orders WHERE tenant_id = ${id}`;
         await admin`DELETE FROM fraud_alerts WHERE tenant_id = ${id}`;
+        await admin`DELETE FROM remote_commands WHERE tenant_id = ${id}`;
         await admin`DELETE FROM users WHERE tenant_id = ${id}`;
         await admin`DELETE FROM tenants WHERE id = ${id}`;
       }
@@ -96,6 +100,9 @@ describeDb("painel contra PostgreSQL real", () => {
     expect(body.products[0].name).toBe("Torta de chocolate");
     expect(body.staff[0].name).toBe("João Garçom");
     expect(body.devices[0].label).toBe("Caixa 1");
+    // "Pendente" sozinho o gerente lê como "já vai"; a espera no caixa não é.
+    expect(Number(body.devices[0].pending_commands)).toBe(2);
+    expect(Number(body.devices[0].awaiting_commands)).toBe(1);
     expect(body.alerts[0].reason).toBe("Tentativa de reescrita");
   });
 

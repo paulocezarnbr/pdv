@@ -15,6 +15,15 @@ parecem iguais e falham de jeitos opostos:
 `reported_at` é separado de `settled_at` pelo mesmo motivo: avisar a nuvem é
 uma operação de rede e pode falhar. Falhar ao avisar não pode desfazer o que
 já foi aplicado, nem autorizar uma segunda aplicação.
+
+Comando esperando aceite no caixa
+---------------------------------
+
+Um comando de risco (cancelar item que já foi para a cozinha) continua
+`pending` enquanto ninguém no caixa decide: ele **não foi decidido**, e dar a
+ele um status terminal faria a nuvem parar de reentregá-lo. O que muda é
+`confirmation_requested_at`, e o aviso à nuvem de que ele espera alguém tem
+marca própria (`confirmation_reported_at`), separada do relato final.
 """
 
 from __future__ import annotations
@@ -40,6 +49,28 @@ class CommandResult:
     status: CommandStatus
     message: str
     settled_at: str
+
+
+@dataclass(frozen=True, slots=True)
+class AwaitingNotice:
+    """Aviso à nuvem: este comando espera o aceite de alguém no caixa.
+
+    Não é resultado. O painel deixa de mostrar só "entregue" — que o gerente lê
+    como "já vai" — e passa a dizer que falta uma pessoa na loja.
+    """
+
+    command_uuid: str
+    message: str
+    requested_at: str
+
+
+@dataclass(frozen=True, slots=True)
+class AwaitingCommand:
+    """Um comando parado na frente do caixa, com o que ele precisa ler."""
+
+    command: RemoteCommand
+    requested_at: str
+    note: str
 
 
 class InboxRepository:
@@ -99,6 +130,71 @@ class InboxRepository:
         )
         return int(row["n"]) if row else 0
 
+    def awaiting_count(self) -> int:
+        row = self._db.query_one(
+            "SELECT COUNT(*) AS n FROM remote_commands "
+            " WHERE status = 'pending' AND confirmation_requested_at IS NOT NULL"
+        )
+        return int(row["n"]) if row else 0
+
+    def awaiting_confirmation(self, limit: int = 50) -> list[AwaitingCommand]:
+        """Comandos que esperam o aceite de alguém no caixa, mais antigos antes."""
+        rows = self._db.query_all(
+            "SELECT * FROM remote_commands "
+            " WHERE status = 'pending' AND confirmation_requested_at IS NOT NULL "
+            " ORDER BY confirmation_requested_at, rowid LIMIT ?",
+            (limit,),
+        )
+        return [
+            AwaitingCommand(
+                command=_to_command(row),
+                requested_at=str(row["confirmation_requested_at"]),
+                note=str(row["confirmation_note"] or ""),
+            )
+            for row in rows
+        ]
+
+    def get_pending(self, command_uuid: str) -> RemoteCommand | None:
+        row = self._db.query_one(
+            "SELECT * FROM remote_commands "
+            " WHERE command_uuid = ? AND status = 'pending'",
+            (command_uuid,),
+        )
+        return _to_command(row) if row else None
+
+    def is_awaiting(self, command_uuid: str) -> bool:
+        row = self._db.query_one(
+            "SELECT 1 FROM remote_commands "
+            " WHERE command_uuid = ? AND status = 'pending' "
+            "   AND confirmation_requested_at IS NOT NULL",
+            (command_uuid,),
+        )
+        return row is not None
+
+    def unreported_awaiting(self, limit: int = 50) -> list[AwaitingNotice]:
+        """Esperas que a nuvem ainda não conhece.
+
+        Só comando ainda `pending`: se ele já foi decidido, o que sobe é o
+        resultado, e avisar que ele "espera" depois de decidido faria o painel
+        voltar no tempo.
+        """
+        rows = self._db.query_all(
+            "SELECT command_uuid, confirmation_note, confirmation_requested_at "
+            "  FROM remote_commands "
+            " WHERE status = 'pending' AND confirmation_requested_at IS NOT NULL "
+            "   AND confirmation_reported_at IS NULL "
+            " ORDER BY confirmation_requested_at LIMIT ?",
+            (limit,),
+        )
+        return [
+            AwaitingNotice(
+                command_uuid=str(row["command_uuid"]),
+                message=str(row["confirmation_note"] or ""),
+                requested_at=str(row["confirmation_requested_at"]),
+            )
+            for row in rows
+        ]
+
     def status_of(self, command_uuid: str) -> CommandStatus | None:
         row = self._db.query_one(
             "SELECT status FROM remote_commands WHERE command_uuid = ?",
@@ -149,6 +245,44 @@ class InboxRepository:
         )
         return cursor.rowcount > 0
 
+    def request_confirmation(self, command_uuid: str, note: str) -> bool:
+        """Põe o comando para esperar o caixa. Devolve se a espera é nova.
+
+        A data da primeira espera não é reescrita a cada ciclo: é ela que diz
+        há quanto tempo o pedido está parado. A nota, sim — o item pode ter
+        passado de "na fila" para "pronto" desde o último ciclo, e quem vai
+        decidir precisa do estado de agora.
+        """
+        with self._db.transaction() as connection:
+            before = connection.execute(
+                "SELECT confirmation_requested_at FROM remote_commands "
+                " WHERE command_uuid = ? AND status = 'pending'",
+                (command_uuid,),
+            ).fetchone()
+            if before is None:
+                return False
+            connection.execute(
+                "UPDATE remote_commands "
+                "   SET confirmation_requested_at = "
+                "           COALESCE(confirmation_requested_at, ?), "
+                "       confirmation_note = ? "
+                " WHERE command_uuid = ? AND status = 'pending'",
+                (iso(utc_now()), note, command_uuid),
+            )
+            return before["confirmation_requested_at"] is None
+
+    def mark_awaiting_reported(self, command_uuids: list[str]) -> None:
+        """Marca as esperas que a nuvem confirmou conhecer."""
+        if not command_uuids:
+            return
+        now = iso(utc_now())
+        with self._db.transaction() as connection:
+            connection.executemany(
+                "UPDATE remote_commands SET confirmation_reported_at = ? "
+                " WHERE command_uuid = ? AND confirmation_reported_at IS NULL",
+                [(now, uuid) for uuid in command_uuids],
+            )
+
     def settle(
         self, command_uuid: str, status: CommandStatus, message: str
     ) -> bool:
@@ -185,4 +319,4 @@ def _to_command(row: sqlite3.Row) -> RemoteCommand:
     )
 
 
-__all__ = ["CommandResult", "InboxRepository"]
+__all__ = ["AwaitingCommand", "AwaitingNotice", "CommandResult", "InboxRepository"]

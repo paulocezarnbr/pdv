@@ -260,9 +260,46 @@ desconto, cancelar um item — sem precisar estar na loja.
       `device_id` alvo, IP e canal (`remote_panel`). Relatório de cancelamentos
       separa presencial de remoto — senão o painel vira a rota limpa para o
       mesmo furto que o M09 combate.
-- [ ] **Confirmação no terminal para operações de risco:** cancelar item já
+- [x] **Confirmação no terminal para operações de risco:** cancelar item já
       impresso ou abrir gaveta exige aceite do operador presente. Abrir gaveta
       remotamente sem ninguém por perto é convite a furto.
+
+      * **Gaveta:** mais rígido que o aceite — o terminal nem reconhece o
+        comando (`CommandKind` só tem desconto e cancelamento, e
+        `test_there_is_no_remote_drawer_command` quebra se alguém o acrescentar).
+      * **"Impresso", no salão, é o item que já foi para a cozinha** (tem ticket
+        de KDS não cancelado). É o cancelamento que fecha o furto de salão sem
+        ninguém na loja: as outras seis travas não veem nada de errado nele. O
+        comando **para e espera** o login e o PIN de alguém do balcão (operador,
+        gerente ou proprietário — garçom não, porque no furto de salão é ele
+        quem leva o prato). O caixa vê um botão âmbar na barra e decide por
+        `Ctrl+F4`, lendo quem pediu, o item, a mesa, o estado na cozinha e o
+        motivo. Venda de balcão não passa pela cozinha e não espera.
+      * **A credencial é conferida no serviço**, não no diálogo. PIN errado
+        **não decide nada**: virar recusa deixaria um erro de digitação desfazer
+        a ordem do gerente. Recusar exige motivo, que volta para o painel com o
+        nome de quem recusou.
+      * **Aceitar não ressuscita o que deixou de valer.** Todas as travas rodam
+        de novo no aceite: pedido fechado, gerente desativado, canal desligado e
+        janela de 12 h vencida recusam o comando. Esperando, ele continua
+        `pending` e vence na mesma janela de qualquer comando.
+      * **Auditoria com três identidades:** quem mandou, o terminal e quem
+        estava na loja e concordou (`confirmed_by_*`), além do estado na
+        cozinha naquele instante.
+      * **O painel fica sabendo.** O terminal avisa a espera num campo à parte
+        (`awaiting`), e o dashboard mostra "N aguardando aceite no caixa" por
+        terminal (migration cloud 015). Campo à parte, e não um terceiro
+        status, para uma nuvem antiga continuar aceitando os resultados — ela
+        ignora o aviso e o terminal reavisa.
+      * **Defeito corrigido no caminho:** o cancelamento remoto não retirava o
+        ticket da fila da cozinha, que continuava fazendo de graça o prato que
+        saiu da conta. Agora o ticket é cancelado na mesma transação e as telas
+        do KDS recebem `ticket.changed` na hora.
+
+      Cobertura: 26 testes de serviço e transporte
+      (`test_remote_confirmation.py`), 4 de tela e 7 contra PostgreSQL real
+      (`commands.integration.test.ts`). As onze regras novas foram verificadas
+      por mutação.
 - [~] **Autenticação forte do emissor:** assinatura HMAC-SHA256 do comando
       conferida no terminal contra o `device_secret`, com janela de validade de
       12 h e tolerância de 5 min de drift — o PDV não obedece a quem não prova

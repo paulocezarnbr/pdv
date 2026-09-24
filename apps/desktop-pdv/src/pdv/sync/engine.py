@@ -287,6 +287,7 @@ class SyncEngine:
             applied=report.applied,
             refused=report.refused,
             reported=reported,
+            awaiting=report.awaiting,
             error=error,
         )
 
@@ -294,7 +295,8 @@ class SyncEngine:
         """Avisa a nuvem do que foi decidido. Falhar aqui não desfaz nada."""
         inbox = InboxRepository(self._db)
         results = inbox.unreported(limit)
-        if not results:
+        awaiting = inbox.unreported_awaiting(limit)
+        if not results and not awaiting:
             return 0, None
 
         try:
@@ -304,6 +306,7 @@ class SyncEngine:
                     store_id=self._config.store_id,
                     device_id=self._config.device_id,
                     results=tuple(results),
+                    awaiting=tuple(awaiting),
                 )
             )
         except (TransportError, AuthError) as exc:
@@ -317,6 +320,13 @@ class SyncEngine:
         known = {result.command_uuid for result in results}
         confirmed = [uuid for uuid in accepted if uuid in known]
         inbox.mark_reported(confirmed)
+
+        # A espera tem marca própria. Uma nuvem antiga não a nomeia, e o aviso
+        # sobe de novo no próximo ciclo — custo de alguns bytes, e nada que
+        # ela não saiba tratar. Marcar sem confirmação deixaria o painel
+        # dizendo "entregue" para sempre num comando parado no caixa.
+        waiting = {notice.command_uuid for notice in awaiting}
+        inbox.mark_awaiting_reported([uuid for uuid in accepted if uuid in waiting])
         return len(confirmed), None
 
     # -- estado --------------------------------------------------------------- #

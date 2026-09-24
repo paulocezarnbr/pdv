@@ -633,7 +633,11 @@ CREATE TABLE IF NOT EXISTS remote_commands (
     received_at       TEXT NOT NULL,
     settled_at        TEXT,
     result_message    TEXT,
-    reported_at       TEXT
+    reported_at       TEXT,
+    -- Migration 14: comando de risco esperando aceite de quem está no caixa.
+    confirmation_requested_at TEXT,
+    confirmation_note         TEXT,
+    confirmation_reported_at  TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_remote_commands_pending

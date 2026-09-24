@@ -30,7 +30,7 @@ commit** da mudança de código.
 ## Estado atual
 
 ✅ **Fases 1, 2, 2.5, 3, 3.5, 3.6 e 4** implementadas; a fundação da Fase 5
-(fiscal) já começou. A suíte desktop tem **457 testes** passando.
+(fiscal) já começou. A suíte desktop tem **516 testes** passando.
 
 O que já funciona ponta a ponta, sem internet:
 
@@ -53,6 +53,9 @@ O que já funciona ponta a ponta, sem internet:
 10. **Comandos remotos do painel**, ponta a ponta: desconto e cancelamento
     vindos da nuvem são aplicados **uma vez só**, dentro dos tetos do perfil de
     quem emitiu, e o resultado volta para o painel com o motivo da recusa.
+    Cancelar de longe um item que já foi para a cozinha espera o aceite, com
+    login e PIN, de alguém no caixa (`Ctrl+F4`), e o painel mostra que ele
+    está esperando.
 11. Instalador único com provisionamento automático de periféricos, ativação do
     terminal e atualização in-place.
 12. Painel web com cadastro de múltiplos proprietários: somente outro dono
@@ -122,6 +125,7 @@ contorna avisos TLS, pois ensinar o garçom a ignorá-los anularia a autenticaç
 | `F2` | Registrar item pesado (só habilita com peso estável) |
 | `F3` | Ir para a busca de item unitário (código ou nome) |
 | `F4` | Cancelar item — exige credencial de gerente |
+| `Ctrl+F4` | Aceitar ou recusar cancelamento pedido pelo painel para item que já foi para a cozinha |
 | `F5` | Configurar limite ou receber Fiado/Pendura |
 | `F6` | Desconto percentual — exige credencial de gerente, limitada ao teto do perfil |
 | `Ctrl+F6` | Configurar/atribuir níveis Bronze, Prata, Ouro, Diamante, Funcionário e Dono |

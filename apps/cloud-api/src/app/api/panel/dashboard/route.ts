@@ -129,10 +129,16 @@ export const GET = handler(async (request) => {
       store_name: string;
       last_seen_at: string | null;
       pending_commands: string;
+      awaiting_commands: string;
       open_alerts: string;
     }[]>`
       SELECT d.id, d.label, s.name AS store_name, d.last_seen_at::text,
              count(DISTINCT c.command_uuid) FILTER (WHERE c.status = 'pending') AS pending_commands,
+             -- Subconjunto dos pendentes: esperam alguém no caixa. Separar é o
+             -- que impede o gerente de ler "pendente" como "já vai".
+             count(DISTINCT c.command_uuid) FILTER (
+               WHERE c.status = 'pending' AND c.awaiting_confirmation_at IS NOT NULL
+             ) AS awaiting_commands,
              count(DISTINCT f.id) FILTER (WHERE f.resolved_at IS NULL) AS open_alerts
         FROM devices d
         JOIN stores s ON s.id = d.store_id

@@ -223,6 +223,14 @@ class HttpTransport:
                         }
                         for result in report.results
                     ],
+                    "awaiting": [
+                        {
+                            "command_uuid": notice.command_uuid,
+                            "message": notice.message,
+                            "requested_at": notice.requested_at,
+                        }
+                        for notice in report.awaiting
+                    ],
                 },
             )
         except Exception as exc:

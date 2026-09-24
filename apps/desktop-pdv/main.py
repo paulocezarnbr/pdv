@@ -80,7 +80,10 @@ def verify_audit_integrity(database: Database, config: AppConfig) -> str | None:
 
 
 def build_sync(
-    database: Database, config: AppConfig, checkout: CheckoutService
+    database: Database,
+    config: AppConfig,
+    checkout: CheckoutService,
+    commands: RemoteCommandService | None = None,
 ) -> SyncService | None:
     """Monta o serviço de sincronização, se o terminal estiver ativado.
 
@@ -112,7 +115,7 @@ def build_sync(
         config,
         # É esta linha que liga o canal de comando do painel. Sem ela o
         # terminal só envia, como era até a Fase 3.5 — e continua funcionando.
-        commands=RemoteCommandService(database, config, checkout=checkout),
+        commands=commands or RemoteCommandService(database, config, checkout=checkout),
     )
     return SyncService(engine)
 
@@ -212,7 +215,12 @@ def main() -> int:
             logger.error("Servidor do salão indisponível; o balcão segue operando")
             edge = None
 
-    sync = build_sync(database, config, checkout)
+    # Um serviço só para o ciclo de sync e para a tela: o aceite no caixa
+    # precisa do mesmo barramento da cozinha que o ciclo usa.
+    remote_commands = RemoteCommandService(
+        database, config, checkout=checkout, hub=edge.hub if edge is not None else None
+    )
+    sync = build_sync(database, config, checkout, commands=remote_commands)
 
     window = CounterWindow(
         checkout,
@@ -225,6 +233,7 @@ def main() -> int:
         edge_port=edge.port if edge is not None else None,
         edge_scheme=edge.scheme if edge is not None else "http",
         edge_tls=edge.tls if edge is not None else None,
+        remote_commands=remote_commands,
     )
     window.show()
     scale.start()

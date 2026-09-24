@@ -5,7 +5,8 @@ Princípios de UI de PDV que o layout respeita:
 * **Teclado acima do mouse.** O operador não tira a mão do teclado numa fila.
   F2 registra o pesado, F3 lança o unitário, F4 cancela item, F6 desconta,
   F7 configura cashback, F8 abre o salão, F9 as mesas, F10 finaliza,
-  F11 carrega crédito pré-pago e F12 fecha o caixa.
+  F11 carrega crédito pré-pago e F12 fecha o caixa. Ctrl+F4 abre o aceite
+  de cancelamento pedido pelo painel para item que já foi para a cozinha.
 * **O peso é o maior elemento da tela.** É o número que o cliente confere de pé
   do outro lado do balcão.
 * **Estado de conexão sempre visível.** O operador precisa saber que está
@@ -60,6 +61,7 @@ from pdv.domain.models import (
 from pdv.hardware.printer.backends import PrintService
 from pdv.hardware.printer.escpos import format_cents, format_grams
 from pdv.hardware.scale.worker import ScaleService
+from pdv.remote.commands import RemoteCommandService
 from pdv.remote.inbox import InboxRepository
 from pdv.services.authorization import AuthorizationService, Identity
 from pdv.services.checkout import CheckoutService
@@ -70,6 +72,7 @@ from pdv.services.credit_account import CreditAccountError, CreditAccountService
 from pdv.services.discount_tiers import DiscountTierError, DiscountTierService
 from pdv.ui import theme
 from pdv.ui.dialogs import ManagerAuthDialog, PaymentDialog
+from pdv.ui.remote_dialog import RemoteConfirmationDialog
 from pdv.ui.salon_panel import SalonPanel
 from pdv.ui.tables_dialog import TablesDialog
 
@@ -102,6 +105,7 @@ class CounterWindow(QMainWindow):
         edge_port: int | None = None,
         edge_scheme: str = "http",
         edge_tls=None,  # noqa: ANN001 - TlsMaterial | None
+        remote_commands: RemoteCommandService | None = None,
     ) -> None:
         super().__init__()
         self._operator = operator
@@ -120,6 +124,13 @@ class CounterWindow(QMainWindow):
         self._credit_account = CreditAccountService(database, config)
         self._discount_tiers = DiscountTierService(database, config)
         self._operator_id = EntityId(str(operator.id))
+        # O mesmo serviço do ciclo de sync, quando o `main` o entrega: é ele
+        # que conhece o barramento da cozinha. O aceite roda nesta thread, e o
+        # item cancelado precisa sumir do KDS igual.
+        self._remote = remote_commands or RemoteCommandService(
+            database, config, checkout=checkout
+        )
+        self._last_awaiting = 0
 
         self._weighed: list[Product] = []
         self._unit: list[Product] = []
@@ -171,6 +182,17 @@ class CounterWindow(QMainWindow):
         self._command_label = QLabel("")
         self._command_label.setStyleSheet(f"color: {theme.WARN};")
         self._command_label.setVisible(False)
+        # Botão, e não selo: aqui o painel está pedindo alguém. Um texto que
+        # não se clica obrigaria o operador a lembrar de um atalho que ele usa
+        # uma vez por mês.
+        self._confirm_button = QPushButton("")
+        self._confirm_button.setFlat(True)
+        self._confirm_button.setStyleSheet(
+            f"color: {theme.WARN}; font-weight: 600; padding: 0 8px;"
+        )
+        self._confirm_button.setFont(theme.font(theme.SIZE_MICRO, theme.WEIGHT_SEMIBOLD))
+        self._confirm_button.clicked.connect(self._review_remote_commands)
+        self._confirm_button.setVisible(False)
         for label in (
             self._operator_label,
             self._cash_label,
@@ -186,6 +208,7 @@ class CounterWindow(QMainWindow):
         self.statusBar().addPermanentWidget(self._salon_label)
         self.statusBar().addPermanentWidget(self._sync_label)
         self.statusBar().addPermanentWidget(self._command_label)
+        self.statusBar().addPermanentWidget(self._confirm_button)
 
     def _build_left_panel(self) -> QWidget:
         panel = QFrame()
@@ -452,6 +475,7 @@ class CounterWindow(QMainWindow):
         QShortcut(QKeySequence("F2"), self, self._register_item)
         QShortcut(QKeySequence("F3"), self, self._focus_unit_search)
         QShortcut(QKeySequence("F4"), self, self._cancel_item)
+        QShortcut(QKeySequence("Ctrl+F4"), self, self._review_remote_commands)
         QShortcut(QKeySequence("F5"), self, self._manage_credit_account)
         QShortcut(QKeySequence("F6"), self, self._apply_discount)
         QShortcut(QKeySequence("Ctrl+F6"), self, self._manage_discount_tiers)
@@ -796,6 +820,25 @@ class CounterWindow(QMainWindow):
         self.statusBar().showMessage(
             f"Desconto autorizado por {authorizer.name}", 8000
         )
+
+    def _review_remote_commands(self) -> None:
+        """Ctrl+F4: o aceite de quem está no caixa para o pedido do painel."""
+        if not self._remote.awaiting():
+            self.statusBar().showMessage("Nenhum pedido do painel esperando aceite", 4000)
+            return
+
+        dialog = RemoteConfirmationDialog(
+            self._remote, default_login=self._operator.login, parent=self
+        )
+        dialog.exec()
+
+        # Só item que foi para a cozinha espera aceite, e a venda de balcão não
+        # passa pela cozinha: a tabela da tela não muda. O total, sim, é
+        # relido — é barato e cobre o caso que ninguém previu.
+        self._refresh_total()
+        self._refresh_command_badge()
+        if dialog.decisions:
+            self.statusBar().showMessage(dialog.decisions[-1], 8000)
 
     def _open_salon(self) -> None:
         SalonPanel(
@@ -1221,7 +1264,9 @@ class CounterWindow(QMainWindow):
         digitou. O aviso não pede permissão; só dá nome ao que vai acontecer.
         """
         try:
-            waiting = InboxRepository(self._database).pending_count()
+            inbox = InboxRepository(self._database)
+            awaiting = inbox.awaiting_count()
+            waiting = inbox.pending_count() - awaiting
         except Exception:  # noqa: BLE001 - um selo não derruba o caixa
             return
 
@@ -1232,6 +1277,24 @@ class CounterWindow(QMainWindow):
                 if waiting > 1
                 else "Painel: 1 comando a aplicar"
             )
+
+        # O pedido de aceite, ao contrário do comando comum, NÃO se resolve
+        # sozinho: ele fica parado até alguém no caixa decidir. Por isso vira
+        # botão e, quando chega um novo, também uma mensagem na barra.
+        self._confirm_button.setVisible(awaiting > 0)
+        if awaiting:
+            self._confirm_button.setText(
+                "Painel pede aceite: 1 cancelamento (Ctrl+F4)"
+                if awaiting == 1
+                else f"Painel pede aceite: {awaiting} cancelamentos (Ctrl+F4)"
+            )
+            if awaiting > self._last_awaiting:
+                self.statusBar().showMessage(
+                    "O painel pede para cancelar item que já foi para a cozinha "
+                    "— confira a mesa e tecle Ctrl+F4",
+                    15000,
+                )
+        self._last_awaiting = awaiting
 
     # -- encerramento --------------------------------------------------------- #
 

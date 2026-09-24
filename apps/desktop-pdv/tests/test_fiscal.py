@@ -57,7 +57,7 @@ def test_version_12_database_is_upgraded_without_touching_sales(env) -> None:  #
     database.close()
     upgraded = Database(config.database_path)
     upgraded.migrate()
-    assert upgraded.connection.execute("PRAGMA user_version").fetchone()[0] == 13
+    assert upgraded.connection.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
     assert upgraded.connection.execute("SELECT id FROM orders WHERE id=?", (order_id,)).fetchone() is not None
     assert upgraded.connection.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name='fiscal_documents'"
