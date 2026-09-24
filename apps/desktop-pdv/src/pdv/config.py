@@ -8,9 +8,50 @@ mágica espalhada pelo código.
 from __future__ import annotations
 
 import os
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
+
+#: Variável que aponta a pasta de dados do terminal (banco, cofre, cupons).
+DATA_DIR_ENV = "PDV_DATA_DIR"
+
+
+def default_data_dir() -> Path:
+    """Onde o instalador põe os dados: `%ProgramData%\\ERPFood\\PDV`.
+
+    O mesmo lugar para o `PDV.exe` e para o `PDVSetup.exe`. Os dois divergiram
+    uma vez, e o resultado foi o pior possível: o assistente provisionou banco,
+    segredo e periféricos em ProgramData, e o caixa abriu procurando um banco
+    na pasta do programa — onde o operador não tem escrita, por construção.
+    """
+    base = os.environ.get("ProgramData") or r"C:\ProgramData"
+    return Path(base) / "ERPFood" / "PDV"
+
+
+def installed_data_dir() -> Path | None:
+    """A pasta de dados de um terminal INSTALADO, ou `None` rodando do código.
+
+    Precedência:
+
+    1. `PDV_DB_PATH` definido: quem definiu escolheu o banco na mão
+       (desenvolvimento, teste, suporte) — respeitado como antes.
+    2. `PDV_DATA_DIR` definido: a pasta indicada.
+    3. Executável empacotado (`sys.frozen`): a pasta do instalador. Sem isto o
+       banco seria `.\\pdv_local.db` relativo ao diretório de trabalho, que no
+       atalho do menu Iniciar é `Program Files` — somente leitura para o caixa,
+       e o PDV morria com "unable to open database file".
+    4. Rodando do código-fonte: `None`, e vale o `./pdv_local.db` de sempre.
+    """
+    if os.getenv("PDV_DB_PATH"):
+        return None
+    explicit = os.getenv(DATA_DIR_ENV)
+    if explicit:
+        return Path(explicit)
+    if getattr(sys, "frozen", False):
+        return default_data_dir()
+    return None
+
 
 ScaleProtocolName = Literal["toledo_prix3", "filizola", "urano", "simulated"]
 PrinterBackendName = Literal["win32raw", "escpos_usb", "file"]

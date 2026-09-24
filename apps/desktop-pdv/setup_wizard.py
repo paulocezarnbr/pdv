@@ -24,7 +24,7 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 
-from pdv.config import AppConfig
+from pdv.config import DATA_DIR_ENV, AppConfig, default_data_dir
 from pdv.data.database import Database
 from pdv.data.seed import seed_demo_data
 from pdv.data.settings import SettingsStore
@@ -40,9 +40,9 @@ from pdv.provisioning.smoke import CheckStatus, run_smoke_test
 
 logger = logging.getLogger("pdv.setup")
 
-DEFAULT_DATA_DIR = Path(
-    os.getenv("PDV_DATA_DIR", r"C:\ProgramData\ERPFood\PDV")
-)
+# A mesma pasta que o `PDV.exe` abre (`pdv.config.default_data_dir`). Duas
+# definições desta constante já divergiram uma vez, e o caixa abriu sem banco.
+DEFAULT_DATA_DIR = Path(os.getenv(DATA_DIR_ENV) or default_data_dir())
 
 #: Códigos de saída lidos pelo instalador para decidir o que mostrar ao lojista.
 EXIT_OK = 0

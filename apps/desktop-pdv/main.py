@@ -31,15 +31,18 @@ from __future__ import annotations
 
 import logging
 import os
+import sqlite3
 import sys
+from dataclasses import replace
 from decimal import Decimal
 
 from PySide6.QtWidgets import QApplication, QInputDialog, QMessageBox
 
-from pdv.config import AppConfig
+from pdv.config import AppConfig, installed_data_dir
 from pdv.data.database import Database
 from pdv.data.repositories import OutboxRepository
 from pdv.data.seed import seed_demo_data
+from pdv.data.settings import SettingsStore
 from pdv.domain.errors import AuditChainError
 from pdv.domain.models import Cents, EntityId
 from pdv.edge.worker import EdgeServer
@@ -120,6 +123,109 @@ def build_sync(
     return SyncService(engine)
 
 
+class StartupError(Exception):
+    """O PDV não tem como abrir. A mensagem é para quem está no balcão."""
+
+
+def build_config() -> AppConfig:
+    """A configuração com que o caixa abre.
+
+    Rodando do código-fonte, é o `AppConfig.from_env()` de sempre. Instalado,
+    tudo sai da pasta que o `PDVSetup.exe` provisionou (ver
+    `pdv.config.installed_data_dir`): o banco, o segredo do terminal no cofre
+    DPAPI e a pasta de cupons. Periféricos e ativação vêm depois, do próprio
+    banco (`_apply_device_settings`).
+    """
+    config = AppConfig.from_env()
+    data_dir = installed_data_dir()
+    if data_dir is None:
+        return config
+
+    try:
+        data_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise StartupError(
+            f"Não foi possível acessar a pasta de dados do PDV:\n{data_dir}\n\n"
+            "Rode o instalador de novo como administrador."
+        ) from exc
+
+    return replace(
+        config,
+        database_path=data_dir / "pdv_local.db",
+        device_secret=_device_secret(SecretVault(data_dir / "secrets")),
+        printer=replace(config.printer, output_dir=data_dir / "cupons"),
+    )
+
+
+def _device_secret(vault: SecretVault) -> bytes:
+    """O segredo do terminal, criado na primeira execução se ainda não existir.
+
+    Segredo que EXISTE e não decifra não é recriado. Recriar faria a cadeia de
+    auditoria inteira, assinada com o segredo antigo, passar a acusar
+    adulteração — e as vendas ainda na fila subiriam com HMAC que a nuvem
+    recusa. É caso de suporte, não de improviso.
+    """
+    if vault.exists("device_secret"):
+        secret = vault.load("device_secret")
+        if secret is None:
+            raise StartupError(
+                "O segredo deste terminal existe mas não pôde ser lido.\n\n"
+                "Não reinstale nem apague a pasta de dados: chame o suporte."
+            )
+        return secret
+    return vault.ensure_device_secret()
+
+
+def _apply_device_settings(database: Database, config: AppConfig) -> AppConfig:
+    """Periféricos detectados e identidade da ativação vencem o padrão do código."""
+    return SettingsStore(database).apply_to(config)
+
+
+def open_database(config: AppConfig) -> tuple[Database, AppConfig]:
+    """Abre e migra o banco, e aplica o que o instalador gravou nele."""
+    database = Database(config.database_path)
+    try:
+        database.migrate()
+    except sqlite3.Error as exc:
+        raise StartupError(
+            f"Não foi possível abrir o banco de dados do PDV:\n"
+            f"{config.database_path}\n\n{exc}"
+        ) from exc
+    config = _apply_device_settings(database, config)
+
+    # Demonstração só em terminal NÃO ativado. Ativado, os usuários e o
+    # catálogo descem da nuvem; semear aqui criaria, dentro da loja real, os
+    # logins de demonstração com PINs publicados no README — um caixa que
+    # qualquer um abre.
+    if not SettingsStore(database).load().activated:
+        seed_demo_data(database, config)
+    return database, config
+
+
+def _configure_logging(config: AppConfig) -> None:
+    """Log em arquivo ao lado dos dados.
+
+    O `PDV.exe` não tem console: sem arquivo, o motivo de qualquer falha some
+    junto com a janela. Não conseguir abrir o log não impede o caixa de vender.
+    """
+    handlers: list[logging.Handler] = []
+    for folder in (config.database_path.parent / "logs", config.database_path.parent):
+        try:
+            handlers.append(
+                logging.FileHandler(folder / "pdv.log", encoding="utf-8", delay=False)
+            )
+            break
+        except OSError:
+            continue
+    if sys.stderr is not None:
+        handlers.append(logging.StreamHandler())
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        handlers=handlers or None,
+    )
+
+
 def main() -> int:
     # Antes de qualquer coisa, e antes do Qt: o autoteste roda dentro do
     # executável compilado e responde "este pacote está completo?". É a última
@@ -130,11 +236,11 @@ def main() -> int:
 
         return run_cli()
 
-    config = AppConfig.from_env()
+    config = build_config()
+    _configure_logging(config)
+    logger.info("Banco local: %s", config.database_path)
 
-    database = Database(config.database_path)
-    database.migrate()
-    seed_demo_data(database, config)
+    database, config = open_database(config)
 
     integrity_error = verify_audit_integrity(database, config)
 
@@ -253,5 +359,31 @@ def main() -> int:
         database.close()
 
 
+def run() -> int:
+    """Ponto de entrada: falha de inicialização vira mensagem, não traceback.
+
+    Empacotado sem console, uma exceção aqui aparecia como a caixa crua do
+    PyInstaller ("Failed to execute script 'main'"), sem dizer o que fazer.
+    """
+    try:
+        return main()
+    except Exception as exc:  # noqa: BLE001 - última linha de defesa
+        logger.exception("O PDV não conseguiu iniciar")
+        message = str(exc) if isinstance(exc, StartupError) else (
+            f"O PDV não conseguiu iniciar.\n\n{exc}"
+        )
+        _show_fatal(message)
+        return 1
+
+
+def _show_fatal(message: str) -> None:
+    try:
+        app = QApplication.instance() or QApplication(sys.argv)  # noqa: F841
+        QMessageBox.critical(None, "PDV Balcão", message)
+    except Exception:  # noqa: BLE001  # pragma: no cover
+        if sys.stderr is not None:
+            print(message, file=sys.stderr)
+
+
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(run())

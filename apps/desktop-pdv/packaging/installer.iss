@@ -17,7 +17,7 @@
 ; ===========================================================================
 
 #define AppName        "PDV Balcao"
-#define AppVersion     "1.1.0"
+#define AppVersion     "1.1.1"
 #define AppPublisher   "ERP Food Service"
 #define AppExeName     "PDV.exe"
 #define SetupExeName   "PDVSetup.exe"
@@ -263,7 +263,7 @@ end;
 { ---------------------------------------------------------------------------
   Codigo de ativacao para implantacao em massa.
 
-      PDV-Setup-1.1.0.exe /SILENT /ACTIVATIONCODE=A1B2C3D4
+      PDV-Setup-1.1.1.exe /SILENT /ACTIVATIONCODE=A1B2C3D4
 
   Na instalacao interativa isto fica vazio e quem pergunta e o proprio
   PDVSetup.exe, numa caixa de dialogo - o codigo e gerado no painel no momento

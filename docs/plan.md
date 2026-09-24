@@ -167,6 +167,17 @@ a baixar à parte, nenhum prompt de linha de comando.
       certificado existir nos secrets. *Defeito corrigido no caminho:* o
       `build.ps1` chamava o `PDV.exe` (app gráfico) com `&`, e o PowerShell não
       espera app gráfico — o autoteste do pacote "passava" sem ter rodado.
+- [x] **O caixa instalado abre o que o instalador provisionou.** Primeira
+      instalação real: o `PDV.exe` procurava `.\pdv_local.db` relativo ao
+      diretório de trabalho (`Program Files`, somente leitura para o caixa) e
+      morria com "unable to open database file", enquanto o `PDVSetup.exe`
+      tinha deixado banco, segredo DPAPI, periféricos e ativação em
+      `ProgramData`. As duas pontas agora resolvem a mesma pasta
+      (`pdv.config.default_data_dir`), o caixa aplica `device_settings`, e
+      falha de inicialização vira mensagem com o caminho — não a caixa crua do
+      PyInstaller. *Segurança:* terminal **ativado** não recebe mais os logins
+      de demonstração, cujos PINs estão publicados neste repositório; segredo
+      que existe e não decifra nunca é recriado.
 
 **Aceite:** numa máquina Windows recém-formatada, sem Python, sem Visual C++ e
 sem drivers, um único duplo-clique deixa o PDV vendendo — com balança lendo,

@@ -160,7 +160,7 @@ O pipeline roda os testes antes de empacotar e **aborta se algum falhar**.
 ```
 dist\PDV\PDV.exe                       o caixa (onedir)
 dist\PDV\PDVSetup.exe                  assistente de instalação
-dist\installer\PDV-Setup-1.1.0.exe     instalador
+dist\installer\PDV-Setup-1.1.1.exe     instalador
 ```
 
 Os dois executáveis dividem o mesmo diretório e, portanto, as mesmas DLLs do Qt
@@ -202,7 +202,7 @@ chama quando a balança é trocada ou o cabo USB muda de porta.
 Implantação em massa:
 
 ```powershell
-.\PDV-Setup-1.1.0.exe /SILENT /ACTIVATIONCODE=A1B2C3D4
+.\PDV-Setup-1.1.1.exe /SILENT /ACTIVATIONCODE=A1B2C3D4
 ```
 
 Na instalação interativa o próprio `PDVSetup.exe` pergunta numa caixa de

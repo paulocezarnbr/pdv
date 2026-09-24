@@ -30,7 +30,7 @@ commit** da mudança de código.
 ## Estado atual
 
 ✅ **Fases 1, 2, 2.5, 3, 3.5, 3.6 e 4** implementadas; a fundação da Fase 5
-(fiscal) já começou. A suíte desktop tem **520 testes** passando.
+(fiscal) já começou. A suíte desktop tem **530 testes** passando.
 
 O que já funciona ponta a ponta, sem internet:
 

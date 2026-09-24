@@ -116,3 +116,154 @@ def test_a_broken_vault_does_not_stop_the_counter(terminal, monkeypatch) -> None
     )
 
     assert main.build_sync(database, config, checkout) is None
+
+
+# --------------------------------------------------------------------------- #
+# Terminal instalado: o caixa abre o que o instalador provisionou
+# --------------------------------------------------------------------------- #
+#
+# O defeito que motivou esta seção: instalado, o `PDV.exe` procurava o banco em
+# `./pdv_local.db` — relativo ao diretório de trabalho, que no atalho é
+# `Program Files`, somente leitura para o caixa. O PyInstaller mostrava
+# "unable to open database file", enquanto o `PDVSetup.exe` tinha deixado
+# banco, segredo e periféricos prontos em ProgramData.
+
+
+@pytest.fixture()
+def installed(tmp_path: Path, monkeypatch):  # noqa: ANN001, ANN201
+    """O processo como o PDV.exe empacotado: `sys.frozen`, sem variáveis de dev."""
+    monkeypatch.setattr(main.sys, "frozen", True, raising=False)
+    monkeypatch.setenv("ProgramData", str(tmp_path))
+    for name in ("PDV_DB_PATH", "PDV_DATA_DIR", "PDV_TENANT_ID"):
+        monkeypatch.delenv(name, raising=False)
+    return tmp_path / "ERPFood" / "PDV"
+
+
+def test_the_packaged_app_opens_the_database_the_installer_prepared(installed) -> None:  # noqa: ANN001
+    config = main.build_config()
+
+    assert config.database_path == installed / "pdv_local.db"
+    assert config.printer.output_dir == installed / "cupons"
+
+
+def test_it_is_the_same_folder_the_setup_wizard_provisions(installed) -> None:  # noqa: ANN001
+    """Duas definições desta pasta já divergiram uma vez."""
+    import setup_wizard
+    from pdv.config import default_data_dir, installed_data_dir
+
+    assert setup_wizard.default_data_dir is default_data_dir
+    assert installed_data_dir() == default_data_dir() == installed
+
+
+def test_the_device_secret_comes_from_the_vault_not_the_dev_key(installed) -> None:  # noqa: ANN001
+    from pdv.config import AppConfig as Config
+
+    vault = SecretVault(installed / "secrets")
+    installed.mkdir(parents=True)
+    provisioned = vault.ensure_device_secret()
+
+    config = main.build_config()
+
+    assert config.device_secret == provisioned
+    assert config.device_secret != Config(tenant_id="t", store_id="s", device_id="d").device_secret
+
+
+def test_an_unreadable_secret_is_never_replaced(installed) -> None:  # noqa: ANN001
+    """Recriar o segredo faria toda a auditoria já gravada acusar adulteração."""
+    (installed / "secrets").mkdir(parents=True)
+    broken = installed / "secrets" / "device_secret.bin"
+    broken.write_bytes(b"lixo-que-nao-decifra")
+    before = {p.name: p.read_bytes() for p in (installed / "secrets").iterdir()}
+
+    with pytest.raises(main.StartupError, match="suporte"):
+        main.build_config()
+
+    after = {p.name: p.read_bytes() for p in (installed / "secrets").iterdir()}
+    assert after == before
+
+
+def test_an_explicit_db_path_still_wins(installed, tmp_path, monkeypatch) -> None:  # noqa: ANN001
+    monkeypatch.setenv("PDV_DB_PATH", str(tmp_path / "suporte.db"))
+
+    assert main.build_config().database_path == tmp_path / "suporte.db"
+
+
+def test_running_from_source_keeps_the_local_database(monkeypatch) -> None:  # noqa: ANN001
+    monkeypatch.delattr(main.sys, "frozen", raising=False)
+    for name in ("PDV_DB_PATH", "PDV_DATA_DIR"):
+        monkeypatch.delenv(name, raising=False)
+
+    assert main.build_config().database_path == Path("./pdv_local.db")
+
+
+def test_detected_peripherals_and_activation_are_applied(installed) -> None:  # noqa: ANN001
+    from pdv.data.settings import SettingsStore
+
+    installed.mkdir(parents=True)
+    config = main.build_config()
+    database = Database(config.database_path)
+    database.migrate()
+    SettingsStore(database).set_many(
+        {
+            "scale.protocol": "toledo_prix3",
+            "scale.port": "COM4",
+            "printer.backend": "win32raw",
+            "printer.name": "EPSON TM-T20X Receipt",
+            "device.activated": "1",
+            "device.tenant_id": "aaaaaaaa-0000-0000-0000-000000000001",
+            "device.store_id": "aaaaaaaa-0000-0000-0000-000000000002",
+            "device.id": "aaaaaaaa-0000-0000-0000-000000000003",
+        }
+    )
+    database.close()
+
+    opened, applied = main.open_database(config)
+
+    assert applied.scale.port == "COM4"
+    assert applied.printer.backend == "win32raw"
+    assert applied.printer.output_dir == installed / "cupons"
+    assert applied.tenant_id == "aaaaaaaa-0000-0000-0000-000000000001"
+    opened.close()
+
+
+def test_an_activated_terminal_does_not_get_the_demo_logins(installed) -> None:  # noqa: ANN001
+    """Os PINs de demonstração estão no README. Numa loja ativada, seriam um
+    caixa que qualquer um abre."""
+    from pdv.data.settings import SettingsStore
+
+    installed.mkdir(parents=True)
+    config = main.build_config()
+    database = Database(config.database_path)
+    database.migrate()
+    SettingsStore(database).set_many(
+        {"device.activated": "1", "device.tenant_id": "aaaaaaaa-0000-0000-0000-000000000001"}
+    )
+    database.close()
+
+    opened, _ = main.open_database(config)
+
+    logins = {str(r["login"]) for r in opened.query_all("SELECT login FROM users")}
+    assert logins == set()
+    opened.close()
+
+
+def test_a_terminal_not_yet_activated_opens_in_demo_mode(installed) -> None:  # noqa: ANN001
+    installed.mkdir(parents=True)
+    opened, _ = main.open_database(main.build_config())
+
+    logins = {str(r["login"]) for r in opened.query_all("SELECT login FROM users")}
+    assert {"ana", "bruno", "olivia"} <= logins
+    opened.close()
+
+
+def test_a_startup_failure_becomes_a_message_not_a_traceback(monkeypatch) -> None:  # noqa: ANN001
+    shown: list[str] = []
+    monkeypatch.setattr(main, "_show_fatal", shown.append)
+
+    def broken() -> int:
+        raise main.StartupError("Não foi possível abrir o banco de dados do PDV")
+
+    monkeypatch.setattr(main, "main", broken)
+
+    assert main.run() == 1
+    assert shown == ["Não foi possível abrir o banco de dados do PDV"]
