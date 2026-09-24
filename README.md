@@ -30,8 +30,9 @@ commit** da mudança de código.
 ## Estado atual
 
 ✅ **Fases 1, 2, 2.1, 2.5, 3, 3.5, 3.6 e 4** implementadas; a fundação da Fase 5
-(fiscal) já começou e a Fase 6 tem o cardápio QR. A suíte desktop tem **592
-testes** e a da nuvem **139**, passando.
+(fiscal) já começou e a Fase 6 tem o cardápio QR e a previsão de demanda com
+sugestão de compra. A suíte desktop tem **592 testes** e a da nuvem **169**,
+passando.
 
 O caixa e a nuvem são testados contra o **mesmo arquivo**: `contracts/push-day.json`
 é a fila de sincronização de um dia de caixa real, e a nuvem o aplica contra

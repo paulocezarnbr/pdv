@@ -133,3 +133,27 @@ body { margin: 0; min-height: 100dvh; background: #0f1114; color: #f4f4f4; font-
   .menu-qr-card { position: absolute; inset: 0; margin: auto; height: fit-content; }
   .menu-qr-card .menu-actions { display: none; }
 }
+
+/* Previsão da semana ------------------------------------------------------ */
+.forecast { display: grid; gap: 16px; }
+.forecast-warning { margin: 0; padding: 12px 16px; border-left: 3px solid #f1c21b; background: #262626; color: #e0e0e0; font-size: 14px; }
+.forecast-row { align-items: flex-start; }
+.forecast-row > div:first-child { flex: 1 1 auto; }
+/* Mais específico que `.data-row > div:not(.row-end)`, que vira grade. */
+.data-row > div.forecast-bars { flex: none; display: flex; align-items: flex-end; gap: 4px; height: 44px; }
+.forecast-bars span { display: grid; justify-items: center; gap: 2px; width: 12px; }
+.forecast-bars i { display: block; width: 8px; background: #4589ff; }
+.forecast-bars i.closed { background: #525252; }
+.forecast-bars b { font-weight: 400; font-size: 10px; color: #8d8d8d; }
+.forecast-total { min-width: 72px; text-align: right; }
+.forecast-buy { color: #f1c21b; }
+.forecast-count { display: flex; gap: 8px; align-items: flex-end; margin-top: 8px; max-width: 360px; }
+.forecast-count .cds--form-item { flex: 1 1 auto; }
+.forecast-footnote { margin: 0; color: #8d8d8d; font-size: 12px; line-height: 1.5; max-width: 880px; }
+@media (max-width: 760px) {
+  .forecast-row { flex-wrap: wrap; }
+  .forecast-bars { order: 3; }
+  .forecast-ingredient .row-end { margin-left: 0; text-align: left; width: 100%; justify-items: start; }
+  .forecast-ingredient .row-end .row-value { margin-left: 0; }
+  .forecast-count { flex-wrap: wrap; }
+}

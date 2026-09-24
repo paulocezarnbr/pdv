@@ -643,7 +643,35 @@ paralelo.
 - [ ] Pedido pela mesa a partir do cardápio, entrando na comanda do caixa com
       confirmação do garçom.
 - [ ] WhatsApp Cloud API + LLM anotador (com confirmação humana obrigatória).
-- [ ] Previsão de demanda (baseline sazonal + gradient boosting).
+- [x] **Previsão de demanda e sugestão de compra.** Painel "Previsão", por
+      loja, para os próximos 7 dias: quanto sai de cada produto (unidades ou
+      kg) e de cada insumo, e quanto comprar.
+      * **O modelo complexo só entra quando ganha do simples no passado da
+        própria loja.** Cada série é testada nas duas últimas semanas vividas
+        (walk-forward, sem olhar o futuro); o boosting só é usado se errar
+        pelo menos 5% menos que o sazonal. A tela mostra o método e o erro —
+        previsão sem o tamanho do erro é lida como certeza.
+      * **Sazonal:** média do mesmo dia da semana nas últimas 4 semanas em que
+        a loja abriu. **Boosting:** árvores rasas sobre o resíduo do sazonal,
+        implementadas aqui (sem dependência nova), com atributos que só usam
+        dado de 7+ dias antes — a semana inteira sai de uma vez, sem
+        realimentar previsão como venda. O dia do mês entra pelo salário.
+      * **Dia fechado é ausência, não zero:** feriado não derruba a semana
+        seguinte, e o dia da semana em que a loja costuma fechar é previsto
+        como zero. Dia contado no **fuso da loja**: a janta de sábado às 23h30
+        é sábado, não o domingo de UTC.
+      * **Insumo pela baixa real** (`order_item_ingredients`, que só passou a
+        chegar com a Fase 2.1), não pela receita de hoje aplicada ao passado.
+      * **Compra só com saldo conhecido.** O caixa não registra compra nem
+        contagem, então a nuvem não tinha saldo nenhum. O painel ganhou a
+        **contagem de estoque** (dono e gerente, auditada): saldo = última
+        contagem + movimentos sincronizados depois dela. Sem contagem, a linha
+        pede a contagem em vez de sugerir compra contra um saldo inventado.
+        Margem de segurança = 1,28 × desvio do erro × √dias (~90%).
+      * Determinístico, 16 ms por série, cache de 30 min por loja; migration
+        cloud 018. 21 testes do modelo e 9 contra PostgreSQL real com o papel
+        `erp_app`; 13 mutações nas regras, todas pegas.
+- [ ] Contagem e entrada de compra também no caixa (hoje só pelo painel).
 
 ---
 
