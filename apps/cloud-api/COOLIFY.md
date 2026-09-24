@@ -55,6 +55,17 @@ APP_VERSION=1.0.0
 
 `PORT` o Coolify injeta. **Não cadastre.**
 
+Opcional, para o cardápio QR:
+
+```
+PUBLIC_BASE_URL=https://painel.minhaloja.com.br
+```
+
+É o endereço que vai impresso no QR das mesas. Sem ele, o painel usa o
+endereço pelo qual foi aberto — o que dá certo no domínio do Coolify, e dá
+errado se alguém gerar os QR acessando por IP ou por um domínio provisório:
+o QR sairia impresso apontando para lá.
+
 ### Por que duas conexões
 
 `ADMIN_DATABASE_URL` é a string que o Coolify te deu. Ela **migra**: cria

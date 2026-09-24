@@ -133,6 +133,7 @@ def test_products_from_the_cloud_land_in_this_store(terminal) -> None:  # noqa: 
                 "products", id="22222222-0000-0000-0000-000000000001", tenant_id=TENANT,
                 sku="PAO-QUEIJO", name="Pão de queijo", pricing_mode="unit",
                 price_cents="650", tare_grams=0, is_active=True, barcode=None,
+                category="Salgados", description="Só do cardápio", menu_visible=True,
             ),
         ),
     })
@@ -141,6 +142,8 @@ def test_products_from_the_cloud_land_in_this_store(terminal) -> None:  # noqa: 
 
     row = database.query_one("SELECT * FROM products WHERE sku = 'PAO-QUEIJO'")
     assert row["store_id"] == config.store_id
+    # A categoria do cardápio desce para o caixa; descrição e visibilidade não.
+    assert row["category"] == "Salgados"
     assert row["price_cents"] == 650
     assert row["server_seq"] == 4711
 
@@ -239,9 +242,7 @@ def test_every_mapped_column_exists_on_both_sides(terminal) -> None:  # noqa: AN
         remote = cloud_columns(table)
         for column in mapping.columns:
             assert column in local, f"{table}.{column} não existe no caixa"
-            assert column in remote or column == "category", (
-                f"{table}.{column} não existe na nuvem"
-            )
+            assert column in remote, f"{table}.{column} não existe na nuvem"
 
 
 def test_map_row_ignores_what_it_does_not_know() -> None:

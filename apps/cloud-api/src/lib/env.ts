@@ -141,6 +141,17 @@ export const env = {
    *
    * Só deve ser ligada depois que o motor passar na homologação RJ/SVRS.
    */
+  /**
+   * Endereço público da retaguarda, para montar o link impresso no QR do
+   * cardápio. Opcional: sem ele o painel usa o endereço pelo qual foi aberto,
+   * que no Coolify é o domínio configurado. Definir evita que um QR gerado a
+   * partir de um acesso por IP ou por domínio provisório vá impresso na mesa.
+   */
+  get publicBaseUrl(): string | null {
+    const value = process.env.PUBLIC_BASE_URL?.trim();
+    return value ? value.replace(/\/+$/, "") : null;
+  },
+
   get fiscalProductionEnabled(): boolean {
     return process.env.FISCAL_PRODUCTION_ENABLED === "true";
   },

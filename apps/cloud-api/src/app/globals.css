@@ -71,3 +71,65 @@ body { margin: 0; min-height: 100dvh; background: #0f1114; color: #f4f4f4; font-
 .swal2-styled { border-radius: 0 !important; }
 @media (max-width: 1050px) { .fiscal-grid { grid-template-columns: 1fr; } }
 @media (max-width: 760px) { .fiscal-heading { flex-direction: column; align-items: stretch; } .form-pair { grid-template-columns: 1fr; } }
+
+/* -- Cardápio público (Fase 6) ------------------------------------------- */
+/* Claro de propósito: é lido no celular do cliente, muitas vezes sob luz do
+   dia na varanda, onde o tema escuro do painel vira espelho. */
+.menu-page { color-scheme: light; min-height: 100dvh; background: #faf8f5; color: #1c1b19; padding-bottom: 96px; }
+.menu-header { padding: 28px 20px 16px; background: #fff; border-bottom: 1px solid #ebe6df; }
+.menu-kicker { margin: 0 0 6px; color: #3f7aa8; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; font-weight: 600; }
+.menu-header h1 { margin: 0; font-size: clamp(1.7rem, 7vw, 2.4rem); line-height: 1.05; font-weight: 600; letter-spacing: -.02em; }
+.menu-tabs { position: sticky; top: 0; z-index: 5; display: flex; gap: 8px; overflow-x: auto; padding: 10px 16px; background: rgba(250, 248, 245, .96); border-bottom: 1px solid #ebe6df; scrollbar-width: none; }
+.menu-tabs a { flex: none; padding: 8px 14px; border-radius: 999px; background: #fff; border: 1px solid #e3ddd4; color: #1c1b19; text-decoration: none; font-size: 14px; }
+.menu-main { width: min(720px, 100%); margin: 0 auto; padding: 8px 16px; }
+.menu-section { padding-top: 20px; scroll-margin-top: 64px; }
+.menu-section h2 { margin: 0 0 10px; font-size: 18px; font-weight: 600; }
+.menu-strip { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px; }
+.menu-chip { flex: none; display: grid; gap: 2px; text-align: left; padding: 12px 14px; min-width: 140px; border-radius: 12px; border: 1px solid #e3ddd4; background: #fff; color: inherit; font: inherit; }
+.menu-chip small { color: #3f7aa8; font-variant-numeric: tabular-nums; }
+.menu-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.menu-item { position: relative; background: #fff; border: 1px solid #ebe6df; border-radius: 14px; }
+.menu-item-main { width: 100%; min-height: 64px; display: flex; gap: 12px; justify-content: space-between; align-items: flex-start; padding: 14px 64px 14px 14px; background: none; border: 0; text-align: left; color: inherit; font: inherit; }
+.menu-item-text { display: grid; gap: 4px; min-width: 0; }
+.menu-item-text strong { font-weight: 600; }
+.menu-item-text span { color: #6b655d; font-size: 14px; line-height: 1.35; }
+.menu-price { white-space: nowrap; font-variant-numeric: tabular-nums; font-weight: 600; }
+.menu-add { position: absolute; right: 12px; top: 12px; width: 40px; height: 40px; border-radius: 50%; border: 0; background: #3f7aa8; color: #fff; font-size: 20px; font-weight: 600; }
+.menu-pairs { display: grid; gap: 6px; padding: 0 14px 14px; }
+.menu-pairs small { color: #6b655d; }
+.menu-pairs button { text-align: left; padding: 10px 12px; border-radius: 10px; border: 1px dashed #b9cfe0; background: #f3f8fc; color: #1c1b19; font: inherit; }
+.menu-pairs em { font-style: normal; color: #3f7aa8; margin-left: 6px; }
+.menu-empty, .menu-footnote { color: #6b655d; text-align: center; padding: 24px 0; }
+.menu-bar { position: fixed; left: 12px; right: 12px; bottom: 12px; z-index: 10; display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 16px 18px; border: 0; border-radius: 14px; background: #1c1b19; color: #fff; font: inherit; box-shadow: 0 8px 24px rgba(0, 0, 0, .18); }
+.menu-sheet { position: fixed; inset: 0; z-index: 20; background: rgba(28, 27, 25, .45); display: flex; align-items: flex-end; }
+.menu-sheet-body { width: 100%; max-height: 85dvh; overflow-y: auto; background: #faf8f5; border-radius: 18px 18px 0 0; padding: 18px 16px 28px; display: grid; gap: 14px; }
+.menu-sheet-head { display: flex; justify-content: space-between; align-items: center; }
+.menu-sheet-head h2 { margin: 0; font-size: 20px; }
+.menu-sheet-head button { border: 0; background: none; color: #3f7aa8; font: inherit; font-weight: 600; }
+.menu-line { display: flex; justify-content: space-between; align-items: center; background: #fff; border: 1px solid #ebe6df; border-radius: 12px; padding: 10px 12px; }
+.menu-qty { display: flex; align-items: center; gap: 12px; }
+.menu-qty button { width: 34px; height: 34px; border-radius: 50%; border: 1px solid #e3ddd4; background: #fff; font-size: 18px; }
+.menu-total { margin: 0; display: flex; gap: 8px; align-items: baseline; font-size: 16px; }
+.menu-total strong { font-size: 22px; font-variant-numeric: tabular-nums; }
+.menu-hint { margin: 0; padding: 12px; border-radius: 12px; background: #fff4e0; color: #6b4a00; font-size: 14px; }
+@media (prefers-reduced-motion: no-preference) { .menu-sheet-body { animation: menu-rise 180ms ease-out; } }
+@keyframes menu-rise { from { transform: translateY(24px); opacity: .6; } to { transform: none; opacity: 1; } }
+
+/* -- Cardápio no painel --------------------------------------------------- */
+.menu-admin { margin-top: 32px; display: grid; gap: 16px; }
+.menu-actions, .data-row > div.menu-actions { margin-left: auto; display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+.menu-revoked { padding: 12px 16px; margin: 0; color: #8d8d8d; font-size: 12px; }
+.menu-products .rows { max-height: 560px; overflow-y: auto; }
+.menu-product-row { align-items: flex-start; }
+.menu-edit { width: 100%; display: grid; gap: 12px; padding: 4px 0; }
+.menu-qr-backdrop { position: fixed; inset: 0; z-index: 50; background: rgba(0, 0, 0, .6); display: grid; place-items: center; padding: 16px; }
+.menu-qr-card { background: #fff; color: #161616; padding: 24px; display: grid; gap: 10px; justify-items: center; text-align: center; width: min(360px, 100%); }
+.menu-qr-card h3 { margin: 0; font-size: 22px; font-weight: 600; }
+.menu-qr-card .section-label { color: #0f62fe !important; margin: 0; }
+.menu-qr-card code { font-size: 11px; color: #525252; word-break: break-all; }
+@media print {
+  body * { visibility: hidden; }
+  .menu-qr-card, .menu-qr-card * { visibility: visible; }
+  .menu-qr-card { position: absolute; inset: 0; margin: auto; height: fit-content; }
+  .menu-qr-card .menu-actions { display: none; }
+}

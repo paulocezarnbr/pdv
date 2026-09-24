@@ -570,7 +570,33 @@ paralelo.
       Python 3.14. Verificado num ambiente limpo: 457 testes com os pins.
 
 ### Fase 6 — IA & Canais (Sprint 17–20)
-- [ ] Cardápio QR com upsell contextual.
+- [x] **Cardápio QR com upsell contextual.** Página pública `/cardapio/<token>`,
+      feita para celular e clara de propósito (lida sob luz do dia). O token é
+      aleatório (144 bits), revogável e responde 404 igual para inexistente,
+      revogado ou restaurante suspenso — não dá para enumerar cardápios.
+      * **Upsell sem LLM**, pelas vendas da própria loja: "quem pede X também
+        pede Y", pela confiança da regra X → Y em pedidos **pagos** e itens
+        **não cancelados** dos últimos 90 dias, com suporte mínimo (3 pedidos)
+        para coincidência não virar sugestão. "Combina com a sua seleção" soma
+        as confianças de cada item escolhido, no navegador, sem requisição.
+        Os números de venda nunca chegam à página — só a ordem.
+      * **"Minha seleção" não é pedido**: é uma lista para mostrar ao garçom.
+        Um segundo caminho de pedido, sem ninguém da casa conferindo, reabriria
+        a porta que o PDV fecha no balcão. Pedido direto pela mesa exige
+        integração com o caixa e fica para uma etapa própria.
+      * **Painel:** criar QR por loja ou por mesa, imprimir (SVG nítido em
+        qualquer tamanho), revogar, e editar categoria, descrição e
+        visibilidade de cada produto — o **preço não se edita ali**, é do
+        cadastro e da nota. Dono e gerente editam; `viewer` só imprime. Tudo em
+        `panel_admin_events`. A categoria desce para o caixa (o `server_seq`
+        avança na edição).
+      * Estatística com cache de 10 min por loja: o cardápio é aberto por
+        dezenas de mesas no mesmo horário de pico.
+      * Migration cloud 016. 13 testes unitários e 13 contra PostgreSQL real
+        (papel `erp_app`), com 8 das 9 regras verificadas por mutação — a nona
+        (filtro de tenant na revogação) é segurada também pelo RLS.
+- [ ] Pedido pela mesa a partir do cardápio, entrando na comanda do caixa com
+      confirmação do garçom.
 - [ ] WhatsApp Cloud API + LLM anotador (com confirmação humana obrigatória).
 - [ ] Previsão de demanda (baseline sazonal + gradient boosting).
 

@@ -68,6 +68,10 @@ O que já funciona ponta a ponta, sem internet:
     interno isola o certificado/provedor; o PDV usa série própria apenas em
     queda comprovada antes do envio. Timeout ambíguo bloqueia uma segunda NFC-e.
 
+14. **Cardápio QR** (Fase 6): o cliente abre pelo QR da mesa, vê o cardápio
+    por categoria e recebe sugestões tiradas das vendas da própria loja
+    ("quem pede este também pede"). O pedido continua com o garçom.
+
 🔜 Próximo: homologar XML NFC-e 4.00, QR Code v3 e NT 2025.002 no RJ/SVRS. O
 motor de produção fica deliberadamente bloqueado até essa suíte passar; o núcleo
 não declara uma nota “autorizada” antes da resposta fiscal real.
