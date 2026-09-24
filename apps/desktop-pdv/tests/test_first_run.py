@@ -161,7 +161,7 @@ class _Cloud:
                     "max_discount_percent": "0",
                     "pin_hash": "argon2-fake",
                     "is_active": 1,
-                    "updated_at": "2026-09-24T10:00:00+00:00",
+                    "updated_at": "2026-09-24T10:00:00+00:00", "server_seq": "7",
                 },
             )
         return PullResponse(entity_table=request.entity_table, rows=rows, last_server_seq=count)

@@ -18,6 +18,7 @@ reenviar.
 from __future__ import annotations
 
 import logging
+import sqlite3
 from dataclasses import replace
 
 from pdv.config import AppConfig
@@ -25,6 +26,7 @@ from pdv.data.database import Database
 from pdv.remote.commands import RemoteCommandService
 from pdv.remote.inbox import InboxRepository
 from pdv.sync.outbox import CursorStore, OutboxReader
+from pdv.sync.pull_mapping import NOT_APPLIED, PULL_MAPPINGS, map_row
 from pdv.sync.protocol import (
     AuthError,
     CommandCycleReport,
@@ -41,7 +43,8 @@ from pdv.sync.protocol import (
 
 logger = logging.getLogger(__name__)
 
-#: Tabelas de cadastro que descem da retaguarda para o PDV.
+#: Tabelas de cadastro que a retaguarda oferece. Quais o caixa APLICA, e como,
+#: está em `pdv.sync.pull_mapping`.
 PULLABLE_TABLES: tuple[str, ...] = (
     "products",
     "recipes",
@@ -185,6 +188,12 @@ class SyncEngine:
         applied = 0
 
         for table in PULLABLE_TABLES:
+            if table in NOT_APPLIED:
+                # Não pedir o que não se vai aplicar: avançar o cursor sem
+                # aplicar perderia essas linhas para sempre quando o caixa
+                # aprender a aplicá-las.
+                logger.debug("Pull de %s adiado: %s", table, NOT_APPLIED[table])
+                continue
             cursor = self._cursors.get(table)
             try:
                 response = self._transport.pull(
@@ -202,19 +211,34 @@ class SyncEngine:
             if not response.rows:
                 continue
 
-            applied += self._apply_pulled_rows(table, response.rows)
+            try:
+                applied += self._apply_pulled_rows(table, response.rows)
+            except sqlite3.Error:
+                # Uma tabela que não aplica não pode impedir as outras — e o
+                # cursor fica onde estava, para a próxima tentativa pegar as
+                # mesmas linhas.
+                logger.exception("Pull de %s não pôde ser aplicado", table)
+                continue
             self._cursors.set(table, response.last_server_seq)
 
         return applied
 
     def _apply_pulled_rows(self, table: str, rows: tuple[dict[str, object], ...]) -> int:
-        """Aplica linhas de cadastro com UPSERT, numa transação por tabela."""
-        if table not in PULLABLE_TABLES:
+        """Aplica linhas de cadastro com UPSERT, numa transação por tabela.
+
+        As colunas vêm de `PULL_MAPPINGS`, nunca da resposta: o nome de coluna
+        interpolado no SQL é uma constante deste código (ver `pull_mapping.py`).
+        """
+        if table not in PULL_MAPPINGS:
             return 0
 
         applied = 0
         with self._db.transaction() as connection:
-            for row in rows:
+            for raw in rows:
+                row = map_row(table, dict(raw), self._config)
+                if row is None:
+                    logger.warning("Linha de %s descartada no pull (incompleta ou de outro tenant)", table)
+                    continue
                 columns = sorted(row.keys())
                 placeholders = ", ".join("?" for _ in columns)
                 column_list = ", ".join(columns)
