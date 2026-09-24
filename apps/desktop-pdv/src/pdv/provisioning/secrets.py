@@ -80,9 +80,9 @@ class SecretVault:
     def ensure_device_secret(self) -> bytes:
         """Devolve o segredo do terminal, criando-o na primeira execução.
 
-        Gerar localmente (e não receber do servidor) evita que a chave trafegue
-        pela rede. O servidor recebe apenas a chave pública do pareamento
-        durante a ativação.
+        Gerado aqui, e não recebido do servidor: quem cria a chave é o caixa
+        que vai assinar com ela. A nuvem recebe uma cópia **uma vez**, na
+        ativação, para conferir a cadeia — ver `activation.py`.
         """
         existing = self.load("device_secret")
         if existing is not None:

@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
+from pdv.config import cloud_api_root
 from pdv.remote.protocol import CommandKind, RemoteCommand
 from pdv.sync.protocol import (
     AuthError,
@@ -47,7 +48,8 @@ class HttpTransport:
         device_token: str,
         timeout_seconds: float = 20.0,
     ) -> None:
-        self._base_url = base_url.rstrip("/")
+        # As rotas abaixo são relativas à raiz `/api` (ver `cloud_api_root`).
+        self._base_url = cloud_api_root(base_url)
         self._device_token = device_token
         self._timeout = timeout_seconds
         self._client: httpx.Client | None = None

@@ -13,12 +13,19 @@ curta pode ser ditado por telefone sem que isso comprometa nada de duradouro: se
 vazar, ele expira antes de servir para algo, e queimá-lo custa um clique no
 painel.
 
-O que **nunca** trafega
------------------------
+O segredo do ledger viaja uma vez, e só aqui
+--------------------------------------------
 
-O `device_secret` (chave HMAC do ledger) é gerado localmente e não sai da
-máquina — ver `secrets.py`. A ativação transporta identidade e autorização, não
-a chave que torna a auditoria verificável.
+O `device_secret` (chave HMAC do ledger) é gerado localmente — ver
+`secrets.py` — e segue para a nuvem **uma única vez**, nesta chamada, por
+HTTPS. A nuvem precisa dele: a cadeia de auditoria é HMAC, simétrica, e a
+regra 3 da sincronização é justamente o servidor reconferir cada elo em vez de
+aceitar o autoatestado do caixa. Ela o guarda só para conferir, nunca o
+devolve, e uma reativação **não** o troca (`ON CONFLICT DO NOTHING`).
+
+Esta documentação dizia o contrário — que a chave nunca saía da máquina —, e a
+ativação de fato não a enviava. A nuvem, sem a chave, respondia 409 a todo
+lote: nenhum terminal ativado de verdade conseguia sincronizar.
 
 A regra que impede o pior erro de campo
 ---------------------------------------
@@ -39,6 +46,7 @@ import re
 from dataclasses import dataclass
 from typing import Protocol
 
+from pdv.config import cloud_api_root
 from pdv.data.database import Database
 from pdv.data.settings import SettingsStore
 from pdv.domain.errors import PdvError
@@ -83,7 +91,9 @@ class ActivationResult:
 class ActivationTransport(Protocol):
     """Contrato do canal de ativação. Injetável para testar sem rede."""
 
-    def activate(self, code: str, fingerprint: dict[str, str]) -> ActivationResult: ...
+    def activate(
+        self, code: str, fingerprint: dict[str, str], device_secret: bytes
+    ) -> ActivationResult: ...
 
 
 def normalize_code(raw: str) -> str:
@@ -115,13 +125,15 @@ def machine_fingerprint() -> dict[str, str]:
 
 
 class HttpActivationTransport:
-    """Fala com `POST {cloud}/devices/activate`."""
+    """Fala com `POST {cloud}/api/devices/activate`."""
 
     def __init__(self, base_url: str, timeout_seconds: float = 20.0) -> None:
         self._base_url = base_url.rstrip("/")
         self._timeout = timeout_seconds
 
-    def activate(self, code: str, fingerprint: dict[str, str]) -> ActivationResult:
+    def activate(
+        self, code: str, fingerprint: dict[str, str], device_secret: bytes
+    ) -> ActivationResult:
         try:
             import httpx
         except ImportError as exc:  # pragma: no cover
@@ -131,8 +143,12 @@ class HttpActivationTransport:
 
         try:
             response = httpx.post(
-                f"{self._base_url}/devices/activate",
-                json={"activation_code": code, "fingerprint": fingerprint},
+                f"{cloud_api_root(self._base_url)}/devices/activate",
+                json={
+                    "activation_code": code,
+                    "fingerprint": fingerprint,
+                    "device_secret_hex": device_secret.hex(),
+                },
                 timeout=self._timeout,
             )
         except Exception as exc:  # noqa: BLE001 - httpx tem muitas subclasses
@@ -218,7 +234,9 @@ def activate(
     store = SettingsStore(database)
     current = store.load()
 
-    result = transport.activate(normalized, machine_fingerprint())
+    result = transport.activate(
+        normalized, machine_fingerprint(), vault.ensure_device_secret()
+    )
 
     changing_tenant = (
         current.tenant_id is not None and current.tenant_id != result.tenant_id

@@ -52,7 +52,9 @@ from pdv.domain.models import (
     Sale,
     SaleItem,
     ScaleReading,
+    iso,
     new_id,
+    utc_now,
 )
 from pdv.hardware.printer.layout import ReceiptContext, build_sale_receipt
 from pdv.services.audit import AuditService
@@ -604,10 +606,27 @@ class CheckoutService:
                 connection, authorizer_id, frozenset({"manager"}),
                 "Cancelamento de item exige autorização de gerente.",
             )
+            canceled_at = iso(utc_now())
             connection.execute(
-                "UPDATE order_items SET canceled_at = datetime('now'), "
+                "UPDATE order_items SET canceled_at = ?, "
                 "canceled_by_user_id = ?, cancel_reason = ? WHERE id = ?",
-                (authorizer_id, reason, item.id),
+                (canceled_at, authorizer_id, reason, item.id),
+            )
+            # O item já foi enviado vivo quando entrou na venda. Sem este envio
+            # a nuvem o contava para sempre: CMV e ranking de produtos com
+            # comida que o gerente tirou da conta.
+            self._outbox.enqueue(
+                connection,
+                entity_table="order_items",
+                entity_id=item.id,
+                client_uuid=EntityId(new_id()),
+                operation="update",
+                payload={
+                    "id": item.id,
+                    "canceled_at": canceled_at,
+                    "canceled_by_user_id": authorizer_id,
+                    "cancel_reason": reason,
+                },
             )
 
             stock_repository = StockRepository(connection, self._outbox)

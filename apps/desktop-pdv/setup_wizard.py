@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import argparse
 import logging
-import os
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -37,12 +36,13 @@ from pdv.provisioning.activation import (
 from pdv.provisioning.detection import detect_all, settings_from_detection
 from pdv.provisioning.secrets import SecretVault
 from pdv.provisioning.smoke import CheckStatus, run_smoke_test
+from pdv.runtime import data_dir as runtime_data_dir
 
 logger = logging.getLogger("pdv.setup")
 
-DEFAULT_DATA_DIR = Path(
-    os.getenv("PDV_DATA_DIR", r"C:\ProgramData\ERPFood\PDV")
-)
+#: A mesma pasta que o `PDV.exe` abre (ver `pdv/runtime.py`): os dois
+#: precisam concordar, ou o caixa ignora o que o provisionamento gravou.
+DEFAULT_DATA_DIR = runtime_data_dir()
 
 #: Códigos de saída lidos pelo instalador para decidir o que mostrar ao lojista.
 EXIT_OK = 0

@@ -72,7 +72,8 @@ class DiscountTierService:
                  priority,int(requires_manager),now,client_uuid),
             )
             self._outbox.enqueue(connection,entity_table="discount_tiers",entity_id=tier_id,
-                client_uuid=client_uuid,operation="update" if existing else "insert",
+                client_uuid=EntityId(new_id()) if existing else client_uuid,
+                operation="update" if existing else "insert",
                 payload={"id":tier_id,"store_id":self._config.store_id,"code":code,
                          "name":name.strip(),"percent_basis_points":basis,"priority":priority,
                          "requires_manager":requires_manager,"is_active":True,"updated_at":now})
@@ -135,7 +136,7 @@ class DiscountTierService:
                 (customer_id,self._config.tenant_id,tier_id,actor_user_id,now,client_uuid),
             )
             self._outbox.enqueue(connection,entity_table="customer_discount_tiers",
-                entity_id=customer_id,client_uuid=client_uuid,
+                entity_id=customer_id,client_uuid=EntityId(new_id()) if existing else client_uuid,
                 operation="update" if existing else "insert",
                 payload={"customer_id":customer_id,"tier_id":tier_id,
                          "assigned_by_user_id":actor_user_id,"assigned_at":now})

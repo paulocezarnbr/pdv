@@ -60,6 +60,18 @@ class PrinterConfig:
     """Usado apenas pelo backend `file` (desenvolvimento e testes)."""
 
 
+def cloud_api_root(base_url: str) -> str:
+    """A raiz `/api` da nuvem, aceite quem digitou a origem ou a raiz.
+
+    Quem configura o terminal digita o endereço que aparece no navegador —
+    `https://api.loja.com.br` —, e todas as rotas da nuvem moram sob `/api`.
+    A ativação e a sincronização colavam o caminho direto na origem e recebiam
+    404; só o cliente fiscal normalizava. Agora os três passam por aqui.
+    """
+    base = base_url.rstrip("/")
+    return base if base.endswith("/api") else f"{base}/api"
+
+
 @dataclass(frozen=True, slots=True)
 class StockConfig:
     block_sale_on_negative_stock: bool = False

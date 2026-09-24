@@ -226,6 +226,16 @@ jobs:
       - name: O fluxo do terminal
         run: python apps/cloud-api/scripts/e2e.py
 
+      # O `e2e.py` monta payloads à mão; este usa o código do PDV — ativação,
+      # bootstrap, outbox, SyncEngine e HttpTransport. Foi por esse vão que
+      # passaram o fechamento de pedido recusado pela nuvem, a ativação sem o
+      # segredo do ledger e a rota sem `/api`: cada lado passava nos próprios
+      # testes, e um terminal real nunca sincronizou.
+      - name: O PDV de verdade contra a imagem
+        run: |
+          pip install httpx==0.28.1 pydantic==2.13.5 argon2-cffi==25.1.0
+          python apps/cloud-api/scripts/e2e_terminal.py
+
       - name: Log do contêiner, se algo falhou
         if: failure()
         run: docker logs erp-api-test

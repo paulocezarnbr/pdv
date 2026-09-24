@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol
 
+from pdv.config import cloud_api_root
 from pdv.domain.models import EntityId
 from pdv.fiscal.service import FiscalDocument, FiscalService
 
@@ -74,8 +75,7 @@ class HttpCloudFiscalGateway:
 
     def _endpoint(self, route: str) -> str:
         """Aceita tanto a origem (`https://host`) quanto a raiz `/api`."""
-        prefix = self._base_url if self._base_url.endswith("/api") else f"{self._base_url}/api"
-        return f"{prefix}/{route.lstrip('/')}"
+        return f"{cloud_api_root(self._base_url)}/{route.lstrip('/')}"
 
     def _call(self, method: str, path: str, **kwargs: object) -> CloudFiscalDocument:
         try:

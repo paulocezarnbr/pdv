@@ -105,6 +105,8 @@ class TableOrder:
     waiter_name: str = ""
     tip_cents: Cents = Cents(0)
     opened_at: str | None = None
+    subtotal_cents: Cents = Cents(0)
+    discount_cents: Cents = Cents(0)
 
     @property
     def bill_requested(self) -> bool:
@@ -207,7 +209,6 @@ class TableOrderService:
             )
 
         order_id = new_id()
-        now = iso(utc_now())
 
         try:
             with self._db.transaction() as connection:
@@ -223,30 +224,11 @@ class TableOrderService:
                     local_number=local_number,
                     channel="waiter",
                     origin_device_id=origin_device_id,
-                )
-                # `customer_id` guarda a **cópia** do rótulo, e não é redundância
-                # com `table_id`: renomear a mesa amanhã não pode reescrever o
-                # que saiu impresso no cupom de hoje.
-                connection.execute(
-                    "UPDATE orders SET table_id = ?, customer_id = ?, "
-                    "updated_at = ? WHERE id = ?",
-                    (table.id, table.label, now, order_id),
-                )
-
-                self._outbox.enqueue(
-                    connection,
-                    entity_table="orders",
-                    entity_id=order_id,
-                    client_uuid=client_uuid,
-                    operation="insert",
-                    payload={
-                        "id": order_id,
-                        "channel": "waiter",
-                        "table_id": table.id,
-                        "table_label": table.label,
-                        "local_number": local_number,
-                        "origin_device_id": origin_device_id,
-                    },
+                    # `customer_id` guarda a **cópia** do rótulo, e não é
+                    # redundância com `table_id`: renomear a mesa amanhã não pode
+                    # reescrever o que saiu impresso no cupom de hoje.
+                    table_id=table.id,
+                    table_label=table.label,
                 )
         except sqlite3.IntegrityError:
             # Corrida entre dois reenvios simultâneos do mesmo celular: o outro
@@ -395,6 +377,8 @@ class TableOrderService:
                     "id": order_id,
                     "status": "paid",
                     "closed_at": now,
+                    "subtotal_cents": int(order.subtotal_cents),
+                    "discount_cents": int(order.discount_cents),
                     "total_cents": int(order.total_cents),
                     "tip_cents": int(tip),
                     "table_id": order.table_id,
@@ -527,12 +511,26 @@ class TableOrderService:
 
     def clear_bill_request(self, order_id: EntityId) -> TableOrder:
         """Desfaz o pedido de conta — a mesa resolveu pedir sobremesa."""
+        order = self._require_open(order_id)
+        if not order.bill_requested:
+            return order
+
         now = iso(utc_now())
         with self._db.transaction() as connection:
             connection.execute(
                 "UPDATE orders SET bill_requested_at = NULL, updated_at = ?, "
                 "is_synced = 0 WHERE id = ? AND status = 'open'",
                 (now, order_id),
+            )
+            # Sem isto a retaguarda mostraria a mesa "pedindo a conta" até ela
+            # fechar, mesmo depois da sobremesa.
+            self._outbox.enqueue(
+                connection,
+                entity_table="orders",
+                entity_id=order_id,
+                client_uuid=EntityId(new_id()),
+                operation="update",
+                payload={"id": order_id, "bill_requested_at": None},
             )
         self._hub.publish(Event("order.bill_cleared", {"order_id": order_id}))
         return self.get_order(order_id)
@@ -558,12 +556,35 @@ class TableOrderService:
             raise ProductNotSellableError("Cancelar comanda exige motivo.")
 
         now = iso(utc_now())
+        item_reason = f"[comanda cancelada] {reason}"
         with self._db.transaction() as connection:
+            live = connection.execute(
+                "SELECT id FROM order_items WHERE order_id = ? AND canceled_at IS NULL",
+                (order_id,),
+            ).fetchall()
             connection.execute(
                 "UPDATE order_items SET canceled_at = ?, canceled_by_user_id = ?, "
                 "cancel_reason = ? WHERE order_id = ? AND canceled_at IS NULL",
-                (now, authorizer_id, f"[comanda cancelada] {reason}", order_id),
+                (now, authorizer_id, item_reason, order_id),
             )
+            # Os itens ANTES do pedido, e é a ordem que importa: pedido
+            # cancelado não se edita mais na nuvem. Sem estes envios o item
+            # continuava vivo lá, e o ranking de produtos contava comida que
+            # nunca foi cobrada.
+            for row in live:
+                self._outbox.enqueue(
+                    connection,
+                    entity_table="order_items",
+                    entity_id=EntityId(str(row["id"])),
+                    client_uuid=EntityId(new_id()),
+                    operation="update",
+                    payload={
+                        "id": str(row["id"]),
+                        "canceled_at": now,
+                        "canceled_by_user_id": authorizer_id,
+                        "cancel_reason": item_reason,
+                    },
+                )
             # Ticket na fila da cozinha de comanda cancelada some da tela: manter
             # é mandar preparar comida que ninguém vai receber.
             connection.execute(
@@ -586,6 +607,10 @@ class TableOrderService:
                 payload={
                     "id": order_id,
                     "status": "canceled",
+                    "closed_at": now,
+                    "subtotal_cents": 0,
+                    "discount_cents": 0,
+                    "total_cents": 0,
                     "authorized_by_user_id": authorizer_id,
                     "reason": reason,
                 },
@@ -666,7 +691,7 @@ class TableOrderService:
                 payload={
                     "id": order_id,
                     "table_id": table.id,
-                    "table_label": table.label,
+                    "customer_id": table.label,
                 },
             )
             self._audit().append(
@@ -765,17 +790,15 @@ class TableOrderService:
         now = iso(utc_now())
 
         with self._db.transaction() as connection:
-            SaleRepository(connection, self._outbox).add_item(
-                item, order_id=order_id, tenant_id=EntityId(self._config.tenant_id)
-            )
             # Quem lançou, gravado no item e não só na comanda: mesa grande é
             # atendida por mais de uma pessoa, e atribuir tudo a quem abriu
             # apagaria o segundo garçom do relatório e da trilha.
-            if created_by_user_id:
-                connection.execute(
-                    "UPDATE order_items SET created_by_user_id = ? WHERE id = ?",
-                    (created_by_user_id, item.id),
-                )
+            SaleRepository(connection, self._outbox).add_item(
+                item,
+                order_id=order_id,
+                tenant_id=EntityId(self._config.tenant_id),
+                created_by_user_id=created_by_user_id,
+            )
             connection.execute(
                 "UPDATE orders SET subtotal_cents = subtotal_cents + ?, "
                 "total_cents = total_cents + ?, updated_at = ? WHERE id = ?",
@@ -795,20 +818,6 @@ class TableOrderService:
                     notes.strip()[:200] or None, now, now, now,
                     self._config.device_id, new_id(),
                 ),
-            )
-            self._outbox.enqueue(
-                connection,
-                entity_table="order_items",
-                entity_id=item.id,
-                client_uuid=client_uuid,
-                operation="insert",
-                payload={
-                    "order_id": order_id,
-                    "product_id": product.id,
-                    "quantity": str(quantity),
-                    "total_cents": int(total),
-                    "created_by_user_id": created_by_user_id,
-                },
             )
 
         self._hub.publish(
@@ -836,6 +845,7 @@ class TableOrderService:
     _SELECT = (
         "SELECT o.id, o.client_uuid, o.local_number, o.customer_id, o.status, "
         "       o.total_cents, o.tip_cents, o.table_id, o.bill_requested_at, "
+        "       o.subtotal_cents, o.discount_cents, "
         "       o.operator_id, o.opened_at, u.name AS waiter_name, "
         "       (SELECT COUNT(*) FROM order_items i "
         "         WHERE i.order_id = o.id AND i.canceled_at IS NULL) AS items "
@@ -973,6 +983,8 @@ def _to_order(row: sqlite3.Row) -> TableOrder:
         waiter_name=str(row["waiter_name"] or ""),
         tip_cents=Cents(int(row["tip_cents"] or 0)),
         opened_at=str(row["opened_at"]) if row["opened_at"] else None,
+        subtotal_cents=Cents(int(row["subtotal_cents"] or 0)),
+        discount_cents=Cents(int(row["discount_cents"] or 0)),
     )
 
 

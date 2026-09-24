@@ -12,9 +12,15 @@
  *    NOTHING` transforma o reenvio em `duplicate` — que o cliente trata como
  *    sucesso.
  *
- * 2. **O lote inteiro é uma transação.** Ou entra tudo, ou nada. Aplicação
- *    parcial deixaria o item de venda gravado sem o movimento de estoque
- *    correspondente, e o CMV do tenant passaria a mentir em silêncio.
+ * 2. **O lote inteiro é uma transação.** Falha do banco desfaz tudo e o
+ *    terminal reenvia. Cada item roda num SAVEPOINT, porém: um payload que o
+ *    banco recusa (NOT NULL, CHECK, tipo) vira `rejected` sozinho e vai para a
+ *    quarentena do terminal, à vista. Antes ele derrubava o lote — e todos os
+ *    seguintes, porque a fila anda em ordem —, e a loja parava de sincronizar
+ *    por causa de uma linha.
+ *
+ * `update` é aplicado como UPDATE de verdade, com lista própria de colunas e
+ * de dono (`UPDATABLE`) e idempotência pelo `client_uuid` da operação.
  *
  * 3. **A cadeia de auditoria é revalidada aqui.** O cliente afirma
  *    integridade; o servidor confere. Nunca se aceita o autoatestado de um
@@ -112,6 +118,10 @@ const WRITABLE: Readonly<Record<string, readonly string[]>> = {
   customer_discount_tiers: [
     "customer_id", "client_uuid", "tier_id", "assigned_by_user_id", "assigned_at",
   ],
+  store_tables: [
+    "id", "store_id", "client_uuid", "label", "area", "seats", "sort_order",
+    "is_active",
+  ],
   audit_ledger: [
     "id", "store_id", "device_id", "client_uuid", "seq", "event_type",
     "severity", "actor_user_id", "authorizer_user_id", "payload_json",
@@ -120,6 +130,87 @@ const WRITABLE: Readonly<Record<string, readonly string[]>> = {
 };
 
 export const WRITABLE_TABLES = Object.freeze(Object.keys(WRITABLE));
+
+/**
+ * O que um `update` do terminal pode mudar, e em qual linha.
+ *
+ * Mais estreito que `WRITABLE`, e de propósito: quem cria a linha preenche o
+ * registro inteiro, mas quem a altera só mexe no que muda de verdade na vida
+ * da entidade. `local_number`, `device_id`, `opened_at` e o preço de um item
+ * lançado não mudam — um terminal que tentasse mudá-los estaria reescrevendo a
+ * venda, e isso não é atualização, é adulteração.
+ *
+ * `scope` diz de quem é a linha:
+ *
+ * * `own_open_order` — pedido **deste** terminal e ainda aberto. Fechado,
+ *   corrige-se por estorno, nunca por edição; e o caixa de uma loja não
+ *   reescreve a venda de outro caixa.
+ * * `item_of_own_open_order` — item de um pedido assim, e o pedido de destino
+ *   (quando o item muda de comanda) precisa ser assim também.
+ * * `store` — cadastro desta loja.
+ * * `tenant` — cadastro do tenant (o RLS e o `WHERE tenant_id` bastam).
+ */
+type UpdateScope = "own_open_order" | "item_of_own_open_order" | "store" | "tenant";
+
+interface UpdateRule {
+  key: string;
+  columns: readonly string[];
+  scope: UpdateScope;
+}
+
+const UPDATABLE: Readonly<Record<string, UpdateRule>> = {
+  orders: {
+    key: "id",
+    columns: [
+      "status", "customer_id", "table_id", "served_by_user_id",
+      "subtotal_cents", "discount_cents", "total_cents", "tip_cents",
+      "closed_at", "bill_requested_at",
+    ],
+    scope: "own_open_order",
+  },
+  order_items: {
+    key: "id",
+    columns: ["order_id", "canceled_at", "canceled_by_user_id", "cancel_reason"],
+    scope: "item_of_own_open_order",
+  },
+  discount_tiers: {
+    key: "id",
+    columns: [
+      "name", "percent_basis_points", "priority", "requires_manager",
+      "valid_from", "valid_until", "is_active", "updated_at",
+    ],
+    scope: "store",
+  },
+  customer_credit_accounts: {
+    key: "customer_id",
+    columns: ["limit_cents", "due_days", "is_active", "updated_at"],
+    scope: "tenant",
+  },
+  store_tables: {
+    key: "id",
+    columns: ["label", "area", "seats", "sort_order", "is_active", "updated_at"],
+    scope: "store",
+  },
+  customer_discount_tiers: {
+    key: "customer_id",
+    columns: ["tier_id", "assigned_by_user_id", "assigned_at"],
+    scope: "tenant",
+  },
+};
+
+/**
+ * Erro do Postgres que é **do dado**, e não do banco.
+ *
+ * Classe 22 (dado inválido: texto onde vai número, data impossível) e 23
+ * (restrição: NOT NULL, chave, CHECK, gatilho de proteção). Reenviar o mesmo
+ * payload dá o mesmo erro — então é recusa, e o item vai para a quarentena do
+ * terminal. Qualquer outro erro (conexão, serialização, disco) é do banco, e
+ * derruba o lote para o terminal tentar de novo.
+ */
+function isDataError(error: unknown): error is { code: string; message: string } {
+  const code = (error as { code?: unknown } | null)?.code;
+  return typeof code === "string" && /^2[23]/.test(code);
+}
 
 export interface MergeContext {
   tenantId: string;
@@ -154,11 +245,7 @@ export class SyncMerger {
         continue;
       }
 
-      results.push(
-        item.entity_table === "audit_ledger"
-          ? await this.applyAuditEntry(item, tx)
-          : await this.applyGeneric(item, tx),
-      );
+      results.push(await this.applyIsolated(item, tx));
     }
 
     // Devolve na ordem em que o cliente enviou: ele casa resultado com item
@@ -173,6 +260,145 @@ export class SyncMerger {
           message: "item sem resultado",
         },
     );
+  }
+
+  /**
+   * Um item, dentro de um SAVEPOINT.
+   *
+   * Sem isto, um único payload inválido derrubava o lote inteiro — e com ele
+   * todo lote seguinte, porque o terminal reenvia em ordem: a loja parava de
+   * sincronizar por causa de uma linha. Foi exatamente o que aconteceu com o
+   * `update` de pedido, que batia no NOT NULL de `local_number` a cada mesa
+   * fechada.
+   *
+   * Erro do dado vira `rejected` (quarentena no terminal, visível, esperando
+   * gente). Erro do banco continua derrubando o lote: esse o reenvio resolve.
+   */
+  private async applyIsolated(item: SyncItem, tx: Tx): Promise<ItemResult> {
+    try {
+      return await tx.savepoint((sp) =>
+        item.entity_table === "audit_ledger"
+          ? this.applyAuditEntry(item, sp)
+          : item.operation === "update"
+            ? this.applyUpdate(item, sp)
+            : item.operation === "insert"
+              ? this.applyGeneric(item, sp)
+              : Promise.resolve(reject(item, `operação não suportada: ${item.operation}`)),
+      );
+    } catch (error) {
+      if (isDataError(error)) {
+        return reject(item, `dado recusado pelo banco (${error.code}): ${error.message}`);
+      }
+      throw error;
+    }
+  }
+
+  // -- atualização --------------------------------------------------------- //
+
+  /**
+   * Aplica um `update`: só as colunas de `UPDATABLE`, só na linha que o
+   * terminal pode alterar, e uma vez só.
+   *
+   * A idempotência é pelo `client_uuid` da operação, em
+   * `sync_applied_updates`. O lote reenviado depois de uma resposta perdida
+   * volta como `duplicate` em vez de reaplicar mudança velha por cima de nova.
+   */
+  private async applyUpdate(item: SyncItem, tx: Tx): Promise<ItemResult> {
+    const rule = UPDATABLE[item.entity_table];
+    if (!rule) {
+      return reject(item, `atualização não aceita em ${item.entity_table}`);
+    }
+    const { tenantId, storeId, deviceId } = this.context;
+
+    const seen = await tx`
+      SELECT 1 FROM sync_applied_updates
+       WHERE tenant_id = ${tenantId} AND client_uuid = ${item.client_uuid}
+    `;
+    if (seen.length) return { client_uuid: item.client_uuid, status: "duplicate" };
+
+    const key = String(item.payload[rule.key] ?? item.entity_id);
+    const changes: Record<string, unknown> = {};
+    for (const column of rule.columns) {
+      if (Object.hasOwn(item.payload, column)) {
+        changes[column] = normalize(item.payload[column]);
+      }
+    }
+
+    const refusal = await this.updateRefusal(rule, key, changes, tx);
+    if (refusal) return reject(item, refusal);
+
+    const columns = Object.keys(changes).sort();
+    if (columns.length) {
+      const params: unknown[] = [...columns.map((c) => changes[c]), tenantId, key];
+      let where = `tenant_id = $${columns.length + 1} AND "${rule.key}"::text = $${columns.length + 2}`;
+      if (rule.scope === "store") {
+        params.push(storeId);
+        where += ` AND store_id = $${params.length}`;
+      }
+      // O `server_seq` anda: quem lê por cursor precisa enxergar a mudança.
+      const updated = await tx.unsafe(
+        `UPDATE ${item.entity_table}
+            SET ${columns.map((c, i) => `"${c}" = $${i + 1}`).join(", ")},
+                server_seq = nextval('server_seq_global')
+          WHERE ${where}
+          RETURNING 1`,
+        params as never[],
+      );
+      if (!updated.length) {
+        return reject(item, `${item.entity_table} ${key} não existe nesta loja`);
+      }
+    }
+
+    await tx`
+      INSERT INTO sync_applied_updates (tenant_id, client_uuid, device_id, entity_table, entity_id)
+      VALUES (${tenantId}, ${item.client_uuid}, ${deviceId}, ${item.entity_table}, ${key})
+    `;
+    return { client_uuid: item.client_uuid, status: "applied" };
+  }
+
+  /**
+   * Por que o terminal NÃO pode aplicar esta atualização — ou `null`.
+   *
+   * A mensagem vai para a quarentena do terminal e para o suporte, então diz o
+   * motivo em vez de só "recusado".
+   */
+  private async updateRefusal(
+    rule: UpdateRule,
+    key: string,
+    changes: Record<string, unknown>,
+    tx: Tx,
+  ): Promise<string | null> {
+    const { tenantId, deviceId } = this.context;
+
+    const ownOpenOrder = async (orderId: string, label: string): Promise<string | null> => {
+      const [order] = await tx<{ device_id: string; status: string }[]>`
+        SELECT device_id::text AS device_id, status FROM orders
+         WHERE tenant_id = ${tenantId} AND id::text = ${orderId}
+      `;
+      if (!order) return `${label} ${orderId} ainda não chegou à nuvem`;
+      if (order.device_id !== deviceId) return `${label} ${orderId} é de outro terminal`;
+      if (order.status !== "open") {
+        return `${label} ${orderId} já está ${order.status}: pedido fechado não se edita`;
+      }
+      return null;
+    };
+
+    if (rule.scope === "own_open_order") {
+      return ownOpenOrder(key, "pedido");
+    }
+    if (rule.scope === "item_of_own_open_order") {
+      const [row] = await tx<{ order_id: string }[]>`
+        SELECT order_id::text AS order_id FROM order_items
+         WHERE tenant_id = ${tenantId} AND id::text = ${key}
+      `;
+      if (!row) return `item ${key} ainda não chegou à nuvem`;
+      const origin = await ownOpenOrder(row.order_id, "pedido do item");
+      if (origin) return origin;
+      if (changes["order_id"] !== undefined && String(changes["order_id"]) !== row.order_id) {
+        return ownOpenOrder(String(changes["order_id"]), "pedido de destino");
+      }
+    }
+    return null;
   }
 
   // -- auditoria ----------------------------------------------------------- //

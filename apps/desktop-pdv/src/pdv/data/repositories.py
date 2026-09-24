@@ -287,13 +287,28 @@ class SaleRepository:
         local_number: int,
         channel: str = "counter",
         origin_device_id: EntityId | None = None,
+        table_id: EntityId | None = None,
+        table_label: str | None = None,
     ) -> None:
-        """Cria o pedido.
+        """Cria o pedido **e** o anuncia à nuvem, já com a ficha inteira.
 
         `origin_device_id` distingue **quem lançou** de **onde está gravado**.
         Um pedido do garçom nasce no celular e é gravado no PDV; manter a origem
         é o que permite ao relatório dizer de qual aparelho saiu cada venda — e
         ao módulo anti-furto separar o que veio do balcão do que veio do salão.
+
+        Por que o INSERT sai na abertura, e não no fechamento
+        ------------------------------------------------------
+
+        O pedido do balcão só era enviado ao fechar, e sem `local_number`,
+        `channel`, `operator_id` e `opened_at`. A nuvem o recusava pelo NOT
+        NULL, o lote caía com ele, e **nenhuma** venda do balcão chegava. E um
+        item cancelado antes de fechar não tinha pedido na nuvem a que se
+        referir. Agora todo pedido segue o mesmo ciclo: um INSERT completo aqui,
+        e cada mudança depois é um `update` com identidade própria.
+
+        `table_label` vai em `customer_id` — a cópia do rótulo que o cupom
+        imprimiu (ver `edge/orders.py`).
         """
         now = iso(utc_now())
         self._connection.execute(
@@ -301,14 +316,32 @@ class SaleRepository:
             INSERT INTO orders
                 (id, tenant_id, store_id, device_id, local_number, channel, status,
                  operator_id, opened_at, created_at, updated_at, origin_device_id,
-                 client_uuid, is_synced)
-            VALUES (?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, 0)
+                 client_uuid, table_id, customer_id, is_synced)
+            VALUES (?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, 0)
             """,
             (
                 order_id, tenant_id, store_id, device_id, local_number, channel,
                 operator_id, now, now, now, origin_device_id or device_id,
-                client_uuid,
+                client_uuid, table_id, table_label,
             ),
+        )
+        self._outbox.enqueue(
+            self._connection,
+            entity_table="orders",
+            entity_id=order_id,
+            client_uuid=client_uuid,
+            operation="insert",
+            payload={
+                "id": order_id,
+                "local_number": local_number,
+                "channel": channel,
+                "status": "open",
+                "operator_id": operator_id,
+                "opened_at": now,
+                "table_id": table_id,
+                "customer_id": table_label,
+                "origin_device_id": origin_device_id or device_id,
+            },
         )
 
     def add_item(
@@ -317,7 +350,15 @@ class SaleRepository:
         *,
         order_id: EntityId,
         tenant_id: EntityId,
+        created_by_user_id: EntityId | None = None,
     ) -> None:
+        """Grava o item e o envia à nuvem numa operação só.
+
+        `created_by_user_id` entra aqui, e não num UPDATE depois: o item saía
+        para a nuvem sem ele, e um segundo envio com o mesmo `client_uuid`
+        trazendo o autor era descartado como duplicata — o garçom sumia do
+        relatório da retaguarda.
+        """
         now = iso(item.created_at)
         self._connection.execute(
             """
@@ -325,8 +366,8 @@ class SaleRepository:
                 (id, order_id, tenant_id, product_id, product_name, pricing_mode,
                  quantity, gross_weight_grams, tare_grams, net_weight_grams,
                  unit_price_cents, total_cents, scale_reading_raw, created_at,
-                 client_uuid, is_synced)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+                 client_uuid, created_by_user_id, is_synced)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
             """,
             (
                 item.id, order_id, tenant_id, item.product_id, item.product_name,
@@ -334,6 +375,7 @@ class SaleRepository:
                 int(item.gross_weight_grams), int(item.tare_grams),
                 int(item.net_weight_grams), int(item.unit_price_cents),
                 int(item.total_cents), item.scale_reading_raw, now, item.client_uuid,
+                created_by_user_id,
             ),
         )
 
@@ -373,6 +415,7 @@ class SaleRepository:
                 "total_cents": int(item.total_cents),
                 "scale_reading_raw": item.scale_reading_raw,
                 "created_at": now,
+                "created_by_user_id": created_by_user_id,
                 "client_uuid": item.client_uuid,
                 "ingredients": [
                     {
@@ -412,23 +455,26 @@ class SaleRepository:
             "subtotal_cents = ?, discount_cents = ?, total_cents = ? WHERE id = ?",
             (now, now, int(subtotal), int(discount), int(total), order_id),
         )
+        # `update`, com identidade própria: o INSERT já saiu na abertura (ver
+        # `create_order`). Reusar o `client_uuid` do pedido faria a nuvem
+        # descartar o fechamento como duplicata da abertura.
+        customer = self._connection.execute(
+            "SELECT customer_id FROM orders WHERE id = ?", (order_id,)
+        ).fetchone()
         self._outbox.enqueue(
             self._connection,
             entity_table="orders",
             entity_id=order_id,
-            client_uuid=client_uuid,
-            operation="insert",
+            client_uuid=EntityId(new_id()),
+            operation="update",
             payload={
                 "id": order_id,
-                "tenant_id": tenant_id,
-                "store_id": store_id,
-                "device_id": device_id,
                 "status": "paid",
+                "customer_id": customer[0] if customer else None,
                 "subtotal_cents": int(subtotal),
                 "discount_cents": int(discount),
                 "total_cents": int(total),
                 "closed_at": now,
-                "client_uuid": client_uuid,
             },
         )
 

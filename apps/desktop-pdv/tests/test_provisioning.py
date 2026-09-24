@@ -492,10 +492,12 @@ class FakeActivationTransport:
         self._error = error
         self.codes_received: list[str] = []
         self.fingerprints: list[dict] = []
+        self.secrets: list[bytes] = []
 
-    def activate(self, code: str, fingerprint: dict) -> ActivationResult:
+    def activate(self, code: str, fingerprint: dict, device_secret: bytes) -> ActivationResult:
         self.codes_received.append(code)
         self.fingerprints.append(fingerprint)
+        self.secrets.append(device_secret)
         if self._error is not None:
             raise self._error
         assert self._result is not None
@@ -563,6 +565,55 @@ def test_activation_persists_identity_and_token(
     assert result.store_name == "Confeitaria da Esquina"
     # O código chega normalizado ao servidor, não como foi digitado.
     assert transport.codes_received == ["A1B2C3D4"]
+
+
+def test_activation_hands_the_ledger_secret_to_the_cloud(
+    database: Database, tmp_path: Path
+) -> None:
+    """A nuvem confere a cadeia com a MESMA chave que a assina.
+
+    A ativação não enviava a chave, e a nuvem respondia 409 a todo lote: nenhum
+    terminal ativado de verdade sincronizava.
+    """
+    vault = SecretVault(tmp_path / "secrets")
+    transport = FakeActivationTransport(_result())
+
+    activate("a1b2-c3d4", database=database, vault=vault, transport=transport)
+
+    assert transport.secrets == [vault.ensure_device_secret()]
+
+
+def test_the_http_activation_speaks_the_cloud_route(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Quem digita o endereço do navegador não sabe que as rotas moram em /api."""
+    import httpx
+
+    from pdv.provisioning.activation import HttpActivationTransport
+
+    sent: dict[str, object] = {}
+
+    def fake_post(url: str, json: dict, timeout: float) -> httpx.Response:  # noqa: A002
+        sent.update(url=url, body=json)
+        return httpx.Response(200, json={
+            "tenant_id": "t", "store_id": "s", "device_id": "d", "sync_token": "tok",
+        }, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    HttpActivationTransport("https://api.loja.com.br/").activate(
+        "A1B2C3D4", {"hostname": "caixa"}, bytes.fromhex("01ff")
+    )
+
+    assert sent["url"] == "https://api.loja.com.br/api/devices/activate"
+    assert sent["body"]["device_secret_hex"] == "01ff"  # type: ignore[index]
+
+
+@pytest.mark.parametrize("configured", [
+    "https://api.loja.com.br", "https://api.loja.com.br/", "https://api.loja.com.br/api",
+    "https://api.loja.com.br/api/",
+])
+def test_every_client_finds_the_api_root(configured: str) -> None:
+    from pdv.config import cloud_api_root
+
+    assert cloud_api_root(configured) == "https://api.loja.com.br/api"
 
 
 def test_token_goes_to_the_vault_never_to_the_database(

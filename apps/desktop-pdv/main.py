@@ -49,6 +49,7 @@ from pdv.hardware.scale.worker import ScaleService
 from pdv.provisioning.activation import load_sync_token
 from pdv.provisioning.secrets import SecretVault
 from pdv.remote.commands import RemoteCommandService
+from pdv.runtime import load_runtime, should_seed_demo
 from pdv.services.audit import AuditService
 from pdv.services.authorization import AuthorizationService
 from pdv.services.cash_session import CashSessionError, CashSessionService
@@ -127,11 +128,13 @@ def main() -> int:
 
         return run_cli()
 
-    config = AppConfig.from_env()
-
-    database = Database(config.database_path)
-    database.migrate()
-    seed_demo_data(database, config)
+    # A mesma pasta, o mesmo cofre e a mesma ativação que o `PDVSetup.exe`
+    # gravou. Antes o caixa montava tudo só do ambiente e ignorava o
+    # provisionamento inteiro (ver `pdv/runtime.py`).
+    runtime = load_runtime()
+    config, database = runtime.config, runtime.database
+    if should_seed_demo(runtime):
+        seed_demo_data(database, config)
 
     integrity_error = verify_audit_integrity(database, config)
 

@@ -218,10 +218,12 @@ describeDb("contra um Postgres de verdade", () => {
     expect(original!.payload_json).toBe('{"total":2100}');
   });
 
-  it("a transação do lote é atômica", async () => {
-    // Se um item estourar no meio, nada do lote pode ficar. Aplicação parcial
-    // deixaria o item de venda gravado sem o movimento de estoque, e o CMV do
-    // tenant passaria a mentir em silêncio.
+  it("item que o banco recusa vai sozinho para a quarentena", async () => {
+    // Antes, o lote inteiro caía — e com ele todo lote seguinte, porque o
+    // terminal reenvia em ordem: uma linha inválida parava a loja. Agora a
+    // linha é recusada com o motivo, e o resto do lote entra. Falha do BANCO
+    // (conexão, disco) continua derrubando o lote inteiro: essa o reenvio
+    // resolve, e o teste de unidade cobre.
     const bom = orderItem(randomUUID());
     const ruim: SyncItem = {
       entity_table: "orders",
@@ -232,15 +234,15 @@ describeDb("contra um Postgres de verdade", () => {
       payload: { id: randomUUID(), local_number: "não é número" },
     };
 
-    await expect(
-      sql.begin((tx) => merger().apply([bom, ruim], tx)),
-    ).rejects.toThrow();
+    const results = await sql.begin((tx) => merger().apply([bom, ruim], tx));
 
+    expect(results.map((r) => r.status)).toEqual(["applied", "rejected"]);
+    expect(results[1]!.message).toContain("22P02");
     const rows = await sql`
       SELECT id FROM orders
        WHERE tenant_id = ${tenant} AND client_uuid = ${bom.client_uuid}
     `;
-    expect(rows).toHaveLength(0);
+    expect(rows).toHaveLength(1);
   });
 
   it("um comando é assinado com o segredo daquele terminal", async () => {

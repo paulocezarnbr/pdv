@@ -91,6 +91,24 @@ Cada fase termina com **critério de aceite verificável**. Não avance sem ele.
       cadastros usam LWW por `updated_at` com desempate por `server_seq`.
 - **Aceite:** 500 vendas offline com 3 quedas de rede no meio do upload →
   zero duplicidade e zero perda no PostgreSQL.
+- [x] **Contrato terminal ↔ nuvem, provado ponta a ponta.** O aceite acima
+      rodava contra uma nuvem dublada que aceitava qualquer coisa, e a nuvem
+      era testada com payloads escritos à mão. Nenhum terminal real
+      sincronizava, por quatro motivos independentes, todos corrigidos:
+      1. o fechamento do pedido saía como INSERT sem `local_number` e a nuvem
+         só sabia inserir — o `update` virou UPDATE de verdade, com colunas e
+         dono restritos (`UPDATABLE`) e idempotência própria
+         (`sync_applied_updates`);
+      2. a ativação não entregava o segredo do ledger, e a nuvem respondia
+         409 a todo lote;
+      3. a sincronização e a ativação colavam a rota na origem, sem `/api`;
+      4. o `PDV.exe` ignorava o provisionamento: abria `./pdv_local.db` com os
+         IDs de demonstração e a chave de desenvolvimento (`pdv/runtime.py`).
+      Um item que o banco recusa vai sozinho para a quarentena, em vez de
+      derrubar o lote e parar a fila. O cancelamento de item do balcão e o
+      mapa do salão passaram a subir. `scripts/e2e_terminal.py` roda o código
+      do PDV contra a imagem Docker na CI; os quatro defeitos foram
+      reintroduzidos um a um e todos derrubam o teste.
 
 ### Fase 2.5 — Instalador Único e Autossuficiente (Sprint 7–8)
 

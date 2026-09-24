@@ -18,7 +18,7 @@ import pytest
 from pdv.config import AppConfig, PrinterConfig
 from pdv.data.database import Database
 from pdv.data.repositories import ProductRepository
-from pdv.data.seed import DEMO_OPERATOR_ID, seed_demo_data
+from pdv.data.seed import DEMO_MANAGER_ID, DEMO_OPERATOR_ID, seed_demo_data
 from pdv.domain.models import (
     Cents,
     EntityId,
@@ -52,6 +52,11 @@ class FakeCloud:
     Implementa as mesmas quatro regras do servidor real: idempotência por
     `(tenant, client_uuid)`, lote atômico, revalidação do HMAC da auditoria e
     marca d'água alta por dispositivo.
+
+    E, como o servidor real, distingue `insert` de `update`. A versão anterior
+    guardava toda operação como uma linha nova — aceitava qualquer coisa, e por
+    isso nunca acusou que a nuvem de verdade recusava o fechamento do pedido.
+    Um `update` aqui só vale para uma linha que já chegou.
     """
 
     def __init__(self, secret: bytes) -> None:
@@ -97,10 +102,13 @@ class FakeCloud:
 
             if key in self.stored:
                 acks.append(ItemAck(item.client_uuid, ItemStatus.DUPLICATE))
+            elif item.operation == "update":
+                acks.append(self._apply_update(batch, item, key))
             else:
                 self.stored[key] = {
                     "entity_table": item.entity_table,
-                    "payload": item.payload,
+                    "entity_id": item.entity_id,
+                    "payload": dict(item.payload),
                 }
                 acks.append(ItemAck(item.client_uuid, ItemStatus.APPLIED))
 
@@ -117,6 +125,25 @@ class FakeCloud:
             rows=(),
             last_server_seq=request.since_server_seq,
         )
+
+    def _apply_update(self, batch: PushBatch, item, key) -> ItemAck:  # noqa: ANN001
+        entity_key = str(item.payload.get("id") or item.payload.get("customer_id")
+                         or item.entity_id)
+        target = next(
+            (row for (tenant, _), row in self.stored.items()
+             if tenant == batch.tenant_id and row["entity_table"] == item.entity_table
+             and row.get("operation", "insert") == "insert"
+             and str(row["payload"].get("id") or row["payload"].get("customer_id")
+                     or row.get("entity_id")) == entity_key),
+            None,
+        )
+        if target is None:
+            return ItemAck(item.client_uuid, ItemStatus.REJECTED,
+                           f"{item.entity_table} {entity_key} ainda não chegou")
+        target["payload"] = {**target["payload"], **item.payload}
+        self.stored[key] = {"entity_table": item.entity_table, "operation": "update",
+                            "payload": item.payload}
+        return ItemAck(item.client_uuid, ItemStatus.APPLIED)
 
     # -- regras de auditoria -------------------------------------------------- #
 
@@ -169,8 +196,20 @@ class FakeCloud:
     # -- consultas de teste --------------------------------------------------- #
 
     def count(self, entity_table: str) -> int:
+        """Quantas ENTIDADES existem — atualização não é linha nova."""
         return sum(
-            1 for row in self.stored.values() if row["entity_table"] == entity_table
+            1 for row in self.stored.values()
+            if row["entity_table"] == entity_table
+            and row.get("operation", "insert") == "insert"
+        )
+
+    def row(self, entity_table: str, entity_id: str) -> dict:
+        """O estado atual da entidade, com as atualizações aplicadas."""
+        return next(
+            row["payload"] for row in self.stored.values()
+            if row["entity_table"] == entity_table
+            and row.get("operation", "insert") == "insert"
+            and str(row["payload"].get("id") or row.get("entity_id")) == entity_id
         )
 
 
@@ -260,6 +299,60 @@ def test_sale_reaches_the_cloud(env) -> None:  # noqa: ANN001
     assert report.settled == pending_before
     assert engine.pending_count() == 0
     assert cloud.count("orders") == 1
+
+
+def test_the_counter_sale_arrives_whole(env) -> None:  # noqa: ANN001
+    """O pedido chega com o que a nuvem exige, e fechado.
+
+    O fechamento do balcão saía como INSERT sem `local_number`, `channel`,
+    `operator_id` e `opened_at`. A nuvem recusava pelo NOT NULL, e nenhuma
+    venda do balcão chegava — enquanto este arquivo, com uma nuvem dublada que
+    aceitava qualquer coisa, passava.
+    """
+    database, config, checkout, cloud, engine = env
+    make_sale(checkout, database, config)
+    order_id = str(database.query_one("SELECT id FROM orders")["id"])
+
+    engine.drain()
+
+    order = cloud.row("orders", order_id)
+    assert order["status"] == "paid"
+    assert order["channel"] == "counter"
+    assert order["operator_id"] == DEMO_OPERATOR_ID
+    assert int(order["local_number"]) >= 1
+    assert order["opened_at"] and order["closed_at"]
+    assert int(order["total_cents"]) > 0
+
+
+def test_a_canceled_counter_item_is_canceled_in_the_cloud(env) -> None:  # noqa: ANN001
+    """O item cancelado já tinha subido vivo; sem o `update`, ficava vivo lá."""
+    database, config, checkout, cloud, engine = env
+    product = next(
+        p for p in ProductRepository(database.connection).list_active(
+            EntityId(config.tenant_id)
+        ) if p.sku == "TORTA-CHOC"
+    )
+    checkout.open_sale(EntityId(DEMO_OPERATOR_ID))
+    for grams in (500, 300):
+        checkout.register_weighed_item(
+            product=product,
+            reading=ScaleReading(ScaleStatus.STABLE, Grams(grams), f"{grams:05d}"),
+            operator_id=EntityId(DEMO_OPERATOR_ID),
+        )
+    canceled = checkout.current_sale.items[0]
+    checkout.cancel_item(
+        index=0, operator_id=EntityId(DEMO_OPERATOR_ID),
+        authorizer_id=EntityId(DEMO_MANAGER_ID), reason="cliente desistiu",
+    )
+    checkout.finalize_sale(
+        payments=(Payment(PaymentMethod.CASH, checkout.current_sale.total_cents),),
+        operator_id=EntityId(DEMO_OPERATOR_ID), operator_name="Ana Caixa",
+    )
+
+    report = engine.drain()
+
+    assert report.rejected == 0
+    assert cloud.row("order_items", str(canceled.id))["canceled_at"]
 
 
 def test_nothing_is_marked_synced_without_ack(env) -> None:  # noqa: ANN001

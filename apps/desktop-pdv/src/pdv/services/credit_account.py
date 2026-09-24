@@ -54,7 +54,10 @@ class CreditAccountService:
             )
             self._outbox.enqueue(
                 connection, entity_table="customer_credit_accounts",
-                entity_id=customer_id, client_uuid=client_uuid,
+                entity_id=customer_id,
+                # Atualização leva identidade própria: com o `client_uuid` da
+                # linha, a nuvem a descartava como duplicata do cadastro.
+                client_uuid=EntityId(new_id()) if existing else client_uuid,
                 operation="update" if existing else "insert",
                 payload={"customer_id": customer_id, "limit_cents": int(limit_cents),
                          "due_days": due_days, "is_active": True, "updated_at": now},

@@ -212,6 +212,14 @@ valida esse filtro contra o tenant da sessão; trocar o UUID na URL não permite
 consultar outra empresa. Os números são atualizados automaticamente a cada
 30 segundos, e o horário do último dado fica sempre visível.
 
+### Endereço da nuvem no terminal
+
+No instalador do PDV, informe o endereço do domínio, como no navegador
+(`https://api.seudominio.com.br`). O terminal acha a raiz `/api` sozinho;
+digitar com `/api` no fim também funciona. Na ativação, o terminal entrega à
+nuvem o segredo com que assina o ledger de auditoria: é com ele que a nuvem
+confere cada venda que chega.
+
 ### Cadastro fiscal (NFC-e)
 
 Logado como dono, a seção **Fiscal** do painel cadastra o emitente de cada loja
