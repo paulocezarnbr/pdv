@@ -178,6 +178,25 @@ a baixar à parte, nenhum prompt de linha de comando.
       PyInstaller. *Segurança:* terminal **ativado** não recebe mais os logins
       de demonstração, cujos PINs estão publicados neste repositório; segredo
       que existe e não decifra nunca é recriado.
+- [x] **Primeira abertura utilizável.** Três defeitos que só aparecem na loja:
+      * a ativação usava o endereço de EXEMPLO da nuvem (`api.erpfood.local`),
+        porque nada perguntava o endereço real. A tela de ativação — no
+        instalador e no caixa — pede o endereço do painel (HTTPS obrigatório
+        fora de `localhost`) e o código, ativa numa thread à parte e só fecha
+        com sucesso ou "Ativar depois". `/SERVER=` no instalador silencioso;
+      * terminal ativado não tinha usuários (os de demonstração não vêm mais,
+        e os da loja desciam só depois do login). Agora o cadastro é baixado
+        antes do login, com opção de tentar de novo;
+      * ativar em modo demonstração mandaria as vendas de teste para a loja.
+        A ativação do caixa grava num banco à parte; na reabertura a
+        demonstração é **arquivada** (`pdv_demo-*.db`), nunca apagada, e a
+        sincronização só liga com a ativação gravada no banco aberto.
+- [x] **Identidade visual.** Ícone (cupom sobre azul-aço) e imagens do
+      assistente gerados do tema no build (`packaging/branding.py`, sem
+      binário versionado); o mesmo desenho é o ícone da janela em tempo de
+      execução. Assistente de instalação com o tema do caixa e resultado item
+      a item; faixa de modo demonstração; atalhos sem botão visíveis no painel
+      e em F1, a partir de uma tabela única que também liga o teclado.
 
 **Aceite:** numa máquina Windows recém-formatada, sem Python, sem Visual C++ e
 sem drivers, um único duplo-clique deixa o PDV vendendo — com balança lendo,

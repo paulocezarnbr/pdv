@@ -60,6 +60,13 @@ try {
     }
 
     # -- 2. Compilacao -------------------------------------------------------
+    # Icone e imagens do instalador sao gerados do tema a cada build (ver
+    # packaging/branding.py). Sem eles o PDV.exe e o instalador saiam com o
+    # icone generico do Windows; o .iss os referencia, entao faltar e erro.
+    Write-Host "`n[2/5] Gerando icone e imagens do instalador..."
+    & python packaging/branding.py packaging/assets
+    if ($LASTEXITCODE -ne 0) { throw 'Falha ao gerar icone e imagens.' }
+
     Write-Host "`n[2/5] Compilando com $Backend..."
 
     if ($Backend -eq 'pyinstaller') {
@@ -85,8 +92,8 @@ try {
             --output-filename=PDV.exe `
             --company-name="ERP Food Service" `
             --product-name="PDV Balcao" `
-            --file-version=1.1.1.0 `
-            --product-version=1.1.1.0 `
+            --file-version=1.1.2.0 `
+            --product-version=1.1.2.0 `
             main.py
         if ($LASTEXITCODE -ne 0) { throw 'Nuitka falhou.' }
 
@@ -111,8 +118,8 @@ try {
             --output-filename=PDVSetup.exe `
             --company-name="ERP Food Service" `
             --product-name="PDV Balcao - Instalacao" `
-            --file-version=1.1.1.0 `
-            --product-version=1.1.1.0 `
+            --file-version=1.1.2.0 `
+            --product-version=1.1.2.0 `
             setup_wizard.py
         if ($LASTEXITCODE -ne 0) { throw 'Nuitka falhou ao compilar o assistente.' }
 

@@ -27,8 +27,10 @@ from PySide6.QtCore import Qt, QTimer, Slot
 from PySide6.QtGui import QColor, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QComboBox,
+    QDialog,
     QDoubleSpinBox,
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QHeaderView,
     QInputDialog,
@@ -89,6 +91,33 @@ _STATUS_LABELS: dict[ScaleStatus, tuple[str, str]] = {
 }
 
 
+#: A tabela ÚNICA de atalhos. Ela liga o teclado, desenha o painel "Mais
+#: atalhos" e a ajuda do F1 — três lugares que, escritos à mão, divergem no dia
+#: em que alguém acrescenta uma tecla a um deles e esquece os outros.
+#:
+#: (tecla, o que faz, método, aparece no painel lateral)
+#:
+#: O painel lateral mostra só o que NÃO tem botão na tela. F2, F4, F6, F8, F9 e
+#: F10 já estão escritos nos botões; F5, F7, F11, F12 e os Ctrl ficavam
+#: invisíveis — só quem tinha decorado sabia que o caixa fazia fiado.
+SHORTCUTS: tuple[tuple[str, str, str, bool], ...] = (
+    ("F1", "Ajuda — todos os atalhos", "_show_shortcuts", False),
+    ("F2", "Registrar item pesado", "_register_item", False),
+    ("F3", "Buscar item unitário", "_focus_unit_search", False),
+    ("F4", "Cancelar item (gerente)", "_cancel_item", False),
+    ("Ctrl+F4", "Aceite de pedido do painel", "_review_remote_commands", True),
+    ("F5", "Fiado / pendura", "_manage_credit_account", True),
+    ("F6", "Desconto (gerente)", "_apply_discount", False),
+    ("Ctrl+F6", "Níveis de desconto", "_manage_discount_tiers", True),
+    ("F7", "Cashback", "_configure_cashback", True),
+    ("F8", "Painel do salão", "_open_salon", False),
+    ("F9", "Mesas", "_open_tables", False),
+    ("F10", "Receber", "_finalize_sale", False),
+    ("F11", "Crédito pré-pago", "_deposit_prepaid", True),
+    ("F12", "Fechar o caixa", "_close_cash_session", True),
+)
+
+
 class CounterWindow(QMainWindow):
     """Janela principal do PDV de balcão."""
 
@@ -106,8 +135,18 @@ class CounterWindow(QMainWindow):
         edge_scheme: str = "http",
         edge_tls=None,  # noqa: ANN001 - TlsMaterial | None
         remote_commands: RemoteCommandService | None = None,
+        on_activate=None,  # noqa: ANN001 - Callable[[QWidget], bool] | None
     ) -> None:
+        """
+        Args:
+            on_activate: presente só em modo demonstração. Recebe esta janela
+                como pai e devolve se ativou; ativando, a janela fecha e pede
+                ao `main` para reiniciar o PDV (`restart_requested`).
+        """
         super().__init__()
+        self._on_activate = on_activate
+        #: Lido pelo `main` depois do `app.exec()`.
+        self.restart_requested = False
         self._operator = operator
         self._cash_sessions = cash_sessions
         self._checkout = checkout
@@ -156,13 +195,20 @@ class CounterWindow(QMainWindow):
 
     def _build_ui(self) -> None:
         root = QWidget()
-        layout = QHBoxLayout(root)
-        layout.setContentsMargins(
+        outer = QVBoxLayout(root)
+        outer.setContentsMargins(
             theme.SPACE_4, theme.SPACE_4, theme.SPACE_4, theme.SPACE_4
         )
+        outer.setSpacing(theme.SPACE_3)
+        self._demo_banner = self._build_demo_banner()
+        outer.addWidget(self._demo_banner)
+        self._demo_banner.setVisible(self._on_activate is not None)
+
+        layout = QHBoxLayout()
         layout.setSpacing(theme.SPACE_3)
         layout.addWidget(self._build_left_panel(), stretch=4)
         layout.addWidget(self._build_right_panel(), stretch=6)
+        outer.addLayout(layout, stretch=1)
         self.setCentralWidget(root)
 
         self.setStatusBar(QStatusBar())
@@ -209,6 +255,95 @@ class CounterWindow(QMainWindow):
         self.statusBar().addPermanentWidget(self._sync_label)
         self.statusBar().addPermanentWidget(self._command_label)
         self.statusBar().addPermanentWidget(self._confirm_button)
+
+    def _build_demo_banner(self) -> QWidget:
+        """Faixa do modo demonstração. Some quando o terminal está ativado.
+
+        Sem ela, nada distinguia na tela um caixa de demonstração de um de
+        verdade — e as vendas de teste nunca sobem para a retaguarda. O lojista
+        que experimentou o PDV e começou a vender "para valer" descobriria só no
+        painel vazio, dias depois.
+        """
+        banner = QFrame()
+        banner.setObjectName("demoBanner")
+        banner.setStyleSheet(
+            f"QFrame#demoBanner {{ background: {theme.SURFACE_RAISED};"
+            f" border: 1px solid {theme.WARN}; border-radius: {theme.RADIUS_PANEL}px; }}"
+        )
+        row = QHBoxLayout(banner)
+        row.setContentsMargins(theme.SPACE_4, theme.SPACE_2, theme.SPACE_2, theme.SPACE_2)
+        text = QLabel(
+            f"<b style='color:{theme.WARN}'>MODO DEMONSTRAÇÃO</b>&nbsp;&nbsp;"
+            "Este terminal ainda não foi ativado: as vendas ficam só neste "
+            "computador e não vão para a retaguarda."
+        )
+        text.setTextFormat(Qt.TextFormat.RichText)
+        text.setWordWrap(True)
+        row.addWidget(text, stretch=1)
+        self._activate_button = QPushButton("Ativar terminal…")
+        self._activate_button.setMinimumHeight(38)
+        self._activate_button.clicked.connect(self._activate_terminal)
+        row.addWidget(self._activate_button)
+        return banner
+
+    def _activate_terminal(self) -> None:
+        if self._on_activate is None:
+            return
+        if not self._on_activate(self):
+            return
+        self.restart_requested = True
+        self.close()
+
+    def _build_shortcuts_panel(self) -> QWidget:
+        """Os atalhos que não têm botão na tela, clicáveis também."""
+        box = QFrame()
+        box.setObjectName("inset")
+        grid = QGridLayout(box)
+        grid.setContentsMargins(theme.SPACE_3, theme.SPACE_3, theme.SPACE_3, theme.SPACE_3)
+        grid.setHorizontalSpacing(theme.SPACE_2)
+        grid.setVerticalSpacing(theme.SPACE_1)
+        title = self._section_title("MAIS ATALHOS   ·   F1 MOSTRA TODOS")
+        grid.addWidget(title, 0, 0, 1, 2)
+        self._shortcut_buttons: dict[str, QPushButton] = {}
+        entries = [entry for entry in SHORTCUTS if entry[3]]
+        for index, (key, label, method, _panel) in enumerate(entries):
+            button = QPushButton(f"{key:<8}{label}")
+            button.setFlat(True)
+            button.setMinimumHeight(30)
+            button.setFont(theme.font(theme.SIZE_BODY, mono=True))
+            button.setStyleSheet(
+                f"QPushButton {{ text-align: left; padding: 2px 6px; color: {theme.TEXT_MUTED}; }}"
+                f"QPushButton:hover {{ color: {theme.TEXT}; }}"
+            )
+            button.clicked.connect(getattr(self, method))
+            grid.addWidget(button, 1 + index // 2, index % 2)
+            self._shortcut_buttons[key] = button
+        return box
+
+    def _show_shortcuts(self) -> None:
+        """F1: a lista completa, para quem ainda não decorou."""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Atalhos do caixa")
+        dialog.setMinimumWidth(460)
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(theme.SPACE_5, theme.SPACE_4, theme.SPACE_5, theme.SPACE_4)
+        title = QLabel("Atalhos do caixa")
+        title.setFont(theme.font(theme.SIZE_TITLE, theme.WEIGHT_SEMIBOLD, display=True))
+        layout.addWidget(title)
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(theme.SPACE_4)
+        for row, (key, label, _method, _panel) in enumerate(SHORTCUTS):
+            key_label = QLabel(key)
+            key_label.setFont(theme.font(theme.SIZE_BODY_LG, theme.WEIGHT_SEMIBOLD, mono=True))
+            grid.addWidget(key_label, row, 0)
+            grid.addWidget(QLabel(label), row, 1)
+        layout.addLayout(grid)
+        close = QPushButton("Fechar")
+        close.setMinimumHeight(40)
+        close.clicked.connect(dialog.accept)
+        layout.addWidget(close)
+        self._shortcuts_dialog = dialog
+        dialog.exec()
 
     def _build_left_panel(self) -> QWidget:
         panel = QFrame()
@@ -274,6 +409,8 @@ class CounterWindow(QMainWindow):
         layout.addWidget(self._item_total_label)
 
         layout.addStretch()
+        layout.addWidget(self._build_shortcuts_panel())
+        layout.addSpacing(theme.SPACE_2)
 
         self._register_button = QPushButton("F2   Registrar item pesado")
         self._register_button.setObjectName("primary")
@@ -472,19 +609,9 @@ class CounterWindow(QMainWindow):
         return label
 
     def _wire_shortcuts(self) -> None:
-        QShortcut(QKeySequence("F2"), self, self._register_item)
-        QShortcut(QKeySequence("F3"), self, self._focus_unit_search)
-        QShortcut(QKeySequence("F4"), self, self._cancel_item)
-        QShortcut(QKeySequence("Ctrl+F4"), self, self._review_remote_commands)
-        QShortcut(QKeySequence("F5"), self, self._manage_credit_account)
-        QShortcut(QKeySequence("F6"), self, self._apply_discount)
-        QShortcut(QKeySequence("Ctrl+F6"), self, self._manage_discount_tiers)
-        QShortcut(QKeySequence("F7"), self, self._configure_cashback)
-        QShortcut(QKeySequence("F8"), self, self._open_salon)
-        QShortcut(QKeySequence("F9"), self, self._open_tables)
-        QShortcut(QKeySequence("F10"), self, self._finalize_sale)
-        QShortcut(QKeySequence("F11"), self, self._deposit_prepaid)
-        QShortcut(QKeySequence("F12"), self, self._close_cash_session)
+        self._shortcuts: dict[str, QShortcut] = {}
+        for key, _label, method, _panel in SHORTCUTS:
+            self._shortcuts[key] = QShortcut(QKeySequence(key), self, getattr(self, method))
 
     def _wire_scale(self) -> None:
         self._scale.reading_received.connect(self._on_reading)
@@ -1249,6 +1376,12 @@ class CounterWindow(QMainWindow):
 
     @Slot()
     def _refresh_sync_badge(self) -> None:
+        if self._on_activate is not None:
+            # "0 pendentes" em modo demonstração diria que está tudo em dia —
+            # e nada disto vai subir para lugar nenhum.
+            self._sync_label.setText("Sincronização: desligada (demonstração)")
+            self._refresh_command_badge()
+            return
         pending = self._checkout.pending_sync_count()
         self._sync_label.setText(
             "Sincronização: em dia" if pending == 0 else f"Sincronização: {pending} pendente(s)"

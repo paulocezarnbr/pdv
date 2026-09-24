@@ -48,10 +48,14 @@ def terminal(tmp_path: Path):  # noqa: ANN201
 
 
 def _activate(config: AppConfig) -> None:
-    """Grava um token, como a ativação do terminal faria."""
+    """Grava token e ativação, como a ativação do terminal faria."""
+    from pdv.data.settings import SettingsStore
+
     SecretVault(config.database_path.parent / "secrets").store(
         SYNC_TOKEN_NAME, b"token-de-teste"
     )
+    database = Database(config.database_path)
+    SettingsStore(database).set("device.activated", "1")
 
 
 def test_an_activated_terminal_gets_a_sync_service(terminal, monkeypatch) -> None:  # noqa: ANN001

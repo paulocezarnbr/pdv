@@ -616,3 +616,107 @@ def test_the_dialog_offers_only_counter_logins(qtbot, window) -> None:  # noqa: 
     assert DEMO_OPERATOR_LOGIN in logins
     assert DEMO_WAITER_LOGIN not in logins
     assert dialog._accept_button.isEnabled() is False, "nada a decidir"
+
+
+# --------------------------------------------------------------------------- #
+# Atalhos e modo demonstração
+# --------------------------------------------------------------------------- #
+
+
+def test_every_shortcut_is_wired_from_the_single_table(window) -> None:  # noqa: ANN001
+    """Teclado, painel e F1 saem da mesma tabela; uma tecla órfã quebra aqui."""
+    from pdv.ui.counter_window import SHORTCUTS
+
+    widget, *_ = window
+    keys = [key for key, *_rest in SHORTCUTS]
+
+    assert len(keys) == len(set(keys)), "tecla repetida na tabela"
+    assert set(widget._shortcuts) == set(keys)
+    for key, _label, method, _panel in SHORTCUTS:
+        assert callable(getattr(widget, method)), f"{key} aponta para {method}, que não existe"
+
+
+def test_keys_without_a_button_are_visible_in_the_side_panel(window) -> None:  # noqa: ANN001
+    """F5, F7, F11, F12 e os Ctrl ficavam invisíveis: só quem decorou sabia."""
+    widget, *_ = window
+
+    assert {"F5", "F7", "F11", "F12", "Ctrl+F4", "Ctrl+F6"} <= set(widget._shortcut_buttons)
+    # Os que já têm botão na tela não se repetem no painel.
+    assert not {"F2", "F4", "F6", "F10"} & set(widget._shortcut_buttons)
+
+
+def test_f1_lists_every_shortcut(window, monkeypatch) -> None:  # noqa: ANN001
+    from PySide6.QtWidgets import QDialog, QLabel
+
+    from pdv.ui.counter_window import SHORTCUTS
+
+    widget, *_ = window
+    monkeypatch.setattr(QDialog, "exec", lambda self: 0)
+
+    widget._show_shortcuts()
+
+    texts = {label.text() for label in widget._shortcuts_dialog.findChildren(QLabel)}
+    for key, label, *_rest in SHORTCUTS:
+        assert key in texts and label in texts
+
+
+def test_the_demo_banner_shows_only_in_demo_mode(window, qtbot, env) -> None:  # noqa: ANN001
+    widget, checkout, database, config = window
+    assert widget._demo_banner.isVisibleTo(widget) is False
+
+    demo = CounterWindow(
+        checkout,
+        ScaleService(build_scale(config.scale), config.scale),
+        PrintService(build_printer(config.printer)),
+        config,
+        database,
+        operator=widget._operator,
+        on_activate=lambda parent: False,
+    )
+    qtbot.addWidget(demo)
+    demo._refresh_sync_badge()
+
+    assert demo._demo_banner.isVisibleTo(demo) is True
+    assert "demonstração" in demo._sync_label.text()
+
+
+def test_activating_from_the_banner_asks_for_a_restart(window, qtbot) -> None:  # noqa: ANN001
+    widget, checkout, database, config = window
+    calls: list[object] = []
+    demo = CounterWindow(
+        checkout,
+        ScaleService(build_scale(config.scale), config.scale),
+        PrintService(build_printer(config.printer)),
+        config,
+        database,
+        operator=widget._operator,
+        on_activate=lambda parent: calls.append(parent) or True,
+    )
+    qtbot.addWidget(demo)
+    demo.show()
+
+    demo._activate_button.click()
+
+    assert calls == [demo]
+    assert demo.restart_requested is True
+    assert demo.isVisible() is False
+
+
+def test_giving_up_on_activation_keeps_the_counter_open(window, qtbot) -> None:  # noqa: ANN001
+    widget, checkout, database, config = window
+    demo = CounterWindow(
+        checkout,
+        ScaleService(build_scale(config.scale), config.scale),
+        PrintService(build_printer(config.printer)),
+        config,
+        database,
+        operator=widget._operator,
+        on_activate=lambda parent: False,
+    )
+    qtbot.addWidget(demo)
+    demo.show()
+
+    demo._activate_button.click()
+
+    assert demo.restart_requested is False
+    assert demo.isVisible() is True

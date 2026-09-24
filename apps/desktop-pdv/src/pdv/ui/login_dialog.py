@@ -51,6 +51,7 @@ class LoginDialog(QDialog):
         authorization: AuthorizationService,
         *,
         store_name: str,
+        demo_hint: bool = False,
         parent=None,  # noqa: ANN001
     ) -> None:
         super().__init__(parent)
@@ -93,6 +94,19 @@ class LoginDialog(QDialog):
         form.addRow("Login", self._login)
         form.addRow("PIN", self._pin)
         layout.addLayout(form)
+
+        if demo_hint:
+            # Só em terminal NÃO ativado. Ativado, estes logins não existem
+            # neste computador (ver `main.open_database`), e mostrá-los seria
+            # mandar o operador tentar uma senha que não vai funcionar.
+            demo = QLabel(
+                "Modo demonstração — entre com <b>ana</b> / <b>705284</b> "
+                "(caixa) ou <b>olivia</b> / <b>84627519</b> (proprietária)."
+            )
+            demo.setObjectName("hint")
+            demo.setWordWrap(True)
+            demo.setTextFormat(Qt.TextFormat.RichText)
+            layout.addWidget(demo)
 
         self._error = QLabel("")
         self._error.setWordWrap(True)
@@ -174,10 +188,13 @@ class LoginDialog(QDialog):
         authorization: AuthorizationService,
         *,
         store_name: str,
+        demo_hint: bool = False,
         parent=None,  # noqa: ANN001
     ) -> Identity | None:
         """Mostra o diálogo. Devolve quem entrou, ou `None` se desistiu."""
-        dialog = cls(authorization, store_name=store_name, parent=parent)
+        dialog = cls(
+            authorization, store_name=store_name, demo_hint=demo_hint, parent=parent
+        )
         dialog.exec()
         return dialog.identity
 

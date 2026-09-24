@@ -181,11 +181,17 @@ def _serial() -> str:
 def _qt() -> str:
     from PySide6.QtWidgets import QApplication  # noqa: F401
 
+    from pdv.ui.activation_dialog import ActivationDialog  # noqa: F401
+    from pdv.ui.busy import run_with_progress  # noqa: F401
     from pdv.ui.counter_window import CounterWindow  # noqa: F401
     from pdv.ui.login_dialog import LoginDialog  # noqa: F401
+    from pdv.ui.setup_report import SetupResultDialog  # noqa: F401
     from pdv.ui.tables_dialog import TablesDialog  # noqa: F401
 
-    return "janelas importáveis"
+    # As telas da ativação e do resultado da instalação são importadas dentro
+    # de funções — só aparecem na primeira ativação, na loja. Importá-las aqui
+    # é o que pega um módulo que o PyInstaller deixou de fora.
+    return "janelas importáveis, incluindo ativação e instalação"
 
 
 def _fiscal_engine() -> str:

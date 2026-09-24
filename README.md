@@ -30,7 +30,7 @@ commit** da mudança de código.
 ## Estado atual
 
 ✅ **Fases 1, 2, 2.5, 3, 3.5, 3.6 e 4** implementadas; a fundação da Fase 5
-(fiscal) já começou. A suíte desktop tem **530 testes** passando.
+(fiscal) já começou. A suíte desktop tem **575 testes** passando.
 
 O que já funciona ponta a ponta, sem internet:
 
@@ -57,7 +57,10 @@ O que já funciona ponta a ponta, sem internet:
     login e PIN, de alguém no caixa (`Ctrl+F4`), e o painel mostra que ele
     está esperando.
 11. Instalador único com provisionamento automático de periféricos, ativação do
-    terminal e atualização in-place.
+    terminal e atualização in-place. Sem ativar, o PDV abre em **modo
+    demonstração**, com faixa na tela e logins de teste; o botão **Ativar
+    terminal** pede o endereço do painel e o código, arquiva a demonstração e
+    reinicia com os dados da loja.
 12. Painel web com cadastro de múltiplos proprietários: somente outro dono
     autenticado pode criar a conta, o PIN é Argon2id e cada criação entra numa
     auditoria administrativa imutável.
@@ -122,6 +125,7 @@ contorna avisos TLS, pois ensinar o garçom a ignorá-los anularia a autenticaç
 
 | Tecla | Ação |
 |---|---|
+| `F1` | Lista todos os atalhos (os que não têm botão também ficam no painel à esquerda) |
 | `F2` | Registrar item pesado (só habilita com peso estável) |
 | `F3` | Ir para a busca de item unitário (código ou nome) |
 | `F4` | Cancelar item — exige credencial de gerente |

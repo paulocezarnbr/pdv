@@ -35,6 +35,7 @@ import sqlite3
 import sys
 from dataclasses import replace
 from decimal import Decimal
+from pathlib import Path
 
 from PySide6.QtWidgets import QApplication, QInputDialog, QMessageBox
 
@@ -49,8 +50,17 @@ from pdv.edge.worker import EdgeServer
 from pdv.hardware.printer.backends import PrintService, build_printer
 from pdv.hardware.scale.serial_scale import build_scale
 from pdv.hardware.scale.worker import ScaleService
-from pdv.provisioning.activation import load_sync_token
+from pdv.provisioning.activation import (
+    HttpActivationTransport,
+    activate,
+    load_sync_token,
+)
 from pdv.provisioning.secrets import SecretVault
+from pdv.provisioning.staging import (
+    StagedActivationError,
+    promote_staged_activation,
+    staged_path,
+)
 from pdv.remote.commands import RemoteCommandService
 from pdv.services.audit import AuditService
 from pdv.services.authorization import AuthorizationService
@@ -61,6 +71,7 @@ from pdv.sync.transport import HttpTransport
 from pdv.sync.worker import SyncService
 from pdv.ui.counter_window import CounterWindow
 from pdv.ui.login_dialog import LoginDialog
+from pdv.ui.brand import app_icon
 from pdv.ui.theme import apply_theme
 
 logger = logging.getLogger(__name__)
@@ -110,6 +121,14 @@ def build_sync(
 
     if not token:
         logger.info("Terminal ainda não ativado — a fila sobe após a ativação.")
+        return None
+
+    # Token sem ativação gravada no banco é o intervalo entre ativar pelo caixa
+    # e reiniciar (`pdv.provisioning.staging`): o token já é da loja real, e o
+    # banco aberto ainda é o de DEMONSTRAÇÃO. Sincronizar aqui mandaria as
+    # vendas de teste para a loja.
+    if not SettingsStore(database).load().activated:
+        logger.info("Token presente, mas este banco não está ativado — sem sync.")
         return None
 
     engine = SyncEngine(
@@ -183,6 +202,13 @@ def _apply_device_settings(database: Database, config: AppConfig) -> AppConfig:
 
 def open_database(config: AppConfig) -> tuple[Database, AppConfig]:
     """Abre e migra o banco, e aplica o que o instalador gravou nele."""
+    try:
+        archived = promote_staged_activation(config.database_path)
+    except StagedActivationError as exc:
+        raise StartupError(str(exc)) from exc
+    if archived is not None:
+        logger.info("Ativação concluída; demonstração arquivada em %s", archived)
+
     database = Database(config.database_path)
     try:
         database.migrate()
@@ -200,6 +226,134 @@ def open_database(config: AppConfig) -> tuple[Database, AppConfig]:
     if not SettingsStore(database).load().activated:
         seed_demo_data(database, config)
     return database, config
+
+
+def _has_store_users(database: Database, config: AppConfig) -> bool:
+    row = database.query_one(
+        "SELECT 1 FROM users WHERE tenant_id = ? AND is_active = 1 LIMIT 1",
+        (config.tenant_id,),
+    )
+    return row is not None
+
+
+def ensure_store_users(
+    database: Database,
+    config: AppConfig,
+    *,
+    transport=None,  # noqa: ANN001 - Transport | None
+    ask_retry=None,  # noqa: ANN001 - Callable[[], bool] | None
+    run=None,  # noqa: ANN001 - Callable[[str, Callable], object] | None
+) -> bool:
+    """Terminal ativado e sem usuários: baixa o cadastro da loja ANTES do login.
+
+    Ativado, o terminal não recebe os logins de demonstração — os usuários da
+    loja descem da nuvem. Só que o sync só começava depois do login, e o login
+    exige usuário: um terminal recém-ativado ficava sem ninguém capaz de
+    entrar. Aqui o primeiro pull roda antes, com a tela avisando.
+
+    Devolve `False` se quem está no balcão desistiu de tentar de novo.
+    """
+    if _has_store_users(database, config):
+        return True
+
+    if transport is None:
+        token = load_sync_token(SecretVault(config.database_path.parent / "secrets"))
+        if not token:
+            raise StartupError(
+                "Este terminal está ativado, mas a credencial de sincronização "
+                "não foi encontrada. Ative o terminal de novo pelo painel."
+            )
+        transport = HttpTransport(config.cloud_base_url, token)
+
+    engine = SyncEngine(database, transport, config)
+    if run is None:
+        from pdv.ui.busy import run_with_progress as run
+    if ask_retry is None:
+        ask_retry = _ask_retry_download
+
+    while True:
+        run("Baixando os usuários e o cadastro da loja…", engine.pull_once)
+        if _has_store_users(database, config):
+            return True
+        if not ask_retry():
+            return False
+
+
+def _ask_retry_download() -> bool:
+    answer = QMessageBox.question(
+        None,
+        "PDV Balcão",
+        "Os usuários desta loja ainda não chegaram a este terminal.\n\n"
+        "Confira a conexão com a internet e se há usuários cadastrados no "
+        "painel da retaguarda.\n\nTentar de novo?",
+        QMessageBox.StandardButton.Retry | QMessageBox.StandardButton.Close,
+        QMessageBox.StandardButton.Retry,
+    )
+    return answer == QMessageBox.StandardButton.Retry
+
+
+def activate_from_demo(config: AppConfig, *, parent=None) -> bool:  # noqa: ANN001
+    """Ativação pedida pelo caixa em modo demonstração.
+
+    Grava num banco à parte; a troca acontece na próxima abertura
+    (`pdv.provisioning.staging`). Devolve se ativou.
+    """
+    from pdv.ui.activation_dialog import ActivationDialog
+
+    staged = staged_path(config.database_path)
+    _remove_database_files(staged)  # sobra de uma tentativa anterior
+    stage = Database(staged)
+    stage.migrate()
+    vault = SecretVault(config.database_path.parent / "secrets")
+
+    def run(api_url: str, code: str):  # noqa: ANN202
+        return activate(
+            code,
+            database=stage,
+            vault=vault,
+            transport=HttpActivationTransport(api_url),
+        )
+
+    dialog = ActivationDialog(
+        run,
+        server_url=config.cloud_base_url,
+        warning=(
+            "As vendas, produtos e usuários de demonstração serão arquivados — "
+            "não vão para a loja. O caixa reinicia com os dados da loja."
+        ),
+        parent=parent,
+    )
+    dialog.exec()
+    stage.close()
+
+    if dialog.result_value is None:
+        _remove_database_files(staged)
+        return False
+
+    name = dialog.result_value.store_name or "a loja"
+    QMessageBox.information(
+        parent,
+        "Terminal ativado",
+        f"Terminal ativado para {name}.\n\nO PDV vai reiniciar para começar "
+        "com os dados da loja.",
+    )
+    return True
+
+
+def _remove_database_files(path: Path) -> None:
+    for candidate in (path, Path(f"{path}-wal"), Path(f"{path}-shm")):
+        try:
+            candidate.unlink(missing_ok=True)
+        except OSError:
+            logger.warning("Não foi possível remover %s", candidate)
+
+
+def _restart_application_after_exit() -> None:
+    """Abre um PDV novo. Ele espera este soltar o banco antes de trocá-lo."""
+    from PySide6.QtCore import QProcess
+
+    arguments = sys.argv[1:] if getattr(sys, "frozen", False) else sys.argv
+    QProcess.startDetached(sys.executable, arguments)
 
 
 def _configure_logging(config: AppConfig) -> None:
@@ -241,6 +395,7 @@ def main() -> int:
     logger.info("Banco local: %s", config.database_path)
 
     database, config = open_database(config)
+    activated = SettingsStore(database).load().activated
 
     integrity_error = verify_audit_integrity(database, config)
 
@@ -251,6 +406,7 @@ def main() -> int:
     # depois, o primeiro diálogo (o aviso de auditoria logo abaixo) apareceria
     # com o tema do Windows — claro numa máquina, escuro na outra.
     apply_theme(app)
+    app.setWindowIcon(app_icon())
 
     if integrity_error is not None:
         # Não bloqueia a venda — bloquear o caixa por suspeita de fraude
@@ -265,9 +421,14 @@ def main() -> int:
     # Login ANTES de qualquer periférico: sem alguém identificado não há caixa
     # a abrir, e subir balança e impressora para depois fechar seria só ruído
     # de porta serial no log.
+    if activated and not ensure_store_users(database, config):
+        logger.info("Sem usuários da loja; o PDV não abre sem operador.")
+        return 0
+
     operator = LoginDialog.ask(
         AuthorizationService(database, config.tenant_id),
         store_name=config.store_name,
+        demo_hint=not activated,
     )
     if operator is None:
         logger.info("Login cancelado; o PDV não abre sem operador identificado.")
@@ -340,6 +501,11 @@ def main() -> int:
         edge_scheme=edge.scheme if edge is not None else "http",
         edge_tls=edge.tls if edge is not None else None,
         remote_commands=remote_commands,
+        on_activate=(
+            None
+            if activated
+            else lambda parent: activate_from_demo(config, parent=parent)
+        ),
     )
     window.show()
     scale.start()
@@ -347,7 +513,10 @@ def main() -> int:
         sync.start()
 
     try:
-        return app.exec()
+        code = app.exec()
+        if window.restart_requested:
+            _restart_application_after_exit()
+        return code
     finally:
         # Ordem do encerramento: primeiro o que fala com a rede, depois o
         # banco. Fechar o banco com o worker de sync ainda vivo faria a última

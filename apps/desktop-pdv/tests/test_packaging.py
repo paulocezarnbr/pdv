@@ -78,3 +78,64 @@ def test_the_installer_never_allows_a_non_admin_install() -> None:
     }
     assert directives.get("PrivilegesRequired") == "admin"
     assert "PrivilegesRequiredOverridesAllowed" not in directives
+
+
+def test_accents_in_the_installer_need_the_utf8_bom() -> None:
+    """Sem BOM o Inno Setup lê o .iss como ANSI, e "Balcão" vira lixo na tela."""
+    raw = (PACKAGING / "installer.iss").read_bytes()
+    if any(byte > 127 for byte in raw):
+        assert raw.startswith(b"\xef\xbb\xbf")
+
+
+def test_names_that_live_on_the_customer_machine_do_not_change() -> None:
+    """Mudar estes nomes deixaria atalho duplicado e regra de firewall órfã
+    nas lojas que atualizarem por cima."""
+    text = (PACKAGING / "installer.iss").read_text(encoding="utf-8-sig")
+    assert '#define AppName        "PDV Balcao"' in text
+    assert text.count('name=""PDV Balcao - Servidor Local""') == 2
+
+
+def test_every_image_the_installer_references_is_generated(tmp_path) -> None:  # noqa: ANN001
+    """O .iss aponta para packaging/assets; o build gera essa pasta do zero."""
+    import importlib.util
+
+    pytest = __import__("pytest")
+    pytest.importorskip("PySide6")
+    spec = importlib.util.spec_from_file_location("branding", PACKAGING / "branding.py")
+    branding = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(branding)
+
+    generated = {path.name for path in branding.generate(tmp_path)}
+
+    text = (PACKAGING / "installer.iss").read_text(encoding="utf-8-sig")
+    referenced = set(re.findall(r"assets\\([\w.-]+)", text))
+    assert referenced, "o .iss deixou de referenciar as imagens"
+    assert referenced <= generated
+
+    spec_text = (PACKAGING / "pdv.spec").read_text(encoding="utf-8")
+    assert '"assets" / "pdv.ico"' in spec_text
+
+
+def test_the_icon_is_a_real_multi_size_ico(tmp_path) -> None:  # noqa: ANN001
+    import importlib.util
+    import struct
+
+    __import__("pytest").importorskip("PySide6")
+    spec = importlib.util.spec_from_file_location("branding", PACKAGING / "branding.py")
+    branding = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(branding)
+
+    data = branding.build_ico()
+    reserved, kind, count = struct.unpack("<HHH", data[:6])
+    assert (reserved, kind) == (0, 1)
+    sizes = []
+    for index in range(count):
+        width, _h, _c, _r, _p, _bpp, length, offset = struct.unpack(
+            "<BBBBHHII", data[6 + 16 * index: 22 + 16 * index]
+        )
+        sizes.append(width or 256)
+        assert data[offset: offset + 8] == b"\x89PNG\r\n\x1a\n"
+        assert offset + length <= len(data)
+    assert {16, 32, 48, 256} <= set(sizes)
