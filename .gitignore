@@ -19,6 +19,8 @@ apps/desktop-pdv/out/
 # Empacotamento
 build/
 dist/
+# Gerado do tema a cada build (packaging/branding.py)
+apps/desktop-pdv/packaging/assets/
 *.spec.bak
 
 # Node (web-admin / mobile-waiter)

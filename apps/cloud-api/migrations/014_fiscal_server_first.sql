@@ -31,12 +31,22 @@ CREATE TABLE IF NOT EXISTS fiscal_series (
     next_number BIGINT NOT NULL DEFAULT 1 CHECK (next_number > 0),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (tenant_id, store_id, model, series),
-    UNIQUE NULLS NOT DISTINCT (tenant_id, store_id, device_id, model, purpose),
+    -- Uma série de contingência por terminal e modelo.
+    UNIQUE (tenant_id, store_id, device_id, model, purpose),
     CHECK (
       (purpose = 'normal' AND device_id IS NULL) OR
       (purpose = 'offline_contingency' AND device_id IS NOT NULL)
     )
 );
+-- Uma série NORMAL por loja e modelo. A série normal não tem terminal
+-- (`device_id IS NULL`), e num UNIQUE comum dois NULL não colidem — duas
+-- séries normais passariam. Índice parcial em vez de `UNIQUE NULLS NOT
+-- DISTINCT`: aquela sintaxe só existe a partir do PostgreSQL 15, e num banco
+-- 14 ela derrubava esta migration inteira — e com ela o contêiner na subida,
+-- que o Coolify mostra apenas como "unhealthy".
+CREATE UNIQUE INDEX IF NOT EXISTS uq_fiscal_series_normal_per_store
+    ON fiscal_series (tenant_id, store_id, model, purpose)
+    WHERE device_id IS NULL;
 
 CREATE TABLE IF NOT EXISTS fiscal_product_profiles (
     tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,

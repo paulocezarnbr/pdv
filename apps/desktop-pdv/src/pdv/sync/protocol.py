@@ -197,6 +197,15 @@ class CommandReport:
     device_id: str
     results: tuple[Any, ...] = ()
     """Cada item é um `pdv.remote.inbox.CommandResult`."""
+    awaiting: tuple[Any, ...] = ()
+    """Cada item é um `pdv.remote.inbox.AwaitingNotice`.
+
+    Viaja num campo à parte, e não como um terceiro status em `results`: uma
+    nuvem que ainda não conhece a espera ignora o campo e continua aceitando os
+    resultados. Um status novo dentro de `results` faria ela recusar o lote
+    inteiro — e o desconto aplicado ficaria "pendente" no painel por causa de
+    um aviso que nem era dele.
+    """
 
 
 class CommandTransport(Protocol):
@@ -260,6 +269,7 @@ class CommandCycleReport:
     applied: int = 0
     refused: int = 0
     reported: int = 0
+    awaiting: int = 0
     error: str | None = None
 
 

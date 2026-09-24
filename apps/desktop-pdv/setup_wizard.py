@@ -19,30 +19,32 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 from dataclasses import replace
 from pathlib import Path
 
-from pdv.config import AppConfig
+from pdv.config import DATA_DIR_ENV, AppConfig, default_data_dir
 from pdv.data.database import Database
 from pdv.data.seed import seed_demo_data
 from pdv.data.settings import SettingsStore
 from pdv.provisioning.activation import (
+    PLACEHOLDER_CLOUD_URL,
     ActivationError,
     HttpActivationTransport,
     activate,
     is_activated,
+    normalize_server_url,
 )
 from pdv.provisioning.detection import detect_all, settings_from_detection
 from pdv.provisioning.secrets import SecretVault
 from pdv.provisioning.smoke import CheckStatus, run_smoke_test
-from pdv.runtime import data_dir as runtime_data_dir
 
 logger = logging.getLogger("pdv.setup")
 
-#: A mesma pasta que o `PDV.exe` abre (ver `pdv/runtime.py`): os dois
-#: precisam concordar, ou o caixa ignora o que o provisionamento gravou.
-DEFAULT_DATA_DIR = runtime_data_dir()
+# A mesma pasta que o `PDV.exe` abre (`pdv.config.default_data_dir`). Duas
+# definições desta constante já divergiram uma vez, e o caixa abriu sem banco.
+DEFAULT_DATA_DIR = Path(os.getenv(DATA_DIR_ENV) or default_data_dir())
 
 #: Códigos de saída lidos pelo instalador para decidir o que mostrar ao lojista.
 EXIT_OK = 0
@@ -112,6 +114,7 @@ def _activate_step(
     vault: SecretVault,
     base_config: AppConfig,
     activation_code: str | None,
+    server_url: str | None = None,
 ) -> str:
     """Ativa o terminal se houver código. Nunca aborta o provisionamento.
 
@@ -126,17 +129,26 @@ def _activate_step(
 
     if not activation_code:
         return (
-            "[AVISO] Terminal não ativado — trabalhará offline.\n"
-            "        → As vendas ficam na fila até a ativação. Rode "
-            "PDVSetup.exe --activation-code CODIGO"
+            "[AVISO] Terminal não ativado — modo demonstração, sem sincronizar.\n"
+            "        → Ative pelo botão \"Ativar terminal\" no próprio PDV, com o "
+            "endereço do painel e um código gerado em Terminais."
         )
 
     try:
+        api_url = (
+            normalize_server_url(server_url)
+            if server_url
+            else base_config.cloud_base_url
+        )
+        if api_url == PLACEHOLDER_CLOUD_URL:
+            raise ActivationError(
+                "Endereço da retaguarda não informado (use --server ou /SERVER=)."
+            )
         result = activate(
             activation_code,
             database=database,
             vault=vault,
-            transport=HttpActivationTransport(base_config.cloud_base_url),
+            transport=HttpActivationTransport(api_url),
         )
     except ActivationError as exc:
         logger.warning("Ativação não concluída: %s", exc)
@@ -154,6 +166,7 @@ def provision(
     detect_only: bool = False,
     seed_demo: bool = False,
     activation_code: str | None = None,
+    server_url: str | None = None,
 ) -> tuple[int, str]:
     """Executa o provisionamento. Devolve `(código_de_saída, relatório)`."""
     data_dir.mkdir(parents=True, exist_ok=True)
@@ -177,7 +190,9 @@ def provision(
     # `tenant_id`, e é sob essa identidade que o ledger de auditoria começa a
     # ser encadeado. Ativar depois de já haver eventos gravados obrigaria a
     # reancorar a cadeia no servidor.
-    lines.append(_activate_step(database, vault, base_config, activation_code))
+    lines.append(
+        _activate_step(database, vault, base_config, activation_code, server_url)
+    )
 
     # --- 2. Detecção de periféricos ---------------------------------------- #
     logger.info("Varrendo portas seriais e impressoras...")
@@ -301,52 +316,74 @@ def _qt_app():  # noqa: ANN202
         return None
 
     _QT_APP = QApplication.instance() or QApplication(sys.argv)
+    # O mesmo tema do caixa. Sem isto o assistente saía com o visual do Windows
+    # — claro numa máquina, escuro na outra — e parecia outro programa, logo
+    # na tela em que o lojista decide se confia no que instalou.
+    from pdv.ui.brand import app_icon
+    from pdv.ui.theme import apply_theme
+
+    apply_theme(_QT_APP)
+    _QT_APP.setWindowIcon(app_icon())
     return _QT_APP
 
 
-def _ask_activation_code() -> str | None:
-    """Pede o código de ativação numa caixa de diálogo.
+def _ask_activation(data_dir: Path, server_url: str | None) -> None:
+    """Ativa pela tela, com endereço e código, antes do provisionamento.
 
-    Cancelar é uma resposta legítima, não um erro: o PDV instalado e não ativado
-    vende offline e acumula na fila. Devolve `None` sem Qt disponível — a
-    instalação segue e o relatório avisa como ativar depois.
+    Ativar aqui — e não passar o código para `provision()` — é o que deixa o
+    lojista corrigir um código digitado errado sem refazer a instalação: o
+    diálogo só fecha com sucesso ou com "Ativar depois". O provisionamento em
+    seguida encontra o terminal já ativado e só relata.
     """
     if _qt_app() is None:  # pragma: no cover
-        return None
+        return
 
-    from PySide6.QtWidgets import QInputDialog
+    from pdv.ui.activation_dialog import ActivationDialog
 
-    code, accepted = QInputDialog.getText(
-        None,
-        "Ativação do terminal",
-        "Código de ativação (gerado no painel administrativo):\n\n"
-        "Deixe em branco para ativar depois — o PDV já vende offline.",
-    )
-    return code.strip() if accepted and code.strip() else None
+    data_dir.mkdir(parents=True, exist_ok=True)
+    database = Database(data_dir / "pdv_local.db")
+    try:
+        database.migrate()
+        if is_activated(database):
+            return
+        vault = SecretVault(data_dir / "secrets")
+        saved = SettingsStore(database).load().cloud_base_url or ""
+
+        def run(api_url: str, code: str):  # noqa: ANN202
+            return activate(
+                code,
+                database=database,
+                vault=vault,
+                transport=HttpActivationTransport(api_url),
+            )
+
+        ActivationDialog(run, server_url=server_url or saved).exec()
+    finally:
+        database.close()
 
 
-def _show_window(exit_code: int, report: str) -> None:
+def _show_window(exit_code: int, report: str, data_dir: Path) -> None:
     """Mostra o resultado numa janela. Cai para o console se o Qt não subir."""
     if _qt_app() is None:  # pragma: no cover
         _report(report)
         return
 
-    from PySide6.QtWidgets import QMessageBox
+    from pdv.ui.setup_report import SetupResultDialog
 
-    box = QMessageBox()
-    box.setWindowTitle("Instalação do PDV Balcão")
-    if exit_code == EXIT_OK:
-        box.setIcon(QMessageBox.Icon.Information)
-        box.setText("PDV instalado e pronto para vender.")
-    elif exit_code == EXIT_WARNINGS:
-        box.setIcon(QMessageBox.Icon.Warning)
-        box.setText("PDV instalado, mas com pendências.")
-    else:
-        box.setIcon(QMessageBox.Icon.Critical)
-        box.setText("A instalação terminou com falhas que impedem a venda.")
+    database = Database(data_dir / "pdv_local.db")
+    try:
+        activated = is_activated(database)
+    except Exception:  # noqa: BLE001 - a janela final não pode falhar
+        activated = False
+    finally:
+        database.close()
 
-    box.setDetailedText(report)
-    box.exec()
+    SetupResultDialog(
+        exit_code,
+        report,
+        log_path=data_dir / "logs" / "setup.log",
+        demo_logins=not activated,
+    ).exec()
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -364,6 +401,10 @@ def main(argv: list[str] | None = None) -> int:
         "--activation-code",
         help="código de ativação gerado no painel administrativo",
     )
+    parser.add_argument(
+        "--server",
+        help="endereço do painel da retaguarda (ex.: painel.minhaloja.com.br)",
+    )
     parser.add_argument("--data-dir", type=Path, default=DEFAULT_DATA_DIR)
     args = parser.parse_args(argv)
 
@@ -375,13 +416,14 @@ def main(argv: list[str] | None = None) -> int:
         # momento da implantação e ditado para quem está na loja.
         code = args.activation_code
         if not code and not args.silent and not args.detect_only:
-            code = _ask_activation_code()
+            _ask_activation(args.data_dir, args.server)
 
         exit_code, report = provision(
             args.data_dir,
             detect_only=args.detect_only,
             seed_demo=args.demo,
             activation_code=code,
+            server_url=args.server,
         )
     except Exception as exc:  # noqa: BLE001
         logger.exception("Falha no provisionamento")
@@ -393,7 +435,7 @@ def main(argv: list[str] | None = None) -> int:
     logger.info("Resultado do provisionamento:\n%s", report)
 
     if not args.silent:
-        _show_window(exit_code, report)
+        _show_window(exit_code, report, args.data_dir)
 
     return exit_code
 

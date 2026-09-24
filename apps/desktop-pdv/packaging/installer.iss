@@ -1,4 +1,4 @@
-; ===========================================================================
+﻿; ===========================================================================
 ;  Instalador do PDV de Balcao - ERP Food Service
 ;
 ;  Compilar:  ISCC.exe packaging\installer.iss
@@ -17,7 +17,7 @@
 ; ===========================================================================
 
 #define AppName        "PDV Balcao"
-#define AppVersion     "1.0.0"
+#define AppVersion     "1.1.3"
 #define AppPublisher   "ERP Food Service"
 #define AppExeName     "PDV.exe"
 #define SetupExeName   "PDVSetup.exe"
@@ -36,10 +36,23 @@ OutputBaseFilename=PDV-Setup-{#AppVersion}
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
+; Identidade visual gerada do tema pelo build (packaging/branding.py): o mesmo
+; icone do PDV.exe, e as imagens em 100/150/200% para a tela nao borrar em
+; notebook com escala. Sem isto o assistente era o cinza padrao do Inno.
+SetupIconFile=assets\pdv.ico
+WizardImageFile=assets\wizard-large-100.bmp,assets\wizard-large-150.bmp,assets\wizard-large-200.bmp
+WizardSmallImageFile=assets\wizard-small-100.bmp,assets\wizard-small-150.bmp,assets\wizard-small-200.bmp
+; Menos perguntas: a pasta do menu Iniciar nao muda nada para o lojista, e na
+; atualizacao a pasta de instalacao ja esta decidida.
+DisableProgramGroupPage=yes
+DisableDirPage=auto
 
 ; Exige elevacao: sem ela nao ha como gravar em Program Files nem aplicar ACL.
+; `PrivilegesRequiredOverridesAllowed` fica AUSENTE de proposito: ausente, nem a
+; linha de comando nem o assistente podem trocar para instalacao sem admin. O
+; Inno so aceita `commandline`/`dialog` ali - `none` nao existe, e com ele o
+; compilador abortava.
 PrivilegesRequired=admin
-PrivilegesRequiredOverridesAllowed=none
 
 ; O PDV so faz sentido em 64 bits; limitar evita instalacao em maquina errada.
 ArchitecturesAllowed=x64compatible
@@ -69,10 +82,18 @@ UsePreviousTasks=yes
 [Languages]
 Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
 
+[Messages]
+; A pagina final e onde o lojista decide se o PDV "funcionou". Sem dizer que
+; o terminal nao ativado abre em demonstracao, a primeira coisa que ele ve e uma
+; faixa amarela que parece erro.
+brazilianportuguese.FinishedHeadingLabel=PDV Balcão instalado
+brazilianportuguese.FinishedLabelNoIcons=O PDV Balcão está instalado neste computador.%n%nSe o terminal ainda não foi ativado, ele abre em modo demonstração: dá para experimentar tudo, e as vendas de teste ficam arquivadas quando você ativar pelo botão "Ativar terminal".
+brazilianportuguese.FinishedLabel=O PDV Balcão está instalado neste computador.%n%nSe o terminal ainda não foi ativado, ele abre em modo demonstração: dá para experimentar tudo, e as vendas de teste ficam arquivadas quando você ativar pelo botão "Ativar terminal".
+
 [Tasks]
-Name: "desktopicon"; Description: "Criar atalho na area de trabalho"; GroupDescription: "Atalhos:"
-Name: "autostart";  Description: "Iniciar o PDV junto com o Windows"; GroupDescription: "Inicializacao:"
-Name: "firewall";   Description: "Liberar a porta do servidor local (app do garcom na rede da loja)"; GroupDescription: "Rede:"
+Name: "desktopicon"; Description: "Criar atalho na área de trabalho"; GroupDescription: "Atalhos:"
+Name: "autostart";  Description: "Iniciar o PDV junto com o Windows"; GroupDescription: "Inicialização:"
+Name: "firewall";   Description: "Liberar a porta do servidor local (app do garçom na rede da loja)"; GroupDescription: "Rede:"
 
 [Files]
 ; Todo o build onedir do PyInstaller: ja inclui o interpretador Python, o Qt
@@ -121,7 +142,7 @@ Filename: "{tmp}\VC_redist.x64.exe"; \
 ; administrador decide. Instalar sem ACL correta e pior que nao instalar.
 Filename: "powershell.exe"; \
     Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\tools\harden.ps1"" -InstallDir ""{app}"" -DataDir ""{#DataDir}"" -EnableAuditing"; \
-    StatusMsg: "Aplicando permissoes de seguranca..."; \
+    StatusMsg: "Aplicando permissões de segurança..."; \
     Flags: runhidden waituntilterminated
 
 ; --- 2. Regra de firewall para o servidor local (app do garcom) -----------
@@ -144,16 +165,16 @@ Filename: "netsh.exe"; \
 ; Codigo de saida 2 (pendencias) NAO aborta a instalacao: balanca desligada no
 ; momento da instalacao e rotina, e o proprio assistente explica o que fazer.
 Filename: "{app}\{#SetupExeName}"; \
-    Parameters: "--data-dir ""{#DataDir}"""; \
-    StatusMsg: "Detectando balanca e impressora, testando a instalacao..."; \
+    Parameters: "--data-dir ""{#DataDir}""{code:ServerArg}"; \
+    StatusMsg: "Detectando balança e impressora, testando a instalação..."; \
     Flags: waituntilterminated; Check: not WizardSilent
 
 ; Instalacao automatizada (/SILENT): mesmo provisionamento, sem caixa de
 ; dialogo. O resultado vai so para o setup.log, que e o que o script de
 ; implantacao em massa consegue ler.
 Filename: "{app}\{#SetupExeName}"; \
-    Parameters: "--silent --data-dir ""{#DataDir}""{code:ActivationArg}"; \
-    StatusMsg: "Detectando balanca e impressora..."; \
+    Parameters: "--silent --data-dir ""{#DataDir}""{code:ActivationArg}{code:ServerArg}"; \
+    StatusMsg: "Detectando balança e impressora..."; \
     Flags: runhidden waituntilterminated; Check: WizardSilent
 
 ; --- 4. Primeira execucao -------------------------------------------------
@@ -260,7 +281,7 @@ end;
 { ---------------------------------------------------------------------------
   Codigo de ativacao para implantacao em massa.
 
-      PDV-Setup-1.0.0.exe /SILENT /ACTIVATIONCODE=A1B2C3D4
+      PDV-Setup-1.1.3.exe /SILENT /ACTIVATIONCODE=A1B2C3D4
 
   Na instalacao interativa isto fica vazio e quem pergunta e o proprio
   PDVSetup.exe, numa caixa de dialogo - o codigo e gerado no painel no momento
@@ -281,6 +302,26 @@ begin
     Result := ''
   else
     Result := ' --activation-code "' + Code + '"';
+end;
+
+{ ---------------------------------------------------------------------------
+  Endereco do painel da retaguarda, para a ativacao.
+
+      PDV-Setup-1.1.3.exe /SILENT /SERVER=painel.minhaloja.com.br /ACTIVATIONCODE=A1B2C3D4
+
+  Sem ele o terminal nao tem para onde ativar: o endereco que vinha no codigo
+  era de exemplo. Na instalacao interativa o proprio PDVSetup.exe pergunta.
+  --------------------------------------------------------------------------- }
+
+function ServerArg(Param: String): String;
+var
+  Server: String;
+begin
+  Server := ExpandConstant('{param:SERVER|}');
+  if Server = '' then
+    Result := ''
+  else
+    Result := ' --server "' + Server + '"';
 end;
 
 function IsVCRedistInstalled(): Boolean;

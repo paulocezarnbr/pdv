@@ -111,6 +111,62 @@ def normalize_code(raw: str) -> str:
     return cleaned
 
 
+#: O endereço de exemplo do `AppConfig`. Nunca é uma retaguarda de verdade: um
+#: terminal instalado que ainda o carrega nunca conseguiria ativar, e por muito
+#: tempo foi exatamente isso que o instalador tentava.
+PLACEHOLDER_CLOUD_URL = "https://api.erpfood.local"
+
+_LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+
+
+def normalize_server_url(raw: str) -> str:
+    """O endereço da retaguarda como o terminal usa: `https://host[/...]/api`.
+
+    O lojista digita o que o painel mostra na barra do navegador —
+    `painel.minhaloja.com.br`, com ou sem `https://`, com ou sem barra no fim.
+    As rotas do terminal vivem sob `/api`, então o sufixo é acrescentado aqui e
+    não exigido de quem digita.
+
+    HTTPS é obrigatório fora desta própria máquina: é por este endereço que o
+    token de sincronização e todas as vendas vão trafegar. `http://` só para
+    `localhost`, que é o caso de teste com a retaguarda no mesmo computador.
+
+    Raises:
+        ActivationError: endereço vazio, malformado ou sem HTTPS.
+    """
+    from urllib.parse import urlsplit, urlunsplit
+
+    text = raw.strip()
+    if not text:
+        raise ActivationError("Informe o endereço da retaguarda.")
+    if "://" not in text:
+        text = "https://" + text
+
+    parts = urlsplit(text)
+    host = (parts.hostname or "").lower()
+    if parts.scheme not in ("http", "https") or not host or " " in text:
+        raise ActivationError(f"Endereço inválido: {raw.strip()!r}.")
+    if parts.username or parts.password:
+        raise ActivationError("O endereço não pode conter usuário ou senha.")
+    if parts.scheme == "http" and host not in _LOCAL_HOSTS:
+        raise ActivationError(
+            "Use https:// — por este endereço vão passar o token do terminal e "
+            "as vendas. http:// só é aceito para localhost."
+        )
+
+    path = parts.path.rstrip("/")
+    if not path.endswith("/api"):
+        path += "/api"
+    return urlunsplit((parts.scheme, parts.netloc.lower(), path, "", ""))
+
+
+def display_server_url(api_url: str) -> str:
+    """O endereço como o lojista o reconhece: sem o `/api` do final."""
+    if not api_url or api_url == PLACEHOLDER_CLOUD_URL:
+        return ""
+    return api_url[: -len("/api")] if api_url.endswith("/api") else api_url
+
+
 def machine_fingerprint() -> dict[str, str]:
     """Identificação da máquina, para o painel mostrar qual terminal é qual.
 
@@ -263,6 +319,9 @@ def activate(
             "device.id": result.device_id,
             "device.activated": "1",
             "cloud.base_url": result.cloud_base_url,
+            # O nome aparece no login, no título da janela e no cupom. Sem
+            # gravá-lo, um terminal ativado seguia dizendo "Confeitaria Demo".
+            **({"store.name": result.store_name} if result.store_name else {}),
         }
     )
 

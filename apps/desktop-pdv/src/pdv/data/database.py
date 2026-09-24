@@ -25,7 +25,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Final
 
-SCHEMA_VERSION: Final[int] = 13
+SCHEMA_VERSION: Final[int] = 14
 _SCHEMA_FILE: Final[Path] = Path(__file__).with_name("schema.sql")
 
 #: Migration 2 — tabelas do servidor local (Fase 3).
@@ -577,12 +577,34 @@ END;
 """
 
 
+#: Migration 14 — aceite presencial de comando remoto de risco (Fase 3.5.b).
+#:
+#: Cancelar pelo painel um item que **já foi para a cozinha** é a rota limpa
+#: do furto de salão: a comida sai, alguém de longe cancela, e a conta fecha
+#: menor. Esse comando passa a esperar o aceite de quem está no caixa. As
+#: colunas vivem em `remote_commands` e não numa tabela nova porque o estado do
+#: comando continua `pending` — ele não foi decidido — e uma segunda tabela
+#: abriria a pergunta de qual das duas manda.
+#:
+#: * `confirmation_requested_at` — desde quando o comando espera alguém.
+#: * `confirmation_note` — o que o caixa precisa ler para decidir.
+#: * `confirmation_reported_at` — a nuvem já sabe que ele está esperando. É
+#:   separado de `reported_at` porque aquele marca o relato **final**; reusar o
+#:   mesmo campo faria o aplicado depois nunca subir.
+_MIGRATION_14_COLUMNS: Final[tuple[tuple[str, str, str], ...]] = (
+    ("remote_commands", "confirmation_requested_at", "TEXT"),
+    ("remote_commands", "confirmation_note", "TEXT"),
+    ("remote_commands", "confirmation_reported_at", "TEXT"),
+)
+
+
 def _add_column(
     connection: sqlite3.Connection, table: str, column: str, declaration: str
 ) -> None:
     """Acrescenta a coluna se ela ainda não existir.
 
-    Os nomes vêm de `_MIGRATION_6_COLUMNS`, constante deste módulo, e nunca de
+    Os nomes vêm de `_MIGRATION_6_COLUMNS` e `_MIGRATION_14_COLUMNS`,
+    constantes deste módulo, e nunca de
     entrada — não há interpolação de dado externo aqui. O SQLite não aceita
     parâmetro em DDL, então a interpolação é a única forma.
     """
@@ -717,6 +739,10 @@ class Database:
 
         if current < 13:
             connection.executescript(_MIGRATION_13_FISCAL_FOUNDATION)
+
+        if current < 14:
+            for table, column, declaration in _MIGRATION_14_COLUMNS:
+                _add_column(connection, table, column, declaration)
 
         if current < SCHEMA_VERSION:
             connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")

@@ -606,27 +606,12 @@ class CheckoutService:
                 connection, authorizer_id, frozenset({"manager"}),
                 "Cancelamento de item exige autorização de gerente.",
             )
-            canceled_at = iso(utc_now())
-            connection.execute(
-                "UPDATE order_items SET canceled_at = ?, "
-                "canceled_by_user_id = ?, cancel_reason = ? WHERE id = ?",
-                (canceled_at, authorizer_id, reason, item.id),
-            )
-            # O item já foi enviado vivo quando entrou na venda. Sem este envio
-            # a nuvem o contava para sempre: CMV e ranking de produtos com
-            # comida que o gerente tirou da conta.
-            self._outbox.enqueue(
-                connection,
-                entity_table="order_items",
-                entity_id=item.id,
-                client_uuid=EntityId(new_id()),
-                operation="update",
-                payload={
-                    "id": item.id,
-                    "canceled_at": canceled_at,
-                    "canceled_by_user_id": authorizer_id,
-                    "cancel_reason": reason,
-                },
+            sales = SaleRepository(connection, self._outbox)
+            sales.cancel_item(
+                item.id,
+                canceled_at=iso(utc_now()),
+                canceled_by_user_id=authorizer_id,
+                reason=reason,
             )
 
             stock_repository = StockRepository(connection, self._outbox)
@@ -659,7 +644,7 @@ class CheckoutService:
             )
 
             sale.items.pop(index)
-            SaleRepository(connection, self._outbox).update_totals(
+            sales.update_totals(
                 sale.id, sale.subtotal_cents, sale.discount_cents, sale.total_cents
             )
 

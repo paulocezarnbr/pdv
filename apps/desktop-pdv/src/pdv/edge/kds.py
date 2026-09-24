@@ -205,6 +205,10 @@ class KdsService:
             )
         return self.advance(ticket_id, previous[current.status])
 
+    def get(self, ticket_id: EntityId) -> Ticket:
+        """O ticket no estado atual, inclusive cancelado ou entregue."""
+        return self._require(ticket_id)
+
     def _require(self, ticket_id: EntityId) -> Ticket:
         row = self._db.query_one(
             "SELECT t.*, o.local_number, o.customer_id "

@@ -60,7 +60,6 @@ function fakeTx(state: FakeState) {
 
   const tx = tagged as unknown as Record<string, unknown>;
   tx["json"] = (value: unknown) => value;
-  tx["savepoint"] = (work: (sp: unknown) => unknown) => Promise.resolve(work(tx));
   tx["unsafe"] = (sqlText: string, params: unknown[]) => {
     const table = /INSERT INTO (\w+)/.exec(sqlText)?.[1] ?? "?";
     const columns = [...sqlText.matchAll(/"(\w+)"/g)].map((m) => m[1] as string);
@@ -322,31 +321,5 @@ describe("ordem de aplicação", () => {
       dois.client_uuid,
       um.client_uuid,
     ]);
-  });
-});
-
-describe("recusa por item, queda por banco", () => {
-  it("erro do dado vira recusa daquele item, e o lote segue", async () => {
-    const { tx, state } = fakeTx(freshState());
-    const unsafe = tx["unsafe"] as (sqlText: string, params: unknown[]) => Promise<unknown>;
-    tx["unsafe"] = (sqlText: string, params: unknown[]) =>
-      params.includes("ruim")
-        ? Promise.reject(Object.assign(new Error("null value in column"), { code: "23502" }))
-        : unsafe(sqlText, params);
-
-    const results = await merger().apply([order("ruim"), order("bom")], tx as never);
-
-    expect(results.map((r) => r.status)).toEqual(["rejected", "applied"]);
-    expect(state.inserted).toHaveLength(1);
-  });
-
-  it("erro do banco derruba o lote inteiro, para o terminal reenviar", async () => {
-    // Conexão caída não é culpa do dado: recusar mandaria para a quarentena
-    // uma venda perfeita, que só precisava de outra tentativa.
-    const { tx } = fakeTx(freshState());
-    tx["unsafe"] = () =>
-      Promise.reject(Object.assign(new Error("connection terminated"), { code: "08006" }));
-
-    await expect(merger().apply([order("qualquer")], tx as never)).rejects.toThrow("connection");
   });
 });

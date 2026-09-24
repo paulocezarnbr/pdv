@@ -110,6 +110,27 @@ segundos, e não em minutos. É uma decisão de segurança, não de desempenho.
 
 ## Como compilar
 
+### Pelo GitHub, sem máquina Windows (recomendado)
+
+O workflow **Instalador do PDV** (`.github/workflows/installer.yml`) roda este
+mesmo `build.ps1` num Windows limpo: instala só os pins, baixa o Visual C++
+Redistributable e **confere a assinatura da Microsoft** nele, roda a suíte,
+compila, executa o `--selftest` dentro do `PDV.exe` e gera o instalador.
+
+* Roda sozinho a cada push que mexe em `apps/desktop-pdv/`, e sob demanda em
+  **Actions → Instalador do PDV → Run workflow**.
+* O `PDV-Setup-x.y.z.exe` e o `.sha256` ficam em **Artifacts** da execução
+  (30 dias).
+* Numa tag `pdv-v1.2.3`, vira também uma **Release**.
+* Com os secrets `PDV_SIGN_CERT_BASE64` (o `.pfx` em base64) e
+  `PDV_SIGN_PASSWORD`, sai assinado. Sem eles, sai sem assinatura e o
+  SmartScreen mostra "Editor desconhecido" — clique em *Mais informações →
+  Executar assim mesmo*.
+
+**Suba a versão** em `installer.iss` a cada entrega que mude o schema local:
+o bloqueio de downgrade compara essa versão. `tests/test_packaging.py` reprova
+se `installer.iss`, `version_info.txt` e `build.ps1` divergirem.
+
 ### Pré-requisitos
 
 ```powershell
@@ -139,7 +160,7 @@ O pipeline roda os testes antes de empacotar e **aborta se algum falhar**.
 ```
 dist\PDV\PDV.exe                       o caixa (onedir)
 dist\PDV\PDVSetup.exe                  assistente de instalação
-dist\installer\PDV-Setup-1.0.0.exe     instalador
+dist\installer\PDV-Setup-1.1.3.exe     instalador
 ```
 
 Os dois executáveis dividem o mesmo diretório e, portanto, as mesmas DLLs do Qt
@@ -181,7 +202,7 @@ chama quando a balança é trocada ou o cabo USB muda de porta.
 Implantação em massa:
 
 ```powershell
-.\PDV-Setup-1.0.0.exe /SILENT /ACTIVATIONCODE=A1B2C3D4
+.\PDV-Setup-1.1.3.exe /SILENT /ACTIVATIONCODE=A1B2C3D4
 ```
 
 Na instalação interativa o próprio `PDVSetup.exe` pergunta numa caixa de

@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+from dataclasses import replace
 import sys
 import tempfile
 import uuid
@@ -44,7 +45,8 @@ from pdv.provisioning.activation import (  # noqa: E402
     HttpActivationTransport, activate, load_sync_token,
 )
 from pdv.provisioning.secrets import SecretVault  # noqa: E402
-from pdv.runtime import DATABASE_NAME, load_runtime  # noqa: E402
+from pdv.config import AppConfig, installed_data_dir  # noqa: E402
+from pdv.data.settings import SettingsStore  # noqa: E402
 from pdv.services.checkout import CheckoutService  # noqa: E402
 from pdv.sync.engine import SyncEngine  # noqa: E402
 from pdv.sync.protocol import PushBatch  # noqa: E402
@@ -82,20 +84,29 @@ psql(
 
 # -- a instalação: ativação e bootstrap do próprio PDV ------------------------- #
 # Nada de ativar à mão: é a ativação do terminal (que precisa entregar o
-# segredo do ledger e achar a rota /api sozinha) e o `load_runtime` do
+# segredo do ledger e achar a rota /api sozinha) e a montagem de configuração do
 # `PDV.exe` (que precisa ler o que a ativação gravou).
 work = Path(tempfile.mkdtemp())
 os.environ["PDV_DATA_DIR"] = str(work)
 os.environ.pop("PDV_DEVICE_SECRET", None)
-provisioning_db = Database(work / DATABASE_NAME)
+provisioning_db = Database(work / "pdv_local.db")
 provisioning_db.migrate()
 vault = SecretVault(work / "secrets")
 activate(code, database=provisioning_db, vault=vault, transport=HttpActivationTransport(BASE))
 provisioning_db.close()
 token = load_sync_token(vault)
 
-runtime = load_runtime()
-config, database = runtime.config, runtime.database
+# Os mesmos passos de `build_config` + `open_database` do `main.py` (que não
+# se importa aqui: puxa o Qt, e o job de e2e não tem interface): a pasta de
+# dados instalada, o segredo do cofre e o que a ativação gravou no banco.
+data_dir = installed_data_dir()
+database = Database(data_dir / "pdv_local.db")
+database.migrate()
+config = SettingsStore(database).apply_to(replace(
+    AppConfig.from_env(),
+    database_path=data_dir / "pdv_local.db",
+    device_secret=vault.ensure_device_secret(),
+))
 check("o PDV assume a identidade da ativação",
       (config.tenant_id, config.device_id) == (tenant, device), str(config.tenant_id))
 seed_demo_data(database, config)

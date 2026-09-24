@@ -12,15 +12,9 @@
  *    NOTHING` transforma o reenvio em `duplicate` — que o cliente trata como
  *    sucesso.
  *
- * 2. **O lote inteiro é uma transação.** Falha do banco desfaz tudo e o
- *    terminal reenvia. Cada item roda num SAVEPOINT, porém: um payload que o
- *    banco recusa (NOT NULL, CHECK, tipo) vira `rejected` sozinho e vai para a
- *    quarentena do terminal, à vista. Antes ele derrubava o lote — e todos os
- *    seguintes, porque a fila anda em ordem —, e a loja parava de sincronizar
- *    por causa de uma linha.
- *
- * `update` é aplicado como UPDATE de verdade, com lista própria de colunas e
- * de dono (`UPDATABLE`) e idempotência pelo `client_uuid` da operação.
+ * 2. **O lote inteiro é uma transação.** Ou entra tudo, ou nada. Aplicação
+ *    parcial deixaria o item de venda gravado sem o movimento de estoque
+ *    correspondente, e o CMV do tenant passaria a mentir em silêncio.
  *
  * 3. **A cadeia de auditoria é revalidada aqui.** O cliente afirma
  *    integridade; o servidor confere. Nunca se aceita o autoatestado de um
@@ -31,6 +25,8 @@
  *    rejeitada e vira alerta de fraude. É isto que torna a venda sincronizada
  *    inalcançável para quem controla o PC da loja.
  */
+
+import { createHash } from "node:crypto";
 
 import type { Tx } from "@/lib/db";
 import { computeChainHash, hashesMatch } from "@/lib/crypto/audit";
@@ -120,7 +116,7 @@ const WRITABLE: Readonly<Record<string, readonly string[]>> = {
   ],
   store_tables: [
     "id", "store_id", "client_uuid", "label", "area", "seats", "sort_order",
-    "is_active",
+    "is_active", "updated_at",
   ],
   audit_ledger: [
     "id", "store_id", "device_id", "client_uuid", "seq", "event_type",
@@ -131,86 +127,110 @@ const WRITABLE: Readonly<Record<string, readonly string[]>> = {
 
 export const WRITABLE_TABLES = Object.freeze(Object.keys(WRITABLE));
 
+type Payload = Record<string, unknown>;
+
 /**
- * O que um `update` do terminal pode mudar, e em qual linha.
+ * O formato que os caixas mandam, traduzido para o daqui.
  *
- * Mais estreito que `WRITABLE`, e de propósito: quem cria a linha preenche o
- * registro inteiro, mas quem a altera só mexe no que muda de verdade na vida
- * da entidade. `local_number`, `device_id`, `opened_at` e o preço de um item
- * lançado não mudam — um terminal que tentasse mudá-los estaria reescrevendo a
- * venda, e isso não é atualização, é adulteração.
+ * A tradução mora na nuvem, e não no caixa, por um motivo só: os caixas já
+ * instalados têm a fila cheia neste formato. Corrigir lá deixaria essa fila
+ * presa para sempre; corrigir aqui a esvazia no próximo ciclo, sem reinstalar
+ * nada. `contracts/push-day-1.1.2.json` é a fila de um caixa desses, e o teste
+ * de contrato a aplica inteira.
  *
- * `scope` diz de quem é a linha:
- *
- * * `own_open_order` — pedido **deste** terminal e ainda aberto. Fechado,
- *   corrige-se por estorno, nunca por edição; e o caixa de uma loja não
- *   reescreve a venda de outro caixa.
- * * `item_of_own_open_order` — item de um pedido assim, e o pedido de destino
- *   (quando o item muda de comanda) precisa ser assim também.
- * * `store` — cadastro desta loja.
- * * `tenant` — cadastro do tenant (o RLS e o `WHERE tenant_id` bastam).
+ * Nunca inventa valor: só renomeia o que veio. O que não veio fica nulo.
  */
-type UpdateScope = "own_open_order" | "item_of_own_open_order" | "store" | "tenant";
-
-interface UpdateRule {
-  key: string;
-  columns: readonly string[];
-  scope: UpdateScope;
-}
-
-const UPDATABLE: Readonly<Record<string, UpdateRule>> = {
-  orders: {
-    key: "id",
-    columns: [
-      "status", "customer_id", "table_id", "served_by_user_id",
-      "subtotal_cents", "discount_cents", "total_cents", "tip_cents",
-      "closed_at", "bill_requested_at",
-    ],
-    scope: "own_open_order",
+const ADAPTERS: Readonly<Record<string, (payload: Payload) => Payload>> = {
+  stock_movements: (payload) => {
+    const adapted = { ...payload };
+    adapted["quantity_mg"] ??= payload["qty_mg"];
+    adapted["reason"] ??= payload["movement_type"];
+    const reference = String(payload["reference_type"] ?? "");
+    if (reference.startsWith("order_item")) adapted["order_item_id"] ??= payload["reference_id"];
+    return adapted;
   },
-  order_items: {
-    key: "id",
-    columns: ["order_id", "canceled_at", "canceled_by_user_id", "cancel_reason"],
-    scope: "item_of_own_open_order",
-  },
-  discount_tiers: {
-    key: "id",
-    columns: [
-      "name", "percent_basis_points", "priority", "requires_manager",
-      "valid_from", "valid_until", "is_active", "updated_at",
-    ],
-    scope: "store",
-  },
-  customer_credit_accounts: {
-    key: "customer_id",
-    columns: ["limit_cents", "due_days", "is_active", "updated_at"],
-    scope: "tenant",
-  },
-  store_tables: {
-    key: "id",
-    columns: ["label", "area", "seats", "sort_order", "is_active", "updated_at"],
-    scope: "store",
-  },
-  customer_discount_tiers: {
-    key: "customer_id",
-    columns: ["tier_id", "assigned_by_user_id", "assigned_at"],
-    scope: "tenant",
+  // A comanda de mesa até a 1.1.3 mandava o rótulo só como `table_label`, que
+  // não é coluna daqui: toda mesa chegava sem nome no painel, a não ser que
+  // fosse trocada de mesa depois. O rótulo mora em `customer_id` (a cópia que o
+  // cupom imprimiu), dos dois lados.
+  orders: (payload) => {
+    const adapted = { ...payload };
+    if (payload["table_label"] !== undefined) adapted["customer_id"] ??= payload["table_label"];
+    return adapted;
   },
 };
 
 /**
- * Erro do Postgres que é **do dado**, e não do banco.
+ * O que um `update` do caixa pode mudar, e como.
  *
- * Classe 22 (dado inválido: texto onde vai número, data impossível) e 23
- * (restrição: NOT NULL, chave, CHECK, gatilho de proteção). Reenviar o mesmo
- * payload dá o mesmo erro — então é recusa, e o item vai para a quarentena do
- * terminal. Qualquer outro erro (conexão, serialização, disco) é do banco, e
- * derruba o lote para o terminal tentar de novo.
+ * O `insert` é idempotente por `client_uuid`, e isso não serve para alteração:
+ * os cadastros do caixa (nível de desconto, limite de fiado, mesa) reusam o
+ * mesmo `client_uuid` ao mudar, e o `ON CONFLICT DO NOTHING` descartava a
+ * mudança calado — o desconto de 15% continuava 10% aqui para sempre. As
+ * mudanças de comanda usam `client_uuid` novo, e o insert batia na chave
+ * primária e derrubava o lote.
+ *
+ * * `key` — a coluna que identifica o registro no caixa;
+ * * `columns` — lista branca, como no insert;
+ * * `newer` — coluna de data que decide quem é mais novo: uma mudança antiga
+ *   que chega depois (reenvio de lote perdido) não desfaz a recente;
+ * * `upsert` — cadastro: se ainda não existe aqui (o insert foi perdido ou
+ *   está em quarentena), a mudança cria. Movimento (comanda, item) nunca cria:
+ *   um "pago" sem a venda seria faturamento sem venda.
  */
-function isDataError(error: unknown): error is { code: string; message: string } {
-  const code = (error as { code?: unknown } | null)?.code;
-  return typeof code === "string" && /^2[23]/.test(code);
+interface Mutable {
+  key: string;
+  columns: readonly string[];
+  newer?: string;
+  upsert?: boolean;
 }
+
+const UPDATABLE: Readonly<Record<string, Mutable>> = {
+  orders: {
+    key: "id",
+    columns: [
+      "status", "closed_at", "subtotal_cents", "discount_cents", "total_cents",
+      "tip_cents", "table_id", "served_by_user_id", "bill_requested_at",
+      "customer_id", "operator_id", "opened_at", "local_number",
+    ],
+  },
+  order_items: {
+    key: "id",
+    // `order_id`: dividir e juntar conta no caixa mudam o item de comanda. A
+    // mudança passa por `itemMoveRefusal` antes — nunca é aplicada às cegas.
+    columns: ["order_id", "canceled_at", "canceled_by_user_id", "cancel_reason"],
+  },
+  discount_tiers: {
+    key: "id",
+    columns: [
+      "code", "name", "percent_basis_points", "priority", "requires_manager",
+      "valid_from", "valid_until", "is_active", "updated_at",
+    ],
+    newer: "updated_at",
+    upsert: true,
+  },
+  customer_discount_tiers: {
+    key: "customer_id",
+    columns: ["tier_id", "assigned_by_user_id", "assigned_at"],
+    newer: "assigned_at",
+    upsert: true,
+  },
+  customer_credit_accounts: {
+    key: "customer_id",
+    columns: ["limit_cents", "due_days", "is_active", "updated_at"],
+    newer: "updated_at",
+    upsert: true,
+  },
+  store_tables: {
+    key: "id",
+    columns: ["label", "area", "seats", "sort_order", "is_active", "updated_at"],
+    newer: "updated_at",
+    upsert: true,
+  },
+};
+
+/** Estados de comanda que não voltam: pago é dinheiro, cancelado é trilha. */
+const FINAL_ORDER_STATUS = new Set(["paid", "canceled"]);
 
 export interface MergeContext {
   tenantId: string;
@@ -245,7 +265,21 @@ export class SyncMerger {
         continue;
       }
 
-      results.push(await this.applyIsolated(item, tx));
+      if (item.operation === "delete") {
+        // O caixa não apaga nada na nuvem: cancelar é marcar, e a marca vem
+        // como `update`. Um `delete` aqui é terminal fora do contrato.
+        results.push(reject(item, "o terminal não apaga registros na nuvem"));
+        continue;
+      }
+
+      const adapted = adapt(item);
+      if (adapted.entity_table === "audit_ledger") {
+        results.push(await this.applyAuditEntry(adapted, tx));
+      } else if (adapted.operation === "update" && adapted.entity_table in UPDATABLE) {
+        results.push(await this.applyUpdate(adapted, tx));
+      } else {
+        results.push(await this.applyGeneric(adapted, tx));
+      }
     }
 
     // Devolve na ordem em que o cliente enviou: ele casa resultado com item
@@ -260,145 +294,6 @@ export class SyncMerger {
           message: "item sem resultado",
         },
     );
-  }
-
-  /**
-   * Um item, dentro de um SAVEPOINT.
-   *
-   * Sem isto, um único payload inválido derrubava o lote inteiro — e com ele
-   * todo lote seguinte, porque o terminal reenvia em ordem: a loja parava de
-   * sincronizar por causa de uma linha. Foi exatamente o que aconteceu com o
-   * `update` de pedido, que batia no NOT NULL de `local_number` a cada mesa
-   * fechada.
-   *
-   * Erro do dado vira `rejected` (quarentena no terminal, visível, esperando
-   * gente). Erro do banco continua derrubando o lote: esse o reenvio resolve.
-   */
-  private async applyIsolated(item: SyncItem, tx: Tx): Promise<ItemResult> {
-    try {
-      return await tx.savepoint((sp) =>
-        item.entity_table === "audit_ledger"
-          ? this.applyAuditEntry(item, sp)
-          : item.operation === "update"
-            ? this.applyUpdate(item, sp)
-            : item.operation === "insert"
-              ? this.applyGeneric(item, sp)
-              : Promise.resolve(reject(item, `operação não suportada: ${item.operation}`)),
-      );
-    } catch (error) {
-      if (isDataError(error)) {
-        return reject(item, `dado recusado pelo banco (${error.code}): ${error.message}`);
-      }
-      throw error;
-    }
-  }
-
-  // -- atualização --------------------------------------------------------- //
-
-  /**
-   * Aplica um `update`: só as colunas de `UPDATABLE`, só na linha que o
-   * terminal pode alterar, e uma vez só.
-   *
-   * A idempotência é pelo `client_uuid` da operação, em
-   * `sync_applied_updates`. O lote reenviado depois de uma resposta perdida
-   * volta como `duplicate` em vez de reaplicar mudança velha por cima de nova.
-   */
-  private async applyUpdate(item: SyncItem, tx: Tx): Promise<ItemResult> {
-    const rule = UPDATABLE[item.entity_table];
-    if (!rule) {
-      return reject(item, `atualização não aceita em ${item.entity_table}`);
-    }
-    const { tenantId, storeId, deviceId } = this.context;
-
-    const seen = await tx`
-      SELECT 1 FROM sync_applied_updates
-       WHERE tenant_id = ${tenantId} AND client_uuid = ${item.client_uuid}
-    `;
-    if (seen.length) return { client_uuid: item.client_uuid, status: "duplicate" };
-
-    const key = String(item.payload[rule.key] ?? item.entity_id);
-    const changes: Record<string, unknown> = {};
-    for (const column of rule.columns) {
-      if (Object.hasOwn(item.payload, column)) {
-        changes[column] = normalize(item.payload[column]);
-      }
-    }
-
-    const refusal = await this.updateRefusal(rule, key, changes, tx);
-    if (refusal) return reject(item, refusal);
-
-    const columns = Object.keys(changes).sort();
-    if (columns.length) {
-      const params: unknown[] = [...columns.map((c) => changes[c]), tenantId, key];
-      let where = `tenant_id = $${columns.length + 1} AND "${rule.key}"::text = $${columns.length + 2}`;
-      if (rule.scope === "store") {
-        params.push(storeId);
-        where += ` AND store_id = $${params.length}`;
-      }
-      // O `server_seq` anda: quem lê por cursor precisa enxergar a mudança.
-      const updated = await tx.unsafe(
-        `UPDATE ${item.entity_table}
-            SET ${columns.map((c, i) => `"${c}" = $${i + 1}`).join(", ")},
-                server_seq = nextval('server_seq_global')
-          WHERE ${where}
-          RETURNING 1`,
-        params as never[],
-      );
-      if (!updated.length) {
-        return reject(item, `${item.entity_table} ${key} não existe nesta loja`);
-      }
-    }
-
-    await tx`
-      INSERT INTO sync_applied_updates (tenant_id, client_uuid, device_id, entity_table, entity_id)
-      VALUES (${tenantId}, ${item.client_uuid}, ${deviceId}, ${item.entity_table}, ${key})
-    `;
-    return { client_uuid: item.client_uuid, status: "applied" };
-  }
-
-  /**
-   * Por que o terminal NÃO pode aplicar esta atualização — ou `null`.
-   *
-   * A mensagem vai para a quarentena do terminal e para o suporte, então diz o
-   * motivo em vez de só "recusado".
-   */
-  private async updateRefusal(
-    rule: UpdateRule,
-    key: string,
-    changes: Record<string, unknown>,
-    tx: Tx,
-  ): Promise<string | null> {
-    const { tenantId, deviceId } = this.context;
-
-    const ownOpenOrder = async (orderId: string, label: string): Promise<string | null> => {
-      const [order] = await tx<{ device_id: string; status: string }[]>`
-        SELECT device_id::text AS device_id, status FROM orders
-         WHERE tenant_id = ${tenantId} AND id::text = ${orderId}
-      `;
-      if (!order) return `${label} ${orderId} ainda não chegou à nuvem`;
-      if (order.device_id !== deviceId) return `${label} ${orderId} é de outro terminal`;
-      if (order.status !== "open") {
-        return `${label} ${orderId} já está ${order.status}: pedido fechado não se edita`;
-      }
-      return null;
-    };
-
-    if (rule.scope === "own_open_order") {
-      return ownOpenOrder(key, "pedido");
-    }
-    if (rule.scope === "item_of_own_open_order") {
-      const [row] = await tx<{ order_id: string }[]>`
-        SELECT order_id::text AS order_id FROM order_items
-         WHERE tenant_id = ${tenantId} AND id::text = ${key}
-      `;
-      if (!row) return `item ${key} ainda não chegou à nuvem`;
-      const origin = await ownOpenOrder(row.order_id, "pedido do item");
-      if (origin) return origin;
-      if (changes["order_id"] !== undefined && String(changes["order_id"]) !== row.order_id) {
-        return ownOpenOrder(String(changes["order_id"]), "pedido de destino");
-      }
-    }
-    return null;
   }
 
   // -- auditoria ----------------------------------------------------------- //
@@ -505,10 +400,191 @@ export class SyncMerger {
   // -- demais entidades ---------------------------------------------------- //
 
   private async applyGeneric(item: SyncItem, tx: Tx): Promise<ItemResult> {
+    if (item.entity_table === "order_items") await this.fillProductName(item, tx);
     const serverSeq = await this.insertIdempotent(item, tx);
+    if (item.entity_table === "order_items") await this.applyIngredients(item, tx);
     return serverSeq === null
       ? { client_uuid: item.client_uuid, status: "duplicate" }
       : { client_uuid: item.client_uuid, status: "applied", server_seq: serverSeq };
+  }
+
+  /**
+   * Os insumos consumidos pelo item viajam DENTRO dele, em `ingredients`.
+   *
+   * A nuvem descartava a chave em silêncio (não está na lista branca), e o CMV
+   * do painel era sempre zero. Cada insumo vira uma linha de
+   * `order_item_ingredients`, na mesma transação do item. A idempotência é a
+   * do resto: `client_uuid` do próprio insumo quando o caixa manda, senão um
+   * derivado estável do item — o reenvio cai no mesmo `ON CONFLICT`.
+   *
+   * Roda também quando o item é duplicata: é barato, e é o que recupera um
+   * item gravado antes desta correção, quando os insumos ainda eram jogados
+   * fora.
+   */
+  private async applyIngredients(item: SyncItem, tx: Tx): Promise<void> {
+    const list = item.payload["ingredients"];
+    if (!Array.isArray(list)) return;
+    const orderItemId = String(item.payload["id"] ?? item.entity_id);
+
+    for (const [index, raw] of list.entries()) {
+      if (raw === null || typeof raw !== "object") continue;
+      const ingredient = raw as Payload;
+      const seed = `${item.client_uuid}:insumo:${index}`;
+      const clientUuid = text(ingredient["client_uuid"]) ?? derivedUuid(seed);
+      const id = text(ingredient["id"]) ?? derivedUuid(`${seed}:id`);
+      await this.insertIdempotent(
+        {
+          entity_table: "order_item_ingredients",
+          entity_id: id,
+          client_uuid: clientUuid,
+          operation: "insert",
+          payload: {
+            id,
+            order_item_id: orderItemId,
+            inventory_item_id: ingredient["inventory_item_id"],
+            inventory_item_name: ingredient["inventory_item_name"] ?? "",
+            consumed_mg: ingredient["consumed_mg"],
+            unit_cost_cents: ingredient["unit_cost_cents"] ?? 0,
+          },
+        },
+        tx,
+      );
+    }
+  }
+
+  /**
+   * Item lançado pelo garçom num caixa até a 1.1.2 vem sem nome. O nome é o
+   * que o painel agrupa ("mais vendidos"); sem ele, todo item de mesa caía num
+   * grupo em branco. O produto é do cadastro daqui, então o nome sai dele — o
+   * preço não: preço é do momento da venda, e o de hoje não é o daquele dia.
+   */
+  private async fillProductName(item: SyncItem, tx: Tx): Promise<void> {
+    const productId = text(item.payload["product_id"]);
+    if (!productId || text(item.payload["product_name"])) return;
+    const [product] = await tx<{ name: string }[]>`
+      SELECT name FROM products
+       WHERE tenant_id = ${this.context.tenantId} AND id::text = ${productId}
+    `;
+    if (product) item.payload["product_name"] = product.name;
+  }
+
+  // -- alterações ---------------------------------------------------------- //
+
+  /**
+   * Aplica um `update` do caixa, com as travas de cada tabela.
+   *
+   * O tenant entra no `WHERE` além do RLS: um terminal que mande o id de um
+   * registro de outro restaurante não acha nada, e, sendo cadastro, a recusa
+   * vem antes da criação — criar aqui deixaria um terminal clonado descobrir,
+   * por tentativa, quais ids existem lá.
+   */
+  private async applyUpdate(item: SyncItem, tx: Tx): Promise<ItemResult> {
+    const rule = UPDATABLE[item.entity_table]!;
+    const table = item.entity_table;
+    const keyValue = text(item.payload[rule.key]) ?? item.entity_id;
+
+    const changes: Payload = {};
+    for (const column of rule.columns) {
+      if (Object.hasOwn(item.payload, column)) changes[column] = normalize(item.payload[column]);
+    }
+
+    const [current] = await tx.unsafe<{
+      status?: string; canceled_at?: unknown; order_id?: string; stale?: boolean;
+    }[]>(
+      `SELECT ${table === "orders" ? "status," : ""}
+              ${table === "order_items" ? "canceled_at, order_id::text AS order_id," : ""}
+              ${rule.newer && changes[rule.newer] !== undefined
+                ? `("${rule.newer}" IS NOT NULL AND "${rule.newer}" > $3::timestamptz) AS stale`
+                : "false AS stale"}
+         FROM ${table}
+        WHERE tenant_id = $1 AND "${rule.key}"::text = $2
+        FOR UPDATE`,
+      [this.context.tenantId, keyValue, ...(rule.newer && changes[rule.newer] !== undefined
+        ? [changes[rule.newer]] : [])] as never[],
+    );
+
+    if (!current) {
+      if (!rule.upsert) return reject(item, "o registro ainda não chegou à nuvem");
+      return this.createFromUpdate(item, tx);
+    }
+
+    // Mudança mais velha que o que já está aqui: um lote antigo reenviado.
+    if (current.stale) return { client_uuid: item.client_uuid, status: "duplicate" };
+
+    if (table === "orders" && changes["status"] !== undefined) {
+      const status = String(current.status ?? "");
+      if (FINAL_ORDER_STATUS.has(status) && status !== changes["status"]) {
+        return reject(item, `comanda já ${status === "paid" ? "paga" : "cancelada"} não muda de estado`);
+      }
+    }
+    if (table === "order_items") {
+      // O primeiro cancelamento é o que vale: é ele que tem quem autorizou.
+      if (current.canceled_at) return { client_uuid: item.client_uuid, status: "duplicate" };
+      if (changes["order_id"] !== undefined) {
+        const target = String(changes["order_id"]);
+        // Já está lá: é o reenvio de uma mudança aplicada.
+        if (target === current.order_id) {
+          delete changes["order_id"];
+        } else {
+          const refusal = await this.itemMoveRefusal(String(current.order_id), target, tx);
+          if (refusal) return reject(item, refusal);
+        }
+      }
+    }
+
+    const columns = Object.keys(changes).sort();
+    if (columns.length === 0) return { client_uuid: item.client_uuid, status: "duplicate" };
+    const assignments = columns.map((column, index) => `"${column}" = $${index + 3}`);
+    const [updated] = await tx.unsafe<{ server_seq: string }[]>(
+      `UPDATE ${table}
+          SET ${assignments.join(", ")}, server_seq = nextval('server_seq_global')
+        WHERE tenant_id = $1 AND "${rule.key}"::text = $2
+        RETURNING server_seq`,
+      [this.context.tenantId, keyValue, ...columns.map((c) => changes[c])] as never[],
+    );
+    return {
+      client_uuid: item.client_uuid,
+      status: "applied",
+      server_seq: Number(updated!.server_seq),
+    };
+  }
+
+  /**
+   * Por que o item NÃO pode mudar de comanda — ou `null`.
+   *
+   * As duas pontas precisam estar abertas, neste restaurante e neste
+   * terminal. Comanda fechada é dinheiro recebido; mover item para ou de uma
+   * delas reescreveria uma venda já paga. E o caixa de uma loja não mexe na
+   * comanda que outro caixa abriu.
+   */
+  private async itemMoveRefusal(from: string, to: string, tx: Tx): Promise<string | null> {
+    const rows = await tx<{ id: string; status: string; device_id: string }[]>`
+      SELECT id::text AS id, status, device_id::text AS device_id FROM orders
+       WHERE tenant_id = ${this.context.tenantId} AND id::text IN (${from}, ${to})
+    `;
+    for (const [id, label] of [[from, "origem"], [to, "destino"]] as const) {
+      const order = rows.find((row) => row.id === id);
+      if (!order) return `comanda de ${label} ainda não chegou à nuvem`;
+      if (order.device_id !== this.context.deviceId) return `comanda de ${label} é de outro terminal`;
+      if (order.status !== "open") return `comanda de ${label} já está ${order.status}: item não muda de comanda fechada`;
+    }
+    return null;
+  }
+
+  /** Cadastro que ainda não existe aqui: a mudança vira o registro. */
+  private async createFromUpdate(item: SyncItem, tx: Tx): Promise<ItemResult> {
+    try {
+      const serverSeq = await tx.savepoint((sp) => this.insertIdempotent(item, sp as never));
+      if (serverSeq !== null) {
+        return { client_uuid: item.client_uuid, status: "applied", server_seq: serverSeq };
+      }
+    } catch (error) {
+      // Chave primária de outro restaurante, ou campo obrigatório ausente numa
+      // mudança parcial. Os dois são recusa deste item, não do lote inteiro.
+      const code = (error as { code?: string }).code;
+      if (code !== "23505" && code !== "23502") throw error;
+    }
+    return reject(item, "o registro não pertence a este restaurante ou está incompleto");
   }
 
   /**
@@ -579,6 +655,26 @@ export class SyncMerger {
       detail,
     });
   }
+}
+
+function adapt(item: SyncItem): SyncItem {
+  const adapter = ADAPTERS[item.entity_table];
+  return adapter ? { ...item, payload: adapter(item.payload) } : { ...item, payload: { ...item.payload } };
+}
+
+function text(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+/**
+ * Um UUID estável a partir de um texto — o mesmo item, reenviado, dá o mesmo
+ * id, e o `ON CONFLICT` reconhece a repetição.
+ */
+function derivedUuid(seed: string): string {
+  const hex = createHash("sha256").update(seed, "utf8").digest("hex");
+  // Versão 8 (RFC 9562, "definida pela aplicação") e variante RFC.
+  const variant = ((parseInt(hex[16]!, 16) & 0x3) | 0x8).toString(16);
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-8${hex.slice(13, 16)}-${variant}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 }
 
 function reject(item: SyncItem, message: string): ItemResult {

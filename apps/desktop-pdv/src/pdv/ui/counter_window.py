@@ -5,7 +5,8 @@ Princípios de UI de PDV que o layout respeita:
 * **Teclado acima do mouse.** O operador não tira a mão do teclado numa fila.
   F2 registra o pesado, F3 lança o unitário, F4 cancela item, F6 desconta,
   F7 configura cashback, F8 abre o salão, F9 as mesas, F10 finaliza,
-  F11 carrega crédito pré-pago e F12 fecha o caixa.
+  F11 carrega crédito pré-pago e F12 fecha o caixa. Ctrl+F4 abre o aceite
+  de cancelamento pedido pelo painel para item que já foi para a cozinha.
 * **O peso é o maior elemento da tela.** É o número que o cliente confere de pé
   do outro lado do balcão.
 * **Estado de conexão sempre visível.** O operador precisa saber que está
@@ -26,8 +27,10 @@ from PySide6.QtCore import Qt, QTimer, Slot
 from PySide6.QtGui import QColor, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QComboBox,
+    QDialog,
     QDoubleSpinBox,
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QHeaderView,
     QInputDialog,
@@ -60,6 +63,7 @@ from pdv.domain.models import (
 from pdv.hardware.printer.backends import PrintService
 from pdv.hardware.printer.escpos import format_cents, format_grams
 from pdv.hardware.scale.worker import ScaleService
+from pdv.remote.commands import RemoteCommandService
 from pdv.remote.inbox import InboxRepository
 from pdv.services.authorization import AuthorizationService, Identity
 from pdv.services.checkout import CheckoutService
@@ -70,6 +74,7 @@ from pdv.services.credit_account import CreditAccountError, CreditAccountService
 from pdv.services.discount_tiers import DiscountTierError, DiscountTierService
 from pdv.ui import theme
 from pdv.ui.dialogs import ManagerAuthDialog, PaymentDialog
+from pdv.ui.remote_dialog import RemoteConfirmationDialog
 from pdv.ui.salon_panel import SalonPanel
 from pdv.ui.tables_dialog import TablesDialog
 
@@ -84,6 +89,33 @@ _STATUS_LABELS: dict[ScaleStatus, tuple[str, str]] = {
     ScaleStatus.ZERO: ("VAZIA", theme.TEXT_FAINT),
     ScaleStatus.ERROR: ("ERRO", theme.DANGER),
 }
+
+
+#: A tabela ÚNICA de atalhos. Ela liga o teclado, desenha o painel "Mais
+#: atalhos" e a ajuda do F1 — três lugares que, escritos à mão, divergem no dia
+#: em que alguém acrescenta uma tecla a um deles e esquece os outros.
+#:
+#: (tecla, o que faz, método, aparece no painel lateral)
+#:
+#: O painel lateral mostra só o que NÃO tem botão na tela. F2, F4, F6, F8, F9 e
+#: F10 já estão escritos nos botões; F5, F7, F11, F12 e os Ctrl ficavam
+#: invisíveis — só quem tinha decorado sabia que o caixa fazia fiado.
+SHORTCUTS: tuple[tuple[str, str, str, bool], ...] = (
+    ("F1", "Ajuda — todos os atalhos", "_show_shortcuts", False),
+    ("F2", "Registrar item pesado", "_register_item", False),
+    ("F3", "Buscar item unitário", "_focus_unit_search", False),
+    ("F4", "Cancelar item (gerente)", "_cancel_item", False),
+    ("Ctrl+F4", "Aceite de pedido do painel", "_review_remote_commands", True),
+    ("F5", "Fiado / pendura", "_manage_credit_account", True),
+    ("F6", "Desconto (gerente)", "_apply_discount", False),
+    ("Ctrl+F6", "Níveis de desconto", "_manage_discount_tiers", True),
+    ("F7", "Cashback", "_configure_cashback", True),
+    ("F8", "Painel do salão", "_open_salon", False),
+    ("F9", "Mesas", "_open_tables", False),
+    ("F10", "Receber", "_finalize_sale", False),
+    ("F11", "Crédito pré-pago", "_deposit_prepaid", True),
+    ("F12", "Fechar o caixa", "_close_cash_session", True),
+)
 
 
 class CounterWindow(QMainWindow):
@@ -102,8 +134,19 @@ class CounterWindow(QMainWindow):
         edge_port: int | None = None,
         edge_scheme: str = "http",
         edge_tls=None,  # noqa: ANN001 - TlsMaterial | None
+        remote_commands: RemoteCommandService | None = None,
+        on_activate=None,  # noqa: ANN001 - Callable[[QWidget], bool] | None
     ) -> None:
+        """
+        Args:
+            on_activate: presente só em modo demonstração. Recebe esta janela
+                como pai e devolve se ativou; ativando, a janela fecha e pede
+                ao `main` para reiniciar o PDV (`restart_requested`).
+        """
         super().__init__()
+        self._on_activate = on_activate
+        #: Lido pelo `main` depois do `app.exec()`.
+        self.restart_requested = False
         self._operator = operator
         self._cash_sessions = cash_sessions
         self._checkout = checkout
@@ -120,6 +163,13 @@ class CounterWindow(QMainWindow):
         self._credit_account = CreditAccountService(database, config)
         self._discount_tiers = DiscountTierService(database, config)
         self._operator_id = EntityId(str(operator.id))
+        # O mesmo serviço do ciclo de sync, quando o `main` o entrega: é ele
+        # que conhece o barramento da cozinha. O aceite roda nesta thread, e o
+        # item cancelado precisa sumir do KDS igual.
+        self._remote = remote_commands or RemoteCommandService(
+            database, config, checkout=checkout
+        )
+        self._last_awaiting = 0
 
         self._weighed: list[Product] = []
         self._unit: list[Product] = []
@@ -145,13 +195,20 @@ class CounterWindow(QMainWindow):
 
     def _build_ui(self) -> None:
         root = QWidget()
-        layout = QHBoxLayout(root)
-        layout.setContentsMargins(
+        outer = QVBoxLayout(root)
+        outer.setContentsMargins(
             theme.SPACE_4, theme.SPACE_4, theme.SPACE_4, theme.SPACE_4
         )
+        outer.setSpacing(theme.SPACE_3)
+        self._demo_banner = self._build_demo_banner()
+        outer.addWidget(self._demo_banner)
+        self._demo_banner.setVisible(self._on_activate is not None)
+
+        layout = QHBoxLayout()
         layout.setSpacing(theme.SPACE_3)
         layout.addWidget(self._build_left_panel(), stretch=4)
         layout.addWidget(self._build_right_panel(), stretch=6)
+        outer.addLayout(layout, stretch=1)
         self.setCentralWidget(root)
 
         self.setStatusBar(QStatusBar())
@@ -171,6 +228,17 @@ class CounterWindow(QMainWindow):
         self._command_label = QLabel("")
         self._command_label.setStyleSheet(f"color: {theme.WARN};")
         self._command_label.setVisible(False)
+        # Botão, e não selo: aqui o painel está pedindo alguém. Um texto que
+        # não se clica obrigaria o operador a lembrar de um atalho que ele usa
+        # uma vez por mês.
+        self._confirm_button = QPushButton("")
+        self._confirm_button.setFlat(True)
+        self._confirm_button.setStyleSheet(
+            f"color: {theme.WARN}; font-weight: 600; padding: 0 8px;"
+        )
+        self._confirm_button.setFont(theme.font(theme.SIZE_MICRO, theme.WEIGHT_SEMIBOLD))
+        self._confirm_button.clicked.connect(self._review_remote_commands)
+        self._confirm_button.setVisible(False)
         for label in (
             self._operator_label,
             self._cash_label,
@@ -186,6 +254,96 @@ class CounterWindow(QMainWindow):
         self.statusBar().addPermanentWidget(self._salon_label)
         self.statusBar().addPermanentWidget(self._sync_label)
         self.statusBar().addPermanentWidget(self._command_label)
+        self.statusBar().addPermanentWidget(self._confirm_button)
+
+    def _build_demo_banner(self) -> QWidget:
+        """Faixa do modo demonstração. Some quando o terminal está ativado.
+
+        Sem ela, nada distinguia na tela um caixa de demonstração de um de
+        verdade — e as vendas de teste nunca sobem para a retaguarda. O lojista
+        que experimentou o PDV e começou a vender "para valer" descobriria só no
+        painel vazio, dias depois.
+        """
+        banner = QFrame()
+        banner.setObjectName("demoBanner")
+        banner.setStyleSheet(
+            f"QFrame#demoBanner {{ background: {theme.SURFACE_RAISED};"
+            f" border: 1px solid {theme.WARN}; border-radius: {theme.RADIUS_PANEL}px; }}"
+        )
+        row = QHBoxLayout(banner)
+        row.setContentsMargins(theme.SPACE_4, theme.SPACE_2, theme.SPACE_2, theme.SPACE_2)
+        text = QLabel(
+            f"<b style='color:{theme.WARN}'>MODO DEMONSTRAÇÃO</b>&nbsp;&nbsp;"
+            "Este terminal ainda não foi ativado: as vendas ficam só neste "
+            "computador e não vão para a retaguarda."
+        )
+        text.setTextFormat(Qt.TextFormat.RichText)
+        text.setWordWrap(True)
+        row.addWidget(text, stretch=1)
+        self._activate_button = QPushButton("Ativar terminal…")
+        self._activate_button.setMinimumHeight(38)
+        self._activate_button.clicked.connect(self._activate_terminal)
+        row.addWidget(self._activate_button)
+        return banner
+
+    def _activate_terminal(self) -> None:
+        if self._on_activate is None:
+            return
+        if not self._on_activate(self):
+            return
+        self.restart_requested = True
+        self.close()
+
+    def _build_shortcuts_panel(self) -> QWidget:
+        """Os atalhos que não têm botão na tela, clicáveis também."""
+        box = QFrame()
+        box.setObjectName("inset")
+        grid = QGridLayout(box)
+        grid.setContentsMargins(theme.SPACE_3, theme.SPACE_3, theme.SPACE_3, theme.SPACE_3)
+        grid.setHorizontalSpacing(theme.SPACE_2)
+        grid.setVerticalSpacing(theme.SPACE_1)
+        title = self._section_title("MAIS ATALHOS   ·   F1 MOSTRA TODOS")
+        grid.addWidget(title, 0, 0, 1, 2)
+        self._shortcut_buttons: dict[str, QPushButton] = {}
+        entries = [entry for entry in SHORTCUTS if entry[3]]
+        for index, (key, label, method, _panel) in enumerate(entries):
+            button = QPushButton(f"{key:<8}{label}")
+            button.setFlat(True)
+            button.setMinimumHeight(30)
+            button.setFont(theme.font(theme.SIZE_BODY, mono=True))
+            button.setStyleSheet(
+                f"QPushButton {{ text-align: left; padding: 2px 6px; color: {theme.TEXT_MUTED}; }}"
+                f"QPushButton:hover {{ color: {theme.TEXT}; }}"
+            )
+            button.clicked.connect(getattr(self, method))
+            grid.addWidget(button, 1 + index // 2, index % 2)
+            self._shortcut_buttons[key] = button
+        return box
+
+    def _show_shortcuts(self) -> None:
+        """F1: a lista completa, para quem ainda não decorou."""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Atalhos do caixa")
+        dialog.setMinimumWidth(460)
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(theme.SPACE_5, theme.SPACE_4, theme.SPACE_5, theme.SPACE_4)
+        title = QLabel("Atalhos do caixa")
+        title.setFont(theme.font(theme.SIZE_TITLE, theme.WEIGHT_SEMIBOLD, display=True))
+        layout.addWidget(title)
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(theme.SPACE_4)
+        for row, (key, label, _method, _panel) in enumerate(SHORTCUTS):
+            key_label = QLabel(key)
+            key_label.setFont(theme.font(theme.SIZE_BODY_LG, theme.WEIGHT_SEMIBOLD, mono=True))
+            grid.addWidget(key_label, row, 0)
+            grid.addWidget(QLabel(label), row, 1)
+        layout.addLayout(grid)
+        close = QPushButton("Fechar")
+        close.setMinimumHeight(40)
+        close.clicked.connect(dialog.accept)
+        layout.addWidget(close)
+        self._shortcuts_dialog = dialog
+        dialog.exec()
 
     def _build_left_panel(self) -> QWidget:
         panel = QFrame()
@@ -251,6 +409,8 @@ class CounterWindow(QMainWindow):
         layout.addWidget(self._item_total_label)
 
         layout.addStretch()
+        layout.addWidget(self._build_shortcuts_panel())
+        layout.addSpacing(theme.SPACE_2)
 
         self._register_button = QPushButton("F2   Registrar item pesado")
         self._register_button.setObjectName("primary")
@@ -449,18 +609,9 @@ class CounterWindow(QMainWindow):
         return label
 
     def _wire_shortcuts(self) -> None:
-        QShortcut(QKeySequence("F2"), self, self._register_item)
-        QShortcut(QKeySequence("F3"), self, self._focus_unit_search)
-        QShortcut(QKeySequence("F4"), self, self._cancel_item)
-        QShortcut(QKeySequence("F5"), self, self._manage_credit_account)
-        QShortcut(QKeySequence("F6"), self, self._apply_discount)
-        QShortcut(QKeySequence("Ctrl+F6"), self, self._manage_discount_tiers)
-        QShortcut(QKeySequence("F7"), self, self._configure_cashback)
-        QShortcut(QKeySequence("F8"), self, self._open_salon)
-        QShortcut(QKeySequence("F9"), self, self._open_tables)
-        QShortcut(QKeySequence("F10"), self, self._finalize_sale)
-        QShortcut(QKeySequence("F11"), self, self._deposit_prepaid)
-        QShortcut(QKeySequence("F12"), self, self._close_cash_session)
+        self._shortcuts: dict[str, QShortcut] = {}
+        for key, _label, method, _panel in SHORTCUTS:
+            self._shortcuts[key] = QShortcut(QKeySequence(key), self, getattr(self, method))
 
     def _wire_scale(self) -> None:
         self._scale.reading_received.connect(self._on_reading)
@@ -796,6 +947,25 @@ class CounterWindow(QMainWindow):
         self.statusBar().showMessage(
             f"Desconto autorizado por {authorizer.name}", 8000
         )
+
+    def _review_remote_commands(self) -> None:
+        """Ctrl+F4: o aceite de quem está no caixa para o pedido do painel."""
+        if not self._remote.awaiting():
+            self.statusBar().showMessage("Nenhum pedido do painel esperando aceite", 4000)
+            return
+
+        dialog = RemoteConfirmationDialog(
+            self._remote, default_login=self._operator.login, parent=self
+        )
+        dialog.exec()
+
+        # Só item que foi para a cozinha espera aceite, e a venda de balcão não
+        # passa pela cozinha: a tabela da tela não muda. O total, sim, é
+        # relido — é barato e cobre o caso que ninguém previu.
+        self._refresh_total()
+        self._refresh_command_badge()
+        if dialog.decisions:
+            self.statusBar().showMessage(dialog.decisions[-1], 8000)
 
     def _open_salon(self) -> None:
         SalonPanel(
@@ -1206,6 +1376,12 @@ class CounterWindow(QMainWindow):
 
     @Slot()
     def _refresh_sync_badge(self) -> None:
+        if self._on_activate is not None:
+            # "0 pendentes" em modo demonstração diria que está tudo em dia —
+            # e nada disto vai subir para lugar nenhum.
+            self._sync_label.setText("Sincronização: desligada (demonstração)")
+            self._refresh_command_badge()
+            return
         pending = self._checkout.pending_sync_count()
         self._sync_label.setText(
             "Sincronização: em dia" if pending == 0 else f"Sincronização: {pending} pendente(s)"
@@ -1221,7 +1397,9 @@ class CounterWindow(QMainWindow):
         digitou. O aviso não pede permissão; só dá nome ao que vai acontecer.
         """
         try:
-            waiting = InboxRepository(self._database).pending_count()
+            inbox = InboxRepository(self._database)
+            awaiting = inbox.awaiting_count()
+            waiting = inbox.pending_count() - awaiting
         except Exception:  # noqa: BLE001 - um selo não derruba o caixa
             return
 
@@ -1232,6 +1410,24 @@ class CounterWindow(QMainWindow):
                 if waiting > 1
                 else "Painel: 1 comando a aplicar"
             )
+
+        # O pedido de aceite, ao contrário do comando comum, NÃO se resolve
+        # sozinho: ele fica parado até alguém no caixa decidir. Por isso vira
+        # botão e, quando chega um novo, também uma mensagem na barra.
+        self._confirm_button.setVisible(awaiting > 0)
+        if awaiting:
+            self._confirm_button.setText(
+                "Painel pede aceite: 1 cancelamento (Ctrl+F4)"
+                if awaiting == 1
+                else f"Painel pede aceite: {awaiting} cancelamentos (Ctrl+F4)"
+            )
+            if awaiting > self._last_awaiting:
+                self.statusBar().showMessage(
+                    "O painel pede para cancelar item que já foi para a cozinha "
+                    "— confira a mesa e tecle Ctrl+F4",
+                    15000,
+                )
+        self._last_awaiting = awaiting
 
     # -- encerramento --------------------------------------------------------- #
 

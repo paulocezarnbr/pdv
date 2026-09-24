@@ -194,8 +194,8 @@ exe = EXE(  # noqa: F821
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=str(ROOT / "packaging" / "pdv.ico")
-    if (ROOT / "packaging" / "pdv.ico").exists()
+    icon=str(ROOT / "packaging" / "assets" / "pdv.ico")
+    if (ROOT / "packaging" / "assets" / "pdv.ico").exists()
     else None,
     version=str(ROOT / "packaging" / "version_info.txt")
     if (ROOT / "packaging" / "version_info.txt").exists()
@@ -226,8 +226,8 @@ setup_exe = EXE(  # noqa: F821
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=str(ROOT / "packaging" / "pdv.ico")
-    if (ROOT / "packaging" / "pdv.ico").exists()
+    icon=str(ROOT / "packaging" / "assets" / "pdv.ico")
+    if (ROOT / "packaging" / "assets" / "pdv.ico").exists()
     else None,
     version=str(ROOT / "packaging" / "version_info.txt")
     if (ROOT / "packaging" / "version_info.txt").exists()

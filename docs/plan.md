@@ -92,23 +92,62 @@ Cada fase termina com **critério de aceite verificável**. Não avance sem ele.
 - **Aceite:** 500 vendas offline com 3 quedas de rede no meio do upload →
   zero duplicidade e zero perda no PostgreSQL.
 - [x] **Contrato terminal ↔ nuvem, provado ponta a ponta.** O aceite acima
-      rodava contra uma nuvem dublada que aceitava qualquer coisa, e a nuvem
-      era testada com payloads escritos à mão. Nenhum terminal real
-      sincronizava, por quatro motivos independentes, todos corrigidos:
-      1. o fechamento do pedido saía como INSERT sem `local_number` e a nuvem
-         só sabia inserir — o `update` virou UPDATE de verdade, com colunas e
-         dono restritos (`UPDATABLE`) e idempotência própria
-         (`sync_applied_updates`);
-      2. a ativação não entregava o segredo do ledger, e a nuvem respondia
-         409 a todo lote;
-      3. a sincronização e a ativação colavam a rota na origem, sem `/api`;
-      4. o `PDV.exe` ignorava o provisionamento: abria `./pdv_local.db` com os
-         IDs de demonstração e a chave de desenvolvimento (`pdv/runtime.py`).
-      Um item que o banco recusa vai sozinho para a quarentena, em vez de
-      derrubar o lote e parar a fila. O cancelamento de item do balcão e o
-      mapa do salão passaram a subir. `scripts/e2e_terminal.py` roda o código
-      do PDV contra a imagem Docker na CI; os quatro defeitos foram
-      reintroduzidos um a um e todos derrubam o teste.
+      rodava contra uma nuvem dublada que aceitava qualquer coisa. Os defeitos
+      de payload e de `update` estão na Fase 2.1 (contrato `push-day.json`);
+      além deles, dois que impediam **qualquer** terminal real de sincronizar:
+      1. a ativação não entregava o segredo do ledger, e a nuvem respondia 409
+         a todo lote;
+      2. a sincronização e a ativação colavam a rota na origem, sem `/api`
+         (`pdv.config.cloud_api_root`).
+      `scripts/e2e_terminal.py` roda o código do PDV — ativação, configuração
+      instalada, outbox, `SyncEngine`, `HttpTransport` e o relato de saúde —
+      contra a imagem Docker na CI. Os dois defeitos foram reintroduzidos um a
+      um e derrubam o teste.
+
+### Fase 2.1 — Contrato entre as pontas ✅ **CONCLUÍDA**
+O aceite da Fase 2 foi medido contra uma nuvem **falsa**, que aceitava qualquer
+payload; a nuvem de verdade era testada com payloads escritos à mão no formato
+dela. As duas pontas nunca se encontraram, e nas duas direções nada passava:
+
+| Direção | O que acontecia | Efeito |
+|---|---|---|
+| Pull (nuvem → caixa) | O caixa gravava todas as colunas da nuvem; `users.server_seq` e `products` sem `store_id` quebravam o insert | Nenhum operador ou produto cadastrado no painel chegava ao caixa |
+| Push (caixa → nuvem) | Estoque ia como `qty_mg` e a nuvem exige `quantity_mg`; a venda de balcão ia sem `local_number` | A **primeira venda com receita derrubava o lote inteiro com 500**: nada do caixa chegava |
+| Push | Insumos consumidos iam aninhados no item e a nuvem descartava a chave | CMV do painel sempre zero |
+| Push | Mudança de comanda (conta, transferência, pagamento, cancelamento) com `client_uuid` novo batia na chave primária | Lote abortado; mesa nunca fechava na nuvem |
+| Push | Cadastros (nível de desconto, limite de fiado) reusam o `client_uuid` ao mudar | Mudança descartada como duplicata: 15% ficava 10% para sempre |
+| Push | Cancelamento de item não era enviado por nenhum dos três caminhos | Item cancelado entrava no "mais vendidos" e no upsell |
+| Push | Mesas (`store_tables`) não existiam na nuvem | Cada mesa criada virava item em quarentena no caixa |
+
+- [x] **Pull:** mapeamento explícito coluna a coluna (`pull_mapping.py`); o teste
+      de contrato monta as linhas a partir das migrations reais da nuvem.
+- [x] **Push — `contracts/push-day.json`:** a fila de um dia de caixa real
+      (balcão com receita e cancelamento, mesa do início ao fim, caixa,
+      cashback, pré-pago, fiado, níveis, cadastro de mesa), gerada rodando os
+      fluxos de verdade. O caixa confere que o arquivo é o que ele manda hoje,
+      que todo `enqueue` do código aparece no dia e que nenhuma chave some lá
+      sem decisão escrita; a nuvem aplica o arquivo no `SyncMerger` real, com
+      o papel `erp_app` e RLS, e o `e2e.py` o manda pela imagem Docker.
+- [x] **A tradução mora na nuvem.** Os caixas instalados já têm a fila cheia
+      no formato antigo; corrigir só lá deixaria essa fila presa para sempre.
+      `contracts/push-day-1.1.2.json` é essa fila e **não se regenera**: é a
+      garantia de que a nuvem continua aceitando o que já espera nos balcões.
+- [x] **Atualização tem regra própria:** lista branca por tabela; comanda paga
+      ou cancelada não muda de estado; o primeiro cancelamento de item vale;
+      mudança mais velha não desfaz a recente (`updated_at`); cadastro cuja
+      criação se perdeu nasce da mudança, movimento nunca (um "pago" sem venda
+      seria faturamento sem venda); id de outro restaurante é recusado.
+- [x] Caixa 1.1.3 completa o que manda: número, operador e abertura da venda;
+      item do garçom com nome, preço e quem lançou (antes ia duas vezes, e só a
+      segunda — descartada — tinha quem lançou); cancelamento de item nos três
+      caminhos, por um método só; insumos com o id local.
+- [x] Migration cloud 017 (`store_tables`, `local_number` opcional para o caixa
+      antigo). No caminho, o gatilho de proteção de níveis (011) devolvia `NEW`
+      no DELETE — nulo — e **toda** exclusão de vínculo de nível era cancelada
+      em silêncio; restaurante com cliente classificado não podia ser excluído.
+- **Aceite:** o dia inteiro (81 itens) sincronizado pelo `SyncEngine` com o
+  transporte HTTP real contra a nuvem standalone: zero quarentena, zero alerta
+  de fraude, CMV de R$ 0,00 para R$ 29,30.
 
 ### Fase 2.5 — Instalador Único e Autossuficiente (Sprint 7–8)
 
@@ -180,6 +219,43 @@ a baixar à parte, nenhum prompt de linha de comando.
       `-SignCert`. Falta o certificado de Assinatura de Código (EV, emitido para
       a pessoa jurídica) — nada no repositório destrava isso.
 - [x] Desinstalador que **preserva** os dados da loja.
+- [x] **Instalador gerado no CI** (`.github/workflows/installer.yml`): Windows
+      limpo, só os pins, VC++ baixado com a assinatura da Microsoft
+      conferida, suíte + `--selftest` no binário + Inno Setup, e o `.exe` com
+      SHA-256 nos artifacts (Release em tag `pdv-v*`). Assina sozinho quando o
+      certificado existir nos secrets. *Defeito corrigido no caminho:* o
+      `build.ps1` chamava o `PDV.exe` (app gráfico) com `&`, e o PowerShell não
+      espera app gráfico — o autoteste do pacote "passava" sem ter rodado.
+- [x] **O caixa instalado abre o que o instalador provisionou.** Primeira
+      instalação real: o `PDV.exe` procurava `.\pdv_local.db` relativo ao
+      diretório de trabalho (`Program Files`, somente leitura para o caixa) e
+      morria com "unable to open database file", enquanto o `PDVSetup.exe`
+      tinha deixado banco, segredo DPAPI, periféricos e ativação em
+      `ProgramData`. As duas pontas agora resolvem a mesma pasta
+      (`pdv.config.default_data_dir`), o caixa aplica `device_settings`, e
+      falha de inicialização vira mensagem com o caminho — não a caixa crua do
+      PyInstaller. *Segurança:* terminal **ativado** não recebe mais os logins
+      de demonstração, cujos PINs estão publicados neste repositório; segredo
+      que existe e não decifra nunca é recriado.
+- [x] **Primeira abertura utilizável.** Três defeitos que só aparecem na loja:
+      * a ativação usava o endereço de EXEMPLO da nuvem (`api.erpfood.local`),
+        porque nada perguntava o endereço real. A tela de ativação — no
+        instalador e no caixa — pede o endereço do painel (HTTPS obrigatório
+        fora de `localhost`) e o código, ativa numa thread à parte e só fecha
+        com sucesso ou "Ativar depois". `/SERVER=` no instalador silencioso;
+      * terminal ativado não tinha usuários (os de demonstração não vêm mais,
+        e os da loja desciam só depois do login). Agora o cadastro é baixado
+        antes do login, com opção de tentar de novo;
+      * ativar em modo demonstração mandaria as vendas de teste para a loja.
+        A ativação do caixa grava num banco à parte; na reabertura a
+        demonstração é **arquivada** (`pdv_demo-*.db`), nunca apagada, e a
+        sincronização só liga com a ativação gravada no banco aberto.
+- [x] **Identidade visual.** Ícone (cupom sobre azul-aço) e imagens do
+      assistente gerados do tema no build (`packaging/branding.py`, sem
+      binário versionado); o mesmo desenho é o ícone da janela em tempo de
+      execução. Assistente de instalação com o tema do caixa e resultado item
+      a item; faixa de modo demonstração; atalhos sem botão visíveis no painel
+      e em F1, a partir de uma tabela única que também liga o teclado.
 
 **Aceite:** numa máquina Windows recém-formatada, sem Python, sem Visual C++ e
 sem drivers, um único duplo-clique deixa o PDV vendendo — com balança lendo,
@@ -287,9 +363,46 @@ desconto, cancelar um item — sem precisar estar na loja.
       `device_id` alvo, IP e canal (`remote_panel`). Relatório de cancelamentos
       separa presencial de remoto — senão o painel vira a rota limpa para o
       mesmo furto que o M09 combate.
-- [ ] **Confirmação no terminal para operações de risco:** cancelar item já
+- [x] **Confirmação no terminal para operações de risco:** cancelar item já
       impresso ou abrir gaveta exige aceite do operador presente. Abrir gaveta
       remotamente sem ninguém por perto é convite a furto.
+
+      * **Gaveta:** mais rígido que o aceite — o terminal nem reconhece o
+        comando (`CommandKind` só tem desconto e cancelamento, e
+        `test_there_is_no_remote_drawer_command` quebra se alguém o acrescentar).
+      * **"Impresso", no salão, é o item que já foi para a cozinha** (tem ticket
+        de KDS não cancelado). É o cancelamento que fecha o furto de salão sem
+        ninguém na loja: as outras seis travas não veem nada de errado nele. O
+        comando **para e espera** o login e o PIN de alguém do balcão (operador,
+        gerente ou proprietário — garçom não, porque no furto de salão é ele
+        quem leva o prato). O caixa vê um botão âmbar na barra e decide por
+        `Ctrl+F4`, lendo quem pediu, o item, a mesa, o estado na cozinha e o
+        motivo. Venda de balcão não passa pela cozinha e não espera.
+      * **A credencial é conferida no serviço**, não no diálogo. PIN errado
+        **não decide nada**: virar recusa deixaria um erro de digitação desfazer
+        a ordem do gerente. Recusar exige motivo, que volta para o painel com o
+        nome de quem recusou.
+      * **Aceitar não ressuscita o que deixou de valer.** Todas as travas rodam
+        de novo no aceite: pedido fechado, gerente desativado, canal desligado e
+        janela de 12 h vencida recusam o comando. Esperando, ele continua
+        `pending` e vence na mesma janela de qualquer comando.
+      * **Auditoria com três identidades:** quem mandou, o terminal e quem
+        estava na loja e concordou (`confirmed_by_*`), além do estado na
+        cozinha naquele instante.
+      * **O painel fica sabendo.** O terminal avisa a espera num campo à parte
+        (`awaiting`), e o dashboard mostra "N aguardando aceite no caixa" por
+        terminal (migration cloud 015). Campo à parte, e não um terceiro
+        status, para uma nuvem antiga continuar aceitando os resultados — ela
+        ignora o aviso e o terminal reavisa.
+      * **Defeito corrigido no caminho:** o cancelamento remoto não retirava o
+        ticket da fila da cozinha, que continuava fazendo de graça o prato que
+        saiu da conta. Agora o ticket é cancelado na mesma transação e as telas
+        do KDS recebem `ticket.changed` na hora.
+
+      Cobertura: 26 testes de serviço e transporte
+      (`test_remote_confirmation.py`), 4 de tela e 7 contra PostgreSQL real
+      (`commands.integration.test.ts`). As onze regras novas foram verificadas
+      por mutação.
 - [~] **Autenticação forte do emissor:** assinatura HMAC-SHA256 do comando
       conferida no terminal contra o `device_secret`, com janela de validade de
       12 h e tolerância de 5 min de drift — o PDV não obedece a quem não prova
@@ -531,20 +644,75 @@ paralelo.
       Python 3.14. Verificado num ambiente limpo: 457 testes com os pins.
 
 ### Fase 5.5 — Implantação e site institucional
-- [x] **Retaguarda no ar pelo Coolify** em `app.dolceaffettopoolbar.com.br`:
-      projeto `erp-food`, PostgreSQL 17 privado (sem porta pública) e a imagem
-      de `apps/cloud-api`, com migrations na subida, `erp_app` sem
-      superusuário e healthcheck em `/api/health`. Segredos gerados na criação
-      e gravados só no Coolify.
+- [~] **Retaguarda no Coolify** em `app.dolceaffettopoolbar.com.br`: projeto
+      `erp-food`, PostgreSQL 17 privado (sem porta pública) e a imagem de
+      `apps/cloud-api`, com migrations na subida, `erp_app` sem superusuário e
+      healthcheck em `/api/health`; segredos gerados na criação e gravados só
+      no Coolify. **Falta:** o primeiro deploy saudável (o healthcheck venceu
+      durante as migrations) e o registro DNS do domínio no Registro.br.
 - [ ] **Site institucional** em `dolceaffettopoolbar.com.br` — planejamento
       em [`site_institucional.md`](./site_institucional.md): páginas, cardápio
       lido do ERP por rota pública só de leitura, SEO local e quatro fases com
       aceite.
 
 ### Fase 6 — IA & Canais (Sprint 17–20)
-- [ ] Cardápio QR com upsell contextual.
+- [x] **Cardápio QR com upsell contextual.** Página pública `/cardapio/<token>`,
+      feita para celular e clara de propósito (lida sob luz do dia). O token é
+      aleatório (144 bits), revogável e responde 404 igual para inexistente,
+      revogado ou restaurante suspenso — não dá para enumerar cardápios.
+      * **Upsell sem LLM**, pelas vendas da própria loja: "quem pede X também
+        pede Y", pela confiança da regra X → Y em pedidos **pagos** e itens
+        **não cancelados** dos últimos 90 dias, com suporte mínimo (3 pedidos)
+        para coincidência não virar sugestão. "Combina com a sua seleção" soma
+        as confianças de cada item escolhido, no navegador, sem requisição.
+        Os números de venda nunca chegam à página — só a ordem.
+      * **"Minha seleção" não é pedido**: é uma lista para mostrar ao garçom.
+        Um segundo caminho de pedido, sem ninguém da casa conferindo, reabriria
+        a porta que o PDV fecha no balcão. Pedido direto pela mesa exige
+        integração com o caixa e fica para uma etapa própria.
+      * **Painel:** criar QR por loja ou por mesa, imprimir (SVG nítido em
+        qualquer tamanho), revogar, e editar categoria, descrição e
+        visibilidade de cada produto — o **preço não se edita ali**, é do
+        cadastro e da nota. Dono e gerente editam; `viewer` só imprime. Tudo em
+        `panel_admin_events`. A categoria desce para o caixa (o `server_seq`
+        avança na edição).
+      * Estatística com cache de 10 min por loja: o cardápio é aberto por
+        dezenas de mesas no mesmo horário de pico.
+      * Migration cloud 016. 13 testes unitários e 13 contra PostgreSQL real
+        (papel `erp_app`), com 8 das 9 regras verificadas por mutação — a nona
+        (filtro de tenant na revogação) é segurada também pelo RLS.
+- [ ] Pedido pela mesa a partir do cardápio, entrando na comanda do caixa com
+      confirmação do garçom.
 - [ ] WhatsApp Cloud API + LLM anotador (com confirmação humana obrigatória).
-- [ ] Previsão de demanda (baseline sazonal + gradient boosting).
+- [x] **Previsão de demanda e sugestão de compra.** Painel "Previsão", por
+      loja, para os próximos 7 dias: quanto sai de cada produto (unidades ou
+      kg) e de cada insumo, e quanto comprar.
+      * **O modelo complexo só entra quando ganha do simples no passado da
+        própria loja.** Cada série é testada nas duas últimas semanas vividas
+        (walk-forward, sem olhar o futuro); o boosting só é usado se errar
+        pelo menos 5% menos que o sazonal. A tela mostra o método e o erro —
+        previsão sem o tamanho do erro é lida como certeza.
+      * **Sazonal:** média do mesmo dia da semana nas últimas 4 semanas em que
+        a loja abriu. **Boosting:** árvores rasas sobre o resíduo do sazonal,
+        implementadas aqui (sem dependência nova), com atributos que só usam
+        dado de 7+ dias antes — a semana inteira sai de uma vez, sem
+        realimentar previsão como venda. O dia do mês entra pelo salário.
+      * **Dia fechado é ausência, não zero:** feriado não derruba a semana
+        seguinte, e o dia da semana em que a loja costuma fechar é previsto
+        como zero. Dia contado no **fuso da loja**: a janta de sábado às 23h30
+        é sábado, não o domingo de UTC.
+      * **Insumo pela baixa real** (`order_item_ingredients`, que só passou a
+        chegar com a Fase 2.1), não pela receita de hoje aplicada ao passado.
+      * **Compra só com saldo conhecido.** O caixa não registra compra nem
+        contagem, então a nuvem não tinha saldo nenhum. O painel ganhou a
+        **contagem de estoque** (dono e gerente, auditada): saldo = última
+        contagem + movimentos sincronizados depois dela. Sem contagem, a linha
+        pede a contagem em vez de sugerir compra contra um saldo inventado.
+        Margem de segurança = 1,28 × desvio do erro × √dias (~90%).
+      * Determinístico, 16 ms por série, cache de 30 min por loja; migration
+        cloud 018. 21 testes do modelo e 9 contra PostgreSQL real com o papel
+        `erp_app`; 13 mutações nas regras, todas pegas.
+- [ ] Contagem e entrada de compra também no caixa (hoje só pelo painel).
 
 ---
 

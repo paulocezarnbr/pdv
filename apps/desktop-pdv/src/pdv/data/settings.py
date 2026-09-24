@@ -33,6 +33,7 @@ class DeviceSettings:
     store_id: str | None = None
     device_id: str | None = None
     cloud_base_url: str | None = None
+    store_name: str | None = None
 
 
 class SettingsStore:
@@ -119,6 +120,7 @@ class SettingsStore:
             store_id=data.get("device.store_id"),
             device_id=data.get("device.id"),
             cloud_base_url=data.get("cloud.base_url"),
+            store_name=data.get("store.name"),
         )
 
     def apply_to(self, config: AppConfig) -> AppConfig:
@@ -157,7 +159,7 @@ class SettingsStore:
             store_id=settings.store_id or config.store_id,
             device_id=settings.device_id or config.device_id,
             device_secret=config.device_secret,
-            store_name=config.store_name,
+            store_name=settings.store_name or config.store_name,
             store_document=config.store_document,
             store_address=config.store_address,
             database_path=config.database_path,

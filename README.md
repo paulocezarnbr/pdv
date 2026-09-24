@@ -29,8 +29,15 @@ commit** da mudança de código.
 
 ## Estado atual
 
-✅ **Fases 1, 2, 2.5, 3, 3.5, 3.6 e 4** implementadas; a fundação da Fase 5
-(fiscal) já começou. A suíte desktop tem **457 testes** passando.
+✅ **Fases 1, 2, 2.1, 2.5, 3, 3.5, 3.6 e 4** implementadas; a fundação da Fase 5
+(fiscal) já começou e a Fase 6 tem o cardápio QR e a previsão de demanda com
+sugestão de compra. A suíte desktop tem **592 testes** e a da nuvem **169**,
+passando.
+
+O caixa e a nuvem são testados contra o **mesmo arquivo**: `contracts/push-day.json`
+é a fila de sincronização de um dia de caixa real, e a nuvem o aplica contra
+Postgres. Antes disso cada ponta tinha o próprio dublê, e a primeira venda com
+receita derrubava o envio inteiro (ver `docs/plan.md`, Fase 2.1).
 
 O que já funciona ponta a ponta, sem internet:
 
@@ -53,14 +60,24 @@ O que já funciona ponta a ponta, sem internet:
 10. **Comandos remotos do painel**, ponta a ponta: desconto e cancelamento
     vindos da nuvem são aplicados **uma vez só**, dentro dos tetos do perfil de
     quem emitiu, e o resultado volta para o painel com o motivo da recusa.
+    Cancelar de longe um item que já foi para a cozinha espera o aceite, com
+    login e PIN, de alguém no caixa (`Ctrl+F4`), e o painel mostra que ele
+    está esperando.
 11. Instalador único com provisionamento automático de periféricos, ativação do
-    terminal e atualização in-place.
+    terminal e atualização in-place. Sem ativar, o PDV abre em **modo
+    demonstração**, com faixa na tela e logins de teste; o botão **Ativar
+    terminal** pede o endereço do painel e o código, arquiva a demonstração e
+    reinicia com os dados da loja.
 12. Painel web com cadastro de múltiplos proprietários: somente outro dono
     autenticado pode criar a conta, o PIN é Argon2id e cada criação entra numa
     auditoria administrativa imutável.
 13. Fiscal **server-first**: a nuvem reserva a série normal e um serviço Python
     interno isola o certificado/provedor; o PDV usa série própria apenas em
     queda comprovada antes do envio. Timeout ambíguo bloqueia uma segunda NFC-e.
+
+14. **Cardápio QR** (Fase 6): o cliente abre pelo QR da mesa, vê o cardápio
+    por categoria e recebe sugestões tiradas das vendas da própria loja
+    ("quem pede este também pede"). O pedido continua com o garçom.
 
 🔜 Próximo: homologar XML NFC-e 4.00, QR Code v3 e NT 2025.002 no RJ/SVRS. O
 motor de produção fica deliberadamente bloqueado até essa suíte passar; o núcleo
@@ -119,9 +136,11 @@ contorna avisos TLS, pois ensinar o garçom a ignorá-los anularia a autenticaç
 
 | Tecla | Ação |
 |---|---|
+| `F1` | Lista todos os atalhos (os que não têm botão também ficam no painel à esquerda) |
 | `F2` | Registrar item pesado (só habilita com peso estável) |
 | `F3` | Ir para a busca de item unitário (código ou nome) |
 | `F4` | Cancelar item — exige credencial de gerente |
+| `Ctrl+F4` | Aceitar ou recusar cancelamento pedido pelo painel para item que já foi para a cozinha |
 | `F5` | Configurar limite ou receber Fiado/Pendura |
 | `F6` | Desconto percentual — exige credencial de gerente, limitada ao teto do perfil |
 | `Ctrl+F6` | Configurar/atribuir níveis Bronze, Prata, Ouro, Diamante, Funcionário e Dono |

@@ -1,0 +1,1564 @@
+{
+ "descricao": "Fila de sincronização de um dia de caixa real, gerada por apps/desktop-pdv/tests/push_day.py. Não edite à mão: rode PDV_UPDATE_CONTRACT=1 python -m pytest tests/test_push_contract.py.",
+ "caixa": "1.1.2 (antes da correção do contrato)",
+ "tenant_id": "c0c0c0c0-0000-4000-8000-000000000001",
+ "store_id": "c0c0c0c0-0000-4000-8000-000000000002",
+ "device_id": "c0c0c0c0-0000-4000-8000-000000000003",
+ "device_secret_hex": "7365677265646f2d646f2d636f6e747261746f2d6469612d64652d6361697861",
+ "items": [
+  {
+   "entity_table": "order_items",
+   "entity_id": "c96d9946-ff23-40c9-b465-060b256068a3",
+   "client_uuid": "c3de4bff-9dad-43ad-92e4-9d9bb81b9e19",
+   "operation": "insert",
+   "payload": {
+    "client_uuid": "c3de4bff-9dad-43ad-92e4-9d9bb81b9e19",
+    "created_at": "2026-09-24T05:56:04.084+00:00",
+    "gross_weight_grams": 892,
+    "id": "c96d9946-ff23-40c9-b465-060b256068a3",
+    "ingredients": [
+     {
+      "consumed_mg": 167375,
+      "inventory_item_id": "330633e2-089f-40f4-9065-32f501056a5b",
+      "unit_cost_cents": 80
+     },
+     {
+      "consumed_mg": 303447,
+      "inventory_item_id": "a308a556-6730-4d8b-ab03-2b4b1bef0ac3",
+      "unit_cost_cents": 1274
+     },
+     {
+      "consumed_mg": 234766,
+      "inventory_item_id": "70123d4d-0105-4538-9407-feae8901bc16",
+      "unit_cost_cents": 153
+     },
+     {
+      "consumed_mg": 140169,
+      "inventory_item_id": "2644212d-4161-409c-bbaa-474534dbdc1e",
+      "unit_cost_cents": 813
+     },
+     {
+      "consumed_mg": 184130,
+      "inventory_item_id": "6bd03db2-96f9-4894-836a-f8c0b6567c74",
+      "unit_cost_cents": 350
+     }
+    ],
+    "net_weight_grams": 847,
+    "order_id": "1c54f0c6-6d98-447a-ba3f-23f5ce392a57",
+    "pricing_mode": "weight",
+    "product_id": "1a8064a7-df17-4752-ab91-d5599e2b9741",
+    "product_name": "Torta de Chocolate (kg)",
+    "quantity": "1",
+    "scale_reading_raw": "00892",
+    "tare_grams": 45,
+    "tenant_id": "c0c0c0c0-0000-4000-8000-000000000001",
+    "total_cents": 7615,
+    "unit_price_cents": 8990
+   }
+  },
+  {
+   "entity_table": "stock_movements",
+   "entity_id": "51646531-9afd-4809-8637-14513de45af8",
+   "client_uuid": "03b628fd-9733-4529-a2dc-5ed4576a926b",
+   "operation": "insert",
+   "payload": {
+    "client_uuid": "03b628fd-9733-4529-a2dc-5ed4576a926b",
+    "created_at": "2026-09-24T05:56:04.085+00:00",
+    "id": "51646531-9afd-4809-8637-14513de45af8",
+    "inventory_item_id": "330633e2-089f-40f4-9065-32f501056a5b",
+    "movement_type": "sale",
+    "origin_device_id": "c0c0c0c0-0000-4000-8000-000000000003",
+    "qty_mg": -167375,
+    "reference_id": "c96d9946-ff23-40c9-b465-060b256068a3",
+    "reference_type": "order_item",
+    "store_id": "c0c0c0c0-0000-4000-8000-000000000002",
+    "tenant_id": "c0c0c0c0-0000-4000-8000-000000000001",
+    "unit_cost_cents": 80
+   }
+  },
+  {
+   "entity_table": "stock_movements",
+   "entity_id": "7dabbac8-2f7d-4376-ae3a-819728ed200c",
+   "client_uuid": "2dd5ba31-d4da-485f-8b73-9c06c0bab1f2",
+   "operation": "insert",
+   "payload": {
+    "client_uuid": "2dd5ba31-d4da-485f-8b73-9c06c0bab1f2",
+    "created_at": "2026-09-24T05:56:04.085+00:00",
+    "id": "7dabbac8-2f7d-4376-ae3a-819728ed200c",
+    "inventory_item_id": "a308a556-6730-4d8b-ab03-2b4b1bef0ac3",
+    "movement_type": "sale",
+    "origin_device_id": "c0c0c0c0-0000-4000-8000-000000000003",
+    "qty_mg": -303447,
+    "reference_id": "c96d9946-ff23-40c9-b465-060b256068a3",
+    "reference_type": "order_item",
+    "store_id": "c0c0c0c0-0000-4000-8000-000000000002",
+    "tenant_id": "c0c0c0c0-0000-4000-8000-000000000001",
+    "unit_cost_cents": 1274
+   }
+  },
+  {
+   "entity_table": "stock_movements",
+   "entity_id": "da3d1b28-d1f3-4364-9d01-12cc585f85a1",
+   "client_uuid": "d2b22e20-37be-4321-be06-4e2ab81a9ee1",
+   "operation": "insert",
+   "payload": {
+    "client_uuid": "d2b22e20-37be-4321-be06-4e2ab81a9ee1",
+    "created_at": "2026-09-24T05:56:04.085+00:00",
+    "id": "da3d1b28-d1f3-4364-9d01-12cc585f85a1",
+    "inventory_item_id": "70123d4d-0105-4538-9407-feae8901bc16",
+    "movement_type": "sale",
+    "origin_device_id": "c0c0c0c0-0000-4000-8000-000000000003",
+    "qty_mg": -234766,
+    "reference_id": "c96d9946-ff23-40c9-b465-060b256068a3",
+    "reference_type": "order_item",
+    "store_id": "c0c0c0c0-0000-4000-8000-000000000002",
+    "tenant_id": "c0c0c0c0-0000-4000-8000-000000000001",
+    "unit_cost_cents": 153
+   }
+  },
+  {
+   "entity_table": "stock_movements",
+   "entity_id": "e76731a2-75d6-4c69-944b-a82268451b54",
+   "client_uuid": "f801c93b-dfd5-40fe-9163-b4de60c984fc",
+   "operation": "insert",
+   "payload": {
+    "client_uuid": "f801c93b-dfd5-40fe-9163-b4de60c984fc",
+    "created_at": "2026-09-24T05:56:04.085+00:00",
+    "id": "e76731a2-75d6-4c69-944b-a82268451b54",
+    "inventory_item_id": "2644212d-4161-409c-bbaa-474534dbdc1e",
+    "movement_type": "sale",
+    "origin_device_id": "c0c0c0c0-0000-4000-8000-000000000003",
+    "qty_mg": -140169,
+    "reference_id": "c96d9946-ff23-40c9-b465-060b256068a3",
+    "reference_type": "order_item",
+    "store_id": "c0c0c0c0-0000-4000-8000-000000000002",
+    "tenant_id": "c0c0c0c0-0000-4000-8000-000000000001",
+    "unit_cost_cents": 813
+   }
+  },
+  {
+   "entity_table": "stock_movements",
+   "entity_id": "eba57adf-382c-430a-9fe0-b96d0b9ce759",
+   "client_uuid": "92642c80-d61a-4c82-8f67-cc8714279a53",
+   "operation": "insert",
+   "payload": {
+    "client_uuid": "92642c80-d61a-4c82-8f67-cc8714279a53",
+    "created_at": "2026-09-24T05:56:04.085+00:00",
+    "id": "eba57adf-382c-430a-9fe0-b96d0b9ce759",
+    "inventory_item_id": "6bd03db2-96f9-4894-836a-f8c0b6567c74",
+    "movement_type": "sale",
+    "origin_device_id": "c0c0c0c0-0000-4000-8000-000000000003",
+    "qty_mg": -184130,
+    "reference_id": "c96d9946-ff23-40c9-b465-060b256068a3",
+    "reference_type": "order_item",
+    "store_id": "c0c0c0c0-0000-4000-8000-000000000002",
+    "tenant_id": "c0c0c0c0-0000-4000-8000-000000000001",
+    "unit_cost_cents": 350
+   }
+  },
+  {
+   "entity_table": "audit_ledger",
+   "entity_id": "18e9f3d7-28bf-46e3-8b03-a12f080c94af",
+   "client_uuid": "1a14acee-419b-4dbb-90dc-005249ebf812",
+   "operation": "insert",
+   "payload": {
+    "actor_user_id": "44444444-4444-4444-4444-444444444444",
+    "authorizer_user_id": null,
+    "client_uuid": "1a14acee-419b-4dbb-90dc-005249ebf812",
+    "created_at": "2026-09-24T05:56:04.085+00:00",
+    "device_id": "c0c0c0c0-0000-4000-8000-000000000003",
+    "event_type": "weight_captured",
+    "hash": "a3e555246c795555bac18ad8b759bdeffb0f2ad33726c5a8389c5fbbeba9eda5",
+    "id": "18e9f3d7-28bf-46e3-8b03-a12f080c94af",
+    "payload_json": "{\"gross_grams\":892,\"net_grams\":847,\"order_id\":\"1c54f0c6-6d98-447a-ba3f-23f5ce392a57\",\"product_id\":\"1a8064a7-df17-4752-ab91-d5599e2b9741\",\"product_name\":\"Torta de Chocolate (kg)\",\"read_at\":\"2026-09-24T05:56:04.084375+00:00\",\"scale_raw_frame\":\"00892\",\"scale_status\":\"stable\",\"tare_grams\":45}",
+    "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "seq": 1,
+    "severity": "info",
+    "store_id": "c0c0c0c0-0000-4000-8000-000000000002",
+    "tenant_id": "c0c0c0c0-0000-4000-8000-000000000001"
+   }
+  },
+  {
+   "entity_table": "audit_ledger",
+   "entity_id": "c83ace11-ec91-4c7b-a49b-d315665c915b",
+   "client_uuid": "04f04da4-fde0-4aa2-9797-4b1549882f28",
+   "operation": "insert",
+   "payload": {
+    "actor_user_id": "44444444-4444-4444-4444-444444444444",
+    "authorizer_user_id": null,
+    "client_uuid": "04f04da4-fde0-4aa2-9797-4b1549882f28",
+    "created_at": "2026-09-24T05:56:04.085+00:00",
+    "device_id": "c0c0c0c0-0000-4000-8000-000000000003",
+    "event_type": "item_registered",
+    "hash": "f370de34cace52d47bb46c9ec66428a5eeaa4d842be90a28741def9363474b20",
+    "id": "c83ace11-ec91-4c7b-a49b-d315665c915b",
+    "payload_json": "{\"consumptions\":[{\"consumed_mg\":167375,\"inventory_item_id\":\"330633e2-089f-40f4-9065-32f501056a5b\"},{\"consumed_mg\":303447,\"inventory_item_id\":\"a308a556-6730-4d8b-ab03-2b4b1bef0ac3\"},{\"consumed_mg\":234766,\"inventory_item_id\":\"70123d4d-0105-4538-9407-feae8901bc16\"},{\"consumed_mg\":140169,\"inventory_item_id\":\"2644212d-4161-409c-bbaa-474534dbdc1e\"},{\"consumed_mg\":184130,\"inventory_item_id\":\"6bd03db2-96f9-4894-836a-f8c0b6567c74\"}],\"net_grams\":847,\"order_id\":\"1c54f0c6-6d98-447a-ba3f-23f5ce392a57\",\"order_item_id\":\"c96d9946-ff23-40c9-b465-060b256068a3\",\"price_cents_per_kg\":8990,\"product_id\":\"1a8064a7-df17-4752-ab91-d5599e2b9741\",\"total_cents\":7615}",
+    "prev_hash": "a3e555246c795555bac18ad8b759bdeffb0f2ad33726c5a8389c5fbbeba9eda5",
+    "seq": 2,
+    "severity": "info",
+    "store_id": "c0c0c0c0-0000-4000-8000-000000000002",
+    "tenant_id": "c0c0c0c0-0000-4000-8000-000000000001"
+   }
+  },
+  {
+   "entity_table": "orders",
+   "entity_id": "1c54f0c6-6d98-447a-ba3f-23f5ce392a57",
+   "client_uuid": "95ad72aa-72bc-460e-9251-344fdc13d557",
+   "operation": "insert",
+   "payload": {
+    "client_uuid": "95ad72aa-72bc-460e-9251-344fdc13d557",
+    "closed_at": "2026-09-24T05:56:04.086+00:00",
+    "device_id": "c0c0c0c0-0000-4000-8000-000000000003",
+    "discount_cents": 0,
+    "id": "1c54f0c6-6d98-447a-ba3f-23f5ce392a57",
+    "status": "paid",
+    "store_id": "c0c0c0c0-0000-4000-8000-000000000002",
+    "subtotal_cents": 7615,
+    "tenant_id": "c0c0c0c0-0000-4000-8000-000000000001",
+    "total_cents": 7615
+   }
+  },
+  {
+   "entity_table": "payments",
+   "entity_id": "f0a2e33d-7a7b-471a-b779-18c5f5056669",
+   "client_uuid": "1869a818-7b0a-4734-a2b4-c38ef86747d0",
+   "operation": "insert",
+   "payload": {
+    "amount_cents": 7765,
+    "change_cents": 150,
+    "created_at": "2026-09-24T05:56:04.087+00:00",
+    "id": "f0a2e33d-7a7b-471a-b779-18c5f5056669",
+    "method": "cash",
+    "order_id": "1c54f0c6-6d98-447a-ba3f-23f5ce392a57"
+   }
+  },
+  {
+   "entity_table": "audit_ledger",
+   "entity_id": "452e16fb-e469-477b-a4db-b4ec0c6c251e",
+   "client_uuid": "55c07273-8aa6-44f3-afee-d928e2fac25b",
+   "operation": "insert",
+   "payload": {
+    "actor_user_id": "44444444-4444-4444-4444-444444444444",
+    "authorizer_user_id": null,
+    "client_uuid": "55c07273-8aa6-44f3-afee-d928e2fac25b",
+    "created_at": "2026-09-24T05:56:04.087+00:00",
+    "device_id": "c0c0c0c0-0000-4000-8000-000000000003",
+    "event_type": "sale_closed",
+    "hash": "98eb98d261b20af11abf3134af8c5b5ac5c565ae2d7db73409367eab50c46895",
+    "id": "452e16fb-e469-477b-a4db-b4ec0c6c251e",
+    "payload_json": "{\"discount_cents\":0,\"items\":1,\"local_number\":1,\"order_id\":\"1c54f0c6-6d98-447a-ba3f-23f5ce392a57\",\"payments\":[{\"amount_cents\":7765,\"method\":\"cash\"}],\"subtotal_cents\":7615,\"total_cents\":7615}",
+    "prev_hash": "f370de34cace52d47bb46c9ec66428a5eeaa4d842be90a28741def9363474b20",
+    "seq": 3,
+    "severity": "info",
+    "store_id": "c0c0c0c0-0000-4000-8000-000000000002",
+    "tenant_id": "c0c0c0c0-0000-4000-8000-000000000001"
+   }
+  },
+  {
+   "entity_table": "order_items",
+   "entity_id": "1a7623e6-0665-433a-b068-10c5d26cdcc3",
+   "client_uuid": "e8d7aa91-ca8c-4214-8dac-b888264d68f0",
+   "operation": "insert",
+   "payload": {
+    "client_uuid": "e8d7aa91-ca8c-4214-8dac-b888264d68f0",
+    "created_at": "2026-09-24T05:56:04.089+00:00",
+    "gross_weight_grams": 0,
+    "id": "1a7623e6-0665-433a-b068-10c5d26cdcc3",
+    "ingredients": [],
+    "net_weight_grams": 0,
+    "order_id": "b48ac828-84e9-41dc-b27d-33bd43eb6ed2",
+    "pricing_mode": "unit",
+    "product_id": "57a87644-b0ad-440d-a59d-98d93dbe50b1",
+    "product_name": "Café Expresso",
+    "quantity": "2",
+    "scale_reading_raw": null,
+    "tare_grams": 0,
+    "tenant_id": "c0c0c0c0-0000-4000-8000-000000000001",
+    "total_cents": 1400,
+    "unit_price_cents": 700
+   }
+  },
+  {
+   "entity_table": "audit_ledger",
+   "entity_id": "e4399d4d-8596-4d8c-9251-bf68505116d0",
+   "client_uuid": "507ee442-bbda-45df-9822-0112cdc74f0d",
+   "operation": "insert",
+   "payload": {
+    "actor_user_id": "44444444-4444-4444-4444-444444444444",
+    "authorizer_user_id": null,
+    "client_uuid": "507ee442-bbda-45df-9822-0112cdc74f0d",
+    "created_at": "2026-09-24T05:56:04.089+00:00",
+    "device_id": "c0c0c0c0-0000-4000-8000-000000000003",
+    "event_type": "item_registered",
+    "hash": "ad7b0a90366dcf06e70d140dfa8605130088e93e0dbc47ec9c15a2020ca5fd0e",
+    "id": "e4399d4d-8596-4d8c-9251-bf68505116d0",
+    "payload_json": "{\"order_id\":\"b48ac828-84e9-41dc-b27d-33bd43eb6ed2\",\"order_item_id\":\"1a7623e6-0665-433a-b068-10c5d26cdcc3\",\"product_id\":\"57a87644-b0ad-440d-a59d-98d93dbe50b1\",\"quantity\":\"2\",\"total_cents\":1400,\"unit_price_cents\":700}",
+    "prev_hash": "98eb98d261b20af11abf3134af8c5b5ac5c565ae2d7db73409367eab50c46895",
+    "seq": 4,
+    "severity": "info",
+    "store_id": "c0c0c0c0-0000-4000-8000-000000000002",
+    "tenant_id": "c0c0c0c0-0000-4000-8000-000000000001"
+   }
+  },
+  {
+   "entity_table": "order_items",
+   "entity_id": "b5250408-b8a7-4ee8-828a-4a3ae955fd08",
+   "client_uuid": "80bcf503-b2ad-4f93-8848-971a5a970027",
+   "operation": "insert",
+   "payload": {
+    "client_uuid": "80bcf503-b2ad-4f93-8848-971a5a970027",
+    "created_at": "2026-09-24T05:56:04.090+00:00",
+    "gross_weight_grams": 410,
+    "id": "b5250408-b8a7-4ee8-828a-4a3ae955fd08",
+    "ingredients": [
+     {
+      "consumed_mg": 88880,
+      "inventory_item_id": "330633e2-089f-40f4-9065-32f501056a5b",
+      "unit_cost_cents": 43
+     },
+     {
+      "consumed_mg": 122400,
+      "inventory_item_id": "70123d4d-0105-4538-9407-feae8901bc16",
+      "unit_cost_cents": 80
+     },
+     {
+      "consumed_mg": 72000,
+      "inventory_item_id": "6bd03db2-96f9-4894-836a-f8c0b6567c74",
+      "unit_cost_cents": 137
+     }
+    ],
+    "net_weight_grams": 380,
+    "order_id": "b48ac828-84e9-41dc-b27d-33bd43eb6ed2",
+    "pricing_mode": "weight",
+    "product_id": "84140731-993b-4ca6-9cd7-deefdb47f07e",
+    "product_name": "Bolo de Cenoura (kg)",
+    "quantity": "1",
+    "scale_reading_raw": "00410",
+    "tare_grams": 30,
+    "tenant_id": "c0c0c0c0-0000-4000-8000-000000000001",
+    "total_cents": 2086,
+    "unit_price_cents": 5490
+   }
+  },
+  {
+   "entity_table": "stock_movements",
+   "entity_id": "51450aa8-cc47-4847-91e8-4c92775d846a",
+   "client_uuid": "8524993d-04d5-421b-b222-eddf42559f83",
+   "operation": "insert",
+   "payload": {
+    "client_uuid": "8524993d-04d5-421b-b222-eddf42559f83",
+    "created_at": "2026-09-24T05:56:04.090+00:00",
+    "id": "51450aa8-cc47-4847-91e8-4c92775d846a",
+    "inventory_item_id": "330633e2-089f-40f4-9065-32f501056a5b",
+    "movement_type": "sale",
+    "origin_device_id": "c0c0c0c0-0000-4000-8000-000000000003",
+    "qty_mg": -88880,
+    "reference_id": "b5250408-b8a7-4ee8-828a-4a3ae955fd08",
+    "reference_type": "order_item",
+    "store_id": "c0c0c0c0-0000-4000-8000-000000000002",
+    "tenant_id": "c0c0c0c0-0000-4000-8000-000000000001",
+    "unit_cost_cents": 43
+   }
+  },
+  {
+   "entity_table": "stock_movements",
+   "entity_id": "ee9dda9d-80a0-49d6-b965-477bc580d80b",
+   "client_uuid": "dd8499e5-14fa-43e3-aaee-301c0c4530a4",
+   "operation": "insert",
+   "payload": {
+    "client_uuid": "dd8499e5-14fa-43e3-aaee-301c0c4530a4",
+    "created_at": "2026-09-24T05:56:04.090+00:00",
+    "id": "ee9dda9d-80a0-49d6-b965-477bc580d80b",
+    "inventory_item_id": "70123d4d-0105-4538-9407-feae8901bc16",
+    "movement_type": "sale",
+    "origin_device_id": "c0c0c0c0-0000-4000-8000-000000000003",
+    "qty_mg": -122400,
+    "reference_id": "b5250408-b8a7-4ee8-828a-4a3ae955fd08",
+    "reference_type": "order_item",
+    "store_id": "c0c0c0c0-0000-4000-8000-000000000002",
+    "tenant_id": "c0c0c0c0-0000-4000-8000-000000000001",
+    "unit_cost_cents": 80
+   }
+  },
+  {
+   "entity_table": "stock_movements",
+   "entity_id": "a999e574-b2fe-4c56-bba6-b03cf6f7d4cb",
+   "client_uuid": "543e867b-e0ba-4362-9c66-775f80978d7a",
+   "operation": "insert",
+   "payload": {
+    "client_uuid": "543e867b-e0ba-4362-9c66-775f80978d7a",
+    "created_at": "2026-09-24T05:56:04.090+00:00",
+    "id": "a999e574-b2fe-4c56-bba6-b03cf6f7d4cb",
+    "inventory_item_id": "6bd03db2-96f9-4894-836a-f8c0b6567c74",
+    "movement_type": "sale",
+    "origin_device_id": "c0c0c0c0-0000-4000-8000-000000000003",
+    "qty_mg": -72000,
+    "reference_id": "b5250408-b8a7-4ee8-828a-4a3ae955fd08",
+    "reference_type": "order_item",
+    "store_id": "c0c0c0c0-0000-4000-8000-000000000002",
+    "tenant_id": "c0c0c0c0-0000-4000-8000-000000000001",
+    "unit_cost_cents": 137
+   }
+  },
+  {
+   "entity_table": "audit_ledger",
+   "entity_id": "c96364c4-29c5-43f3-a02e-e6a25aa32a63",
+   "client_uuid": "b5bb798d-7bde-4ee2-baa5-0a867b889443",
+   "operation": "insert",
+   "payload": {
+    "actor_user_id": "44444444-4444-4444-4444-444444444444",
+    "authorizer_user_id": null,
+    "client_uuid": "b5bb798d-7bde-4ee2-baa5-0a867b889443",
+    "created_at": "2026-09-24T05:56:04.090+00:00",
+    "device_id": "c0c0c0c0-0000-4000-8000-000000000003",
+    "event_type": "weight_captured",
+    "hash": "9525de8e7d89547c9d865d58e1716892a5e022e0d9c1440ec26c3723f64f59b8",
+    "id": "c96364c4-29c5-43f3-a02e-e6a25aa32a63",
+    "payload_json": "{\"gross_grams\":410,\"net_grams\":380,\"order_id\":\"b48ac828-84e9-41dc-b27d-33bd43eb6ed2\",\"product_id\":\"84140731-993b-4ca6-9cd7-deefdb47f07e\",\"product_name\":\"Bolo de Cenoura (kg)\",\"read_at\":\"2026-09-24T05:56:04.090062+00:00\",\"scale_raw_frame\":\"00410\",\"scale_status\":\"stable\",\"tare_grams\":30}",
+    "prev_hash": "ad7b0a90366dcf06e70d140dfa8605130088e93e0dbc47ec9c15a2020ca5fd0e",
+    "seq": 5,
+    "severity": "info",
+    "store_id": "c0c0c0c0-0000-4000-8000-000000000002",
+    "tenant_id": "c0c0c0c0-0000-4000-8000-000000000001"
+   }
+  },
+  {
+   "entity_table": "audit_ledger",
+   "entity_id": "2e0b6947-7f17-4775-84d2-cec1ca142e48",
+   "client_uuid": "dbb6e7e3-5260-4a33-a456-2e868c231aba",
+   "operation": "insert",
+   "payload": {
+    "actor_user_id": "44444444-4444-4444-4444-444444444444",
+    "authorizer_user_id": null,
+    "client_uuid": "dbb6e7e3-5260-4a33-a456-2e868c231aba",
+    "created_at": "2026-09-24T05:56:04.090+00:00",
+    "device_id": "c0c0c0c0-0000-4000-8000-000000000003",
+    "event_type": "item_registered",
+    "hash": "9e6ca317b9370fafebe9f4075cc80cfbef1af5ecb7e363666bb692d1c587e5fa",
+    "id": "2e0b6947-7f17-4775-84d2-cec1ca142e48",
+    "payload_json": "{\"consumptions\":[{\"consumed_mg\":88880,\"inventory_item_id\":\"330633e2-089f-40f4-9065-32f501056a5b\"},{\"consumed_mg\":122400,\"inventory_item_id\":\"70123d4d-0105-4538-9407-feae8901bc16\"},{\"consumed_mg\":72000,\"inventory_item_id\":\"6bd03db2-96f9-4894-836a-f8c0b6567c74\"}],\"net_grams\":380,\"order_id\":\"b48ac828-84e9-41dc-b27d-33bd43eb6ed2\",\"order_item_id\":\"b5250408-b8a7-4ee8-828a-4a3ae955fd08\",\"price_cents_per_kg\":5490,\"product_id\":\"84140731-993b-4ca6-9cd7-deefdb47f07e\",\"total_cents\":2086}",
+    "prev_hash": "9525de8e7d89547c9d865d58e1716892a5e022e0d9c1440ec26c3723f64f59b8",
+    "seq": 6,
+    "severity": "info",
+    "store_id": "c0c0c0c0-0000-4000-8000-000000000002",
+    "tenant_id": "c0c0c0c0-0000-4000-8000-000000000001"
+   }
+  },
+  {
+   "entity_table": "stock_movements",
+   "entity_id": "ae3835d4-a1bf-4441-bb70-89ce40f9de6c",
+   "client_uuid": "922dfea7-5fab-4822-95ab-a2aeecc8818b",
+   "operation": "insert",
+   "payload": {
+    "client_uuid": "922dfea7-5fab-4822-95ab-a2aeecc8818b",
+    "created_at": "2026-09-24T05:56:04.091+00:00",
+    "id": "ae3835d4-a1bf-4441-bb70-89ce40f9de6c",
+    "inventory_item_id": "330633e2-089f-40f4-9065-32f501056a5b",
+    "movement_type": "adjustment",
+    "origin_device_id": "c0c0c0c0-0000-4000-8000-000000000003",
+    "qty_mg": 88880,
+    "reference_id": "b5250408-b8a7-4ee8-828a-4a3ae955fd08",
+    "reference_type": "order_item_cancel",
+    "store_id": "c0c0c0c0-0000-4000-8000-000000000002",
+    "tenant_id": "c0c0c0c0-0000-4000-8000-000000000001",
+    "unit_cost_cents": 0
+   }
+  },
+  {
+   "entity_table": "stock_movements",
+   "entity_id": "8c124ffc-a72d-4528-b5ee-fba8bcd503a0",
+   "client_uuid": "c6e92755-6384-44e1-870f-d193798ca594",
+   "operation": "insert",
+   "payload": {
+    "client_uuid": "c6e92755-6384-44e1-870f-d193798ca594",
+    "created_at": "2026-09-24T05:56:04.091+00:00",
+    "id": "8c124ffc-a72d-4528-b5ee-fba8bcd503a0",
+    "inventory_item_id": "70123d4d-0105-4538-9407-feae8901bc16",
+    "movement_type": "adjustment",
+    "origin_device_id": "c0c0c0c0-0000-4000-8000-000000000003",
+    "qty_mg": 122400,
+    "reference_id": "b5250408-b8a7-4ee8-828a-4a3ae955fd08",
+    "reference_type": "order_item_cancel",
+    "store_id": "c0c0c0c0-0000-4000-8000-000000000002",
+    "tenant_id": "c0c0c0c0-0000-4000-8000-000000000001",
+    "unit_cost_cents": 0
+   }
+  },
+  {
+   "entity_table": "stock_movements",
+   "entity_id": "12a92fe2-a0f6-41de-ad0e-06851a64aa41",
+   "client_uuid": "e20b7895-7a51-4441-8a2d-f4a140bd5040",
+   "operation": "insert",
+   "payload": {
+    "client_uuid": "e20b7895-7a51-4441-8a2d-f4a140bd5040",
+    "created_at": "2026-09-24T05:56:04.091+00:00",
+    "id": "12a92fe2-a0f6-41de-ad0e-06851a64aa41",
+    "inventory_item_id": "6bd03db2-96f9-4894-836a-f8c0b6567c74",
+    "movement_type": "adjustment",
+    "origin_device_id": "c0c0c0c0-0000-4000-8000-000000000003",
+    "qty_mg": 72000,
+    "reference_id": "b5250408-b8a7-4ee8-828a-4a3ae955fd08",
+    "reference_type": "order_item_cancel",
+    "store_id": "c0c0c0c0-0000-4000-8000-000000000002",
+    "tenant_id": "c0c0c0c0-0000-4000-8000-000000000001",
+    "unit_cost_cents": 0
+   }
+  },
+  {
+   "entity_table": "audit_ledger",
+   "entity_id": "696800e3-6115-4aef-a1e4-739aa35f1f77",
+   "client_uuid": "61efe9d5-f601-4ea8-8f82-db194b4c510a",
+   "operation": "insert",
+   "payload": {
+    "actor_user_id": "44444444-4444-4444-4444-444444444444",
+    "authorizer_user_id": "55555555-5555-5555-5555-555555555555",
+    "client_uuid": "61efe9d5-f601-4ea8-8f82-db194b4c510a",
+    "created_at": "2026-09-24T05:56:04.091+00:00",
+    "device_id": "c0c0c0c0-0000-4000-8000-000000000003",
+    "event_type": "item_canceled",
+    "hash": "e0a8655577c6dff8b27a2f18da5f8e03f84572eac240c4fb01aefd47d543f34d",
+    "id": "696800e3-6115-4aef-a1e4-739aa35f1f77",
+    "payload_json": "{\"net_grams\":380,\"order_id\":\"b48ac828-84e9-41dc-b27d-33bd43eb6ed2\",\"order_item_id\":\"b5250408-b8a7-4ee8-828a-4a3ae955fd08\",\"product_name\":\"Bolo de Cenoura (kg)\",\"reason\":\"Cliente desistiu\",\"total_cents\":2086}",
+    "prev_hash": "9e6ca317b9370fafebe9f4075cc80cfbef1af5ecb7e363666bb692d1c587e5fa",
+    "seq": 7,
+    "severity": "critical",
+    "store_id": "c0c0c0c0-0000-4000-8000-000000000002",
+    "tenant_id": "c0c0c0c0-0000-4000-8000-000000000001"
+   }
+  },
+  {
+   "entity_table": "orders",
+   "entity_id": "b48ac828-84e9-41dc-b27d-33bd43eb6ed2",
+   "client_uuid": "d5246fe1-4f10-4448-9b7e-1abd2f60f3dd",
+   "operation": "insert",
+   "payload": {
+    "client_uuid": "d5246fe1-4f10-4448-9b7e-1abd2f60f3dd",
+    "closed_at": "2026-09-24T05:56:04.092+00:00",
+    "device_id": "c0c0c0c0-0000-4000-8000-000000000003",
+    "discount_cents": 0,
+    "id": "b48ac828-84e9-41dc-b27d-33bd43eb6ed2",
+    "status": "paid",
+    "store_id": "c0c0c0c0-0000-4000-8000-000000000002",
+    "subtotal_cents": 1400,
+    "tenant_id": "c0c0c0c0-0000-4000-8000-000000000001",
+    "total_cents": 1400
+   }
+  },
+  {
+   "entity_table": "payments",
+   "entity_id": "111e1b86-6377-46c1-98a1-c5117a68d793",
+   "client_uuid": "91447581-3394-4263-8f4c-2d9d12b4f1e7",
+   "operation": "insert",
+   "payload": {
+    "amount_cents": 1400,
+    "change_cents": 0,
+    "created_at": "2026-09-24T05:56:04.092+00:00",
+    "id": "111e1b86-6377-46c1-98a1-c5117a68d793",
+    "method": "pix",
+    "order_id": "b48ac828-84e9-41dc-b27d-33bd43eb6ed2"
+   }
+  },
+  {
+   "entity_table": "audit_ledger",
+   "entity_id": "31e2c90d-49f0-4318-8a97-558ce2f89e19",
+   "client_uuid": "462a2915-efb7-41e2-910c-51ab51209d2d",
+   "operation": "insert",
+   "payload": {
+    "actor_user_id": "44444444-4444-4444-4444-444444444444",
+    "authorizer_user_id": null,
+    "client_uuid": "462a2915-efb7-41e2-910c-51ab51209d2d",
+    "created_at": "2026-09-24T05:56:04.092+00:00",
+    "device_id": "c0c0c0c0-0000-4000-8000-000000000003",
+    "event_type": "sale_closed",
+    "hash": "43a6a9facd342b983d27cf3001fd7637f3c5224ca341fb94645accd6b8c9e1db",
+    "id": "31e2c90d-49f0-4318-8a97-558ce2f89e19",
+    "payload_json": "{\"discount_cents\":0,\"items\":1,\"local_number\":2,\"order_id\":\"b48ac828-84e9-41dc-b27d-33bd43eb6ed2\",\"payments\":[{\"amount_cents\":1400,\"method\":\"pix\"}],\"subtotal_cents\":1400,\"total_cents\":1400}",
+    "prev_hash": "e0a8655577c6dff8b27a2f18da5f8e03f84572eac240c4fb01aefd47d543f34d",
+    "seq": 8,
+    "severity": "info",
+    "store_id": "c0c0c0c0-0000-4000-8000-000000000002",
+    "tenant_id": "c0c0c0c0-0000-4000-8000-000000000001"
+   }
+  },
+  {
+   "entity_table": "audit_ledger",
+   "entity_id": "3dff3f8a-d719-4f9e-b57b-9ed332780489",
+   "client_uuid": "dce77532-c75a-4f6c-9fe3-6323cd60f05c",
+   "operation": "insert",
+   "payload": {
+    "actor_user_id": "55555555-5555-5555-5555-555555555555",
+    "authorizer_user_id": "55555555-5555-5555-5555-555555555555",
+    "client_uuid": "dce77532-c75a-4f6c-9fe3-6323cd60f05c",
+    "created_at": "2026-09-24T05:56:04.093+00:00",
+    "device_id": "c0c0c0c0-0000-4000-8000-000000000003",
+    "event_type": "cashback_rule_changed",
+    "hash": "2361e7d60b764a2fdfc1fadecdd0baf6b8e845c1f0115307f192d7d5c43ef8e6",
+    "id": "3dff3f8a-d719-4f9e-b57b-9ed332780489",
+    "payload_json": "{\"max_per_sale_cents\":2000,\"operation\":\"cashback_rule_changed\",\"percent_basis_points\":500,\"validity_days\":90}",
+    "prev_hash": "43a6a9facd342b983d27cf3001fd7637f3c5224ca341fb94645accd6b8c9e1db",
+    "seq": 9,
+    "severity": "warning",
+    "store_id": "c0c0c0c0-0000-4000-8000-000000000002",
+    "tenant_id": "c0c0c0c0-0000-4000-8000-000000000001"
+   }
+  },
+  {
+   "entity_table": "customers",
+   "entity_id": "51ebd9d0-a7e9-433f-a5c0-d9bd902f85a0",
+   "client_uuid": "c854f2bc-a3fe-4531-b3b1-540359cb7276",
+   "operation": "insert",
+   "payload": {
+    "created_at": "2026-09-24T05:56:04.094+00:00",
+    "id": "51ebd9d0-a7e9-433f-a5c0-d9bd902f85a0",
+    "name": "Lia Cliente",
+    "phone": "11988887777",
+    "updated_at": "2026-09-24T05:56:04.094+00:00"
+   }
+  },
+  {
+   "entity_table": "prepaid_ledger",
+   "entity_id": "a3dc3b21-bcf0-477d-ac15-270045e83d57",
+   "client_uuid": "555c73a0-1bf5-4ae2-ab90-23e13aceea5c",
+   "operation": "insert",
+   "payload": {
+    "actor_user_id": "44444444-4444-4444-4444-444444444444",
+    "amount_cents": 5000,
+    "authorizer_user_id": "55555555-5555-5555-5555-555555555555",
+    "created_at": "2026-09-24T05:56:04.095+00:00",
+    "customer_id": "51ebd9d0-a7e9-433f-a5c0-d9bd902f85a0",
+    "entry_type": "deposit",
+    "id": "a3dc3b21-bcf0-477d-ac15-270045e83d57",
+    "order_id": null,
+    "store_id": "c0c0c0c0-0000-4000-8000-000000000002"
+   }
+  },
+  {
+   "entity_table": "audit_ledger",
+   "entity_id": "6fbe0495-dc64-4c3d-a606-9845b188baff",
+   "client_uuid": "f117956c-7156-4fc8-8158-11cd7669b940",
+   "operation": "insert",
+   "payload": {
+    "actor_user_id": "44444444-4444-4444-4444-444444444444",
+    "authorizer_user_id": "55555555-5555-5555-5555-555555555555",
+    "client_uuid": "f117956c-7156-4fc8-8158-11cd7669b940",
+    "created_at": "2026-09-24T05:56:04.095+00:00",
+    "device_id": "c0c0c0c0-0000-4000-8000-000000000003",
+    "event_type": "prepaid_credited",
+    "hash": "173a3a2987ec109883d730005e25b6849c38d2b341f220f6d40095bfe41bbbfe",
+    "id": "6fbe0495-dc64-4c3d-a606-9845b188baff",
+    "payload_json": "{\"amount_cents\":5000,\"customer_id\":\"51ebd9d0-a7e9-433f-a5c0-d9bd902f85a0\"}",
+    "prev_hash": "2361e7d60b764a2fdfc1fadecdd0baf6b8e845c1f0115307f192d7d5c43ef8e6",
+    "seq": 10,
+    "severity": "warning",
+    "store_id": "c0c0c0c0-0000-4000-8000-000000000002",
+    "tenant_id": "c0c0c0c0-0000-4000-8000-000000000001"
+   }
+  },
+  {
+   "entity_table": "customer_credit_accounts",
+   "entity_id": "51ebd9d0-a7e9-433f-a5c0-d9bd902f85a0",
+   "client_uuid": "3a594f21-dab2-4a37-8823-4953ff8b77da",
+   "operation": "insert",
+   "payload": {
+    "customer_id": "51ebd9d0-a7e9-433f-a5c0-d9bd902f85a0",
+    "due_days": 30,
+    "is_active": true,
+    "limit_cents": 20000,
+    "updated_at": "2026-09-24T05:56:04.096+00:00"
+   }
+  },
+  {
+   "entity_table": "audit_ledger",
+   "entity_id": "485e4865-1b84-4488-84c0-ccd5ace28b1f",
+   "client_uuid": "281d0d0f-1085-494b-80ac-f21c8110323b",
+   "operation": "insert",
+   "payload": {
+    "actor_user_id": "55555555-5555-5555-5555-555555555555",
+    "authorizer_user_id": "55555555-5555-5555-5555-555555555555",
+    "client_uuid": "281d0d0f-1085-494b-80ac-f21c8110323b",
+    "created_at": "2026-09-24T05:56:04.096+00:00",
+    "device_id": "c0c0c0c0-0000-4000-8000-000000000003",
+    "event_type": "credit_account_configured",
+    "hash": "767bf7974cc4ede837ac7732a1eaf9076aa8401f75e01115bdb7b7c0a96ae0c4",
+    "id": "485e4865-1b84-4488-84c0-ccd5ace28b1f",
+    "payload_json": "{\"customer_id\":\"51ebd9d0-a7e9-433f-a5c0-d9bd902f85a0\",\"due_days\":30,\"limit_cents\":20000}",
+    "prev_hash": "173a3a2987ec109883d730005e25b6849c38d2b341f220f6d40095bfe41bbbfe",
+    "seq": 11,
+    "severity": "warning",
+    "store_id": "c0c0c0c0-0000-4000-8000-000000000002",
+    "tenant_id": "c0c0c0c0-0000-4000-8000-000000000001"
+   }
+  },
+  {
+   "entity_table": "customer_credit_accounts",
+   "entity_id": "51ebd9d0-a7e9-433f-a5c0-d9bd902f85a0",
+   "client_uuid": "3a594f21-dab2-4a37-8823-4953ff8b77da",
+   "operation": "update",
+   "payload": {
+    "customer_id": "51ebd9d0-a7e9-433f-a5c0-d9bd902f85a0",
+    "due_days": 30,
+    "is_active": true,
+    "limit_cents": 30000,
+    "updated_at": "2026-09-24T05:56:04.096+00:00"
+   }
+  },
+  {
+   "entity_table": "audit_ledger",
+   "entity_id": "39dd9f1a-9251-45b9-ba6c-8b6b0416fe4a",
+   "client_uuid": "63a808a5-b5d2-4de6-9883-89c7a75f3987",
+   "operation": "insert",
+   "payload": {
+    "actor_user_id": "55555555-5555-5555-5555-555555555555",
+    "authorizer_user_id": "55555555-5555-5555-5555-555555555555",
+    "client_uuid": "63a808a5-b5d2-4de6-9883-89c7a75f3987",
+    "created_at": "2026-09-24T05:56:04.097+00:00",
+    "device_id": "c0c0c0c0-0000-4000-8000-000000000003",
+    "event_type": "credit_account_configured",
+    "hash": "935aaa730ecccf493c06290d911d41b21c20780c3e82ac81f6991f6abfcae918",
+    "id": "39dd9f1a-9251-45b9-ba6c-8b6b0416fe4a",
+    "payload_json": "{\"customer_id\":\"51ebd9d0-a7e9-433f-a5c0-d9bd902f85a0\",\"due_days\":30,\"limit_cents\":30000}",
+    "prev_hash": "767bf7974cc4ede837ac7732a1eaf9076aa8401f75e01115bdb7b7c0a96ae0c4",
+    "seq": 12,
+    "severity": "warning",
+    "store_id": "c0c0c0c0-0000-4000-8000-000000000002",
+    "tenant_id": "c0c0c0c0-0000-4000-8000-000000000001"
+   }
+  },
+  {
+   "entity_table": "discount_tiers",
+   "entity_id": "6d23b8b3-87a8-4787-9981-aa81f8a13be8",
+   "client_uuid": "8b6e68bf-4697-488a-ba3d-d226d905cbf1",
+   "operation": "insert",
+   "payload": {
+    "code": "employee",
+    "id": "6d23b8b3-87a8-4787-9981-aa81f8a13be8",
+    "is_active": true,
+    "name": "Funcionário",
+    "percent_basis_points": 1000,
+    "priority": 10,
+    "requires_manager": true,
+    "store_id": "c0c0c0c0-0000-4000-8000-000000000002",
+    "updated_at": "2026-09-24T05:56:04.097+00:00"
+   }
+  },
+  {
+   "entity_table": "audit_ledger",
+   "entity_id": "807ba2ee-a295-40ea-b322-358c16f9a5cb",
+   "client_uuid": "512b600a-24aa-4715-94d4-54ef326d3a99",
+   "operation": "insert",
+   "payload": {
+    "actor_user_id": "55555555-5555-5555-5555-555555555555",
+    "authorizer_user_id": "55555555-5555-5555-5555-555555555555",
+    "client_uuid": "512b600a-24aa-4715-94d4-54ef326d3a99",
+    "created_at": "2026-09-24T05:56:04.098+00:00",
+    "device_id": "c0c0c0c0-0000-4000-8000-000000000003",
+    "event_type": "discount_tier_configured",
+    "hash": "d32809934ddf3fdc90d03ae424350a5762febb0c5b9c056224a76339e80efe60",
+    "id": "807ba2ee-a295-40ea-b322-358c16f9a5cb",
+    "payload_json": "{\"code\":\"employee\",\"percent_basis_points\":1000,\"tier_id\":\"6d23b8b3-87a8-4787-9981-aa81f8a13be8\"}",
+    "prev_hash": "935aaa730ecccf493c06290d911d41b21c20780c3e82ac81f6991f6abfcae918",
+    "seq": 13,
+    "severity": "warning",
+    "store_id": "c0c0c0c0-0000-4000-8000-000000000002",
+    "tenant_id": "c0c0c0c0-0000-4000-8000-000000000001"
+   }
+  },
+  {
+   "entity_table": "discount_tiers",
+   "entity_id": "6d23b8b3-87a8-4787-9981-aa81f8a13be8",
+   "client_uuid": "8b6e68bf-4697-488a-ba3d-d226d905cbf1",
+   "operation": "update",
+   "payload": {
+    "code": "employee",
+    "id": "6d23b8b3-87a8-4787-9981-aa81f8a13be8",
+    "is_active": true,
+    "name": "Funcionário",
+    "percent_basis_points": 1500,
+    "priority": 10,
+    "requires_manager": true,
+    "store_id": "c0c0c0c0-0000-4000-8000-000000000002",
+    "updated_at": "2026-09-24T05:56:04.098+00:00"
+   }
+  },
+  {
+   "entity_table": "audit_ledger",
+   "entity_id": "21eadc52-458a-447c-806d-5b0caef2e89a",
+   "client_uuid": "23fbd4d1-7e14-4e01-8e6f-e1f3e2c0da98",
+   "operation": "insert",
+   "payload": {
+    "actor_user_id": "55555555-5555-5555-5555-555555555555",
+    "authorizer_user_id": "55555555-5555-5555-5555-555555555555",
+    "client_uuid": "23fbd4d1-7e14-4e01-8e6f-e1f3e2c0da98",
+    "created_at": "2026-09-24T05:56:04.098+00:00",
+    "device_id": "c0c0c0c0-0000-4000-8000-000000000003",
+    "event_type": "discount_tier_configured",
+    "hash": "b8ac8c293a7ca62ee21903103806fa6d0e18184ee8cb35c4a765cebcfd16ad4c",
+    "id": "21eadc52-458a-447c-806d-5b0caef2e89a",
+    "payload_json": "{\"code\":\"employee\",\"percent_basis_points\":1500,\"tier_id\":\"6d23b8b3-87a8-4787-9981-aa81f8a13be8\"}",
+    "prev_hash": "d32809934ddf3fdc90d03ae424350a5762febb0c5b9c056224a76339e80efe60",
+    "seq": 14,
+    "severity": "warning",
+    "store_id": "c0c0c0c0-0000-4000-8000-000000000002",
+    "tenant_id": "c0c0c0c0-0000-4000-8000-000000000001"
+   }
+  },
+  {
+   "entity_table": "discount_tiers",
+   "entity_id": "b6c558dd-fe22-4b2e-935e-33459d7373d4",
+   "client_uuid": "25719efc-f076-4ef8-b47e-aaa5ae7f7677",
+   "operation": "insert",
+   "payload": {
+    "code": "gold",
+    "id": "b6c558dd-fe22-4b2e-935e-33459d7373d4",
+    "is_active": true,
+    "name": "Ouro",
+    "percent_basis_points": 500,
+    "priority": 5,
+    "requires_manager": false,
+    "store_id": "c0c0c0c0-0000-4000-8000-000000000002",
+    "updated_at": "2026-09-24T05:56:04.099+00:00"
+   }
+  },
+  {
+   "entity_table": "audit_ledger",
+   "entity_id": "4041137e-b31c-4e96-a33e-8aa81246f64a",
+   "client_uuid": "81a3dcd1-1de4-4f45-bf82-e201c2cefc17",
+   "operation": "insert",
+   "payload": {
+    "actor_user_id": "55555555-5555-5555-5555-555555555555",
+    "authorizer_user_id": "55555555-5555-5555-5555-555555555555",
+    "client_uuid": "81a3dcd1-1de4-4f45-bf82-e201c2cefc17",
+    "created_at": "2026-09-24T05:56:04.099+00:00",
+    "device_id": "c0c0c0c0-0000-4000-8000-000000000003",
+    "event_type": "discount_tier_configured",
+    "hash": "1054fb2971ea3a791d9f295c548c2c8ea4429d4d7172a4f3d6620cc169573411",
+    "id": "4041137e-b31c-4e96-a33e-8aa81246f64a",
+    "payload_json": "{\"code\":\"gold\",\"percent_basis_points\":500,\"tier_id\":\"b6c558dd-fe22-4b2e-935e-33459d7373d4\"}",
+    "prev_hash": "b8ac8c293a7ca62ee21903103806fa6d0e18184ee8cb35c4a765cebcfd16ad4c",
+    "seq": 15,
+    "severity": "warning",
+    "store_id": "c0c0c0c0-0000-4000-8000-000000000002",
+    "tenant_id": "c0c0c0c0-0000-4000-8000-000000000001"
+   }
+  },
+  {
+   "entity_table": "discount_tiers",
+   "entity_id": "4bab4b6e-447e-413d-a575-770ff3b43a4b",
+   "client_uuid": "2dc28073-b0ac-45b2-8167-6342bf39e7a9",
+   "operation": "insert",
+   "payload": {
+    "code": "bronze",
+    "id": "4bab4b6e-447e-413d-a575-770ff3b43a4b",
+    "is_active": true,
+    "name": "Bronze",
+    "percent_basis_points": 200,
+    "priority": 1,
+    "requires_manager": false,
+    "store_id": "c0c0c0c0-0000-4000-8000-000000000002",
+    "updated_at": "2026-09-24T05:56:04.100+00:00"
+   }
+  },
+  {
+   "entity_table": "audit_ledger",
+   "entity_id": "c1293ab0-e310-48dd-8a89-1600ad7e7cc0",
+   "client_uuid": "8e807140-5696-45fd-bf28-a4d4320e20b0",
+   "operation": "insert",
+   "payload": {
+    "actor_user_id": "55555555-5555-5555-5555-555555555555",
+    "authorizer_user_id": "55555555-5555-5555-5555-555555555555",
+    "client_uuid": "8e807140-5696-45fd-bf28-a4d4320e20b0",
+    "created_at": "2026-09-24T05:56:04.100+00:00",
+    "device_id": "c0c0c0c0-0000-4000-8000-000000000003",
+    "event_type": "discount_tier_configured",
+    "hash": "8b25fdeb2392ffcafe9b97de63ac60802b2da9d40ce6e7195fe9bd073314a9b7",
+    "id": "c1293ab0-e310-48dd-8a89-1600ad7e7cc0",
+    "payload_json": "{\"code\":\"bronze\",\"percent_basis_points\":200,\"tier_id\":\"4bab4b6e-447e-413d-a575-770ff3b43a4b\"}",
+    "prev_hash": "1054fb2971ea3a791d9f295c548c2c8ea4429d4d7172a4f3d6620cc169573411",
+    "seq": 16,
+    "severity": "warning",
+    "store_id": "c0c0c0c0-0000-4000-8000-000000000002",
+    "tenant_id": "c0c0c0c0-0000-4000-8000-000000000001"
+   }
+  },
+  {
+   "entity_table": "customer_discount_tiers",
+   "entity_id": "51ebd9d0-a7e9-433f-a5c0-d9bd902f85a0",
+   "client_uuid": "04996ff4-2551-41d6-9dd2-de2a8602f5f7",
+   "operation": "insert",
+   "payload": {
+    "assigned_at": "2026-09-24T05:56:04.100+00:00",
+    "assigned_by_user_id": "55555555-5555-5555-5555-555555555555",
+    "customer_id": "51ebd9d0-a7e9-433f-a5c0-d9bd902f85a0",
+    "tier_id": "4bab4b6e-447e-413d-a575-770ff3b43a4b"
+   }
+  },
+  {
+   "entity_table": "audit_ledger",
+   "entity_id": "856033b9-5c42-48f9-b440-feb8cfc0a2bf",
+   "client_uuid": "f09562dd-abaf-4bc9-b982-deba9ebd1bc1",
+   "operation": "insert",
+   "payload": {
+    "actor_user_id": "55555555-5555-5555-5555-555555555555",
+    "authorizer_user_id": "55555555-5555-5555-5555-555555555555",
+    "client_uuid": "f09562dd-abaf-4bc9-b982-deba9ebd1bc1",
+    "created_at": "2026-09-24T05:56:04.101+00:00",
+    "device_id": "c0c0c0c0-0000-4000-8000-000000000003",
+    "event_type": "discount_tier_assigned",
+    "hash": "591d2c5cda201acbadfda21733431e81004e9a32baca4e3d66bf2a747dfcbb6c",
+    "id": "856033b9-5c42-48f9-b440-feb8cfc0a2bf",
+    "payload_json": "{\"customer_id\":\"51ebd9d0-a7e9-433f-a5c0-d9bd902f85a0\",\"tier_id\":\"4bab4b6e-447e-413d-a575-770ff3b43a4b\"}",
+    "prev_hash": "8b25fdeb2392ffcafe9b97de63ac60802b2da9d40ce6e7195fe9bd073314a9b7",
+    "seq": 17,
+    "severity": "warning",
+    "store_id": "c0c0c0c0-0000-4000-8000-000000000002",
+    "tenant_id": "c0c0c0c0-0000-4000-8000-000000000001"
+   }
+  },
+  {
+   "entity_table": "customer_discount_tiers",
+   "entity_id": "51ebd9d0-a7e9-433f-a5c0-d9bd902f85a0",
+   "client_uuid": "04996ff4-2551-41d6-9dd2-de2a8602f5f7",
+   "operation": "update",
+   "payload": {
+    "assigned_at": "2026-09-24T05:56:04.101+00:00",
+    "assigned_by_user_id": "55555555-5555-5555-5555-555555555555",
+    "customer_id": "51ebd9d0-a7e9-433f-a5c0-d9bd902f85a0",
+    "tier_id": "b6c558dd-fe22-4b2e-935e-33459d7373d4"
+   }
+  },
+  {
+   "entity_table": "audit_ledger",
+   "entity_id": "62f251d1-4e52-4913-b444-c357faa105d7",
+   "client_uuid": "debbee0a-8dfe-4b25-983f-9e4cb3fd219f",
+   "operation": "insert",
+   "payload": {
+    "actor_user_id": "55555555-5555-5555-5555-555555555555",
+    "authorizer_user_id": "55555555-5555-5555-5555-555555555555",
+    "client_uuid": "debbee0a-8dfe-4b25-983f-9e4cb3fd219f",
+    "created_at": "2026-09-24T05:56:04.101+00:00",
+    "device_id": "c0c0c0c0-0000-4000-8000-000000000003",
+    "event_type": "discount_tier_assigned",
+    "hash": "77d6863a96ba31e6dff28474efe64bc420b295b3683d9bdb19a0911c720da85e",
+    "id": "62f251d1-4e52-4913-b444-c357faa105d7",
+    "payload_json": "{\"customer_id\":\"51ebd9d0-a7e9-433f-a5c0-d9bd902f85a0\",\"tier_id\":\"b6c558dd-fe22-4b2e-935e-33459d7373d4\"}",
+    "prev_hash": "591d2c5cda201acbadfda21733431e81004e9a32baca4e3d66bf2a747dfcbb6c",
+    "seq": 18,
+    "severity": "warning",
+    "store_id": "c0c0c0c0-0000-4000-8000-000000000002",
+    "tenant_id": "c0c0c0c0-0000-4000-8000-000000000001"
+   }
+  },
+  {
+   "entity_table": "order_items",
+   "entity_id": "78dd36c8-f6eb-4b40-914f-4fbec54baba1",
+   "client_uuid": "a9b6d069-a3e8-4590-acf0-b4517ee4ebb0",
+   "operation": "insert",
+   "payload": {
+    "client_uuid": "a9b6d069-a3e8-4590-acf0-b4517ee4ebb0",
+    "created_at": "2026-09-24T05:56:04.103+00:00",
+    "gross_weight_grams": 0,
+    "id": "78dd36c8-f6eb-4b40-914f-4fbec54baba1",
+    "ingredients": [],
+    "net_weight_grams": 0,
+    "order_id": "c32b86d1-26e1-4b09-ab5e-c0560a22392b",
+    "pricing_mode": "unit",
+    "product_id": "57a87644-b0ad-440d-a59d-98d93dbe50b1",
+    "product_name": "Café Expresso",
+    "quantity": "3",
+    "scale_reading_raw": null,
+    "tare_grams": 0,
+    "tenant_id": "c0c0c0c0-0000-4000-8000-000000000001",
+    "total_cents": 2100,
+    "unit_price_cents": 700
+   }
+  },
+  {
+   "entity_table": "audit_ledger",
+   "entity_id": "1c932b52-c01e-4d5e-b6c2-c08bd8f9b64a",
+   "client_uuid": "b4b22522-3b78-4c4f-bdd3-f8eab50e56b7",
+   "operation": "insert",
+   "payload": {
+    "actor_user_id": "44444444-4444-4444-4444-444444444444",
+    "authorizer_user_id": null,
+    "client_uuid": "b4b22522-3b78-4c4f-bdd3-f8eab50e56b7",
+    "created_at": "2026-09-24T05:56:04.103+00:00",
+    "device_id": "c0c0c0c0-0000-4000-8000-000000000003",
+    "event_type": "item_registered",
+    "hash": "eb35c69a5362bde59c43474fe058bdd90c78790902f0bce22e9081eb36bd483d",
+    "id": "1c932b52-c01e-4d5e-b6c2-c08bd8f9b64a",
+    "payload_json": "{\"order_id\":\"c32b86d1-26e1-4b09-ab5e-c0560a22392b\",\"order_item_id\":\"78dd36c8-f6eb-4b40-914f-4fbec54baba1\",\"product_id\":\"57a87644-b0ad-440d-a59d-98d93dbe50b1\",\"quantity\":\"3\",\"total_cents\":2100,\"unit_price_cents\":700}",
+    "prev_hash": "77d6863a96ba31e6dff28474efe64bc420b295b3683d9bdb19a0911c720da85e",
+    "seq": 19,
+    "severity": "info",
+    "store_id": "c0c0c0c0-0000-4000-8000-000000000002",
+    "tenant_id": "c0c0c0c0-0000-4000-8000-000000000001"
+   }
+  },
+  {
+   "entity_table": "orders",
+   "entity_id": "c32b86d1-26e1-4b09-ab5e-c0560a22392b",
+   "client_uuid": "544d44a2-6ab1-4aa4-9544-e0cf7f7584ff",
+   "operation": "insert",
+   "payload": {
+    "client_uuid": "544d44a2-6ab1-4aa4-9544-e0cf7f7584ff",
+    "closed_at": "2026-09-24T05:56:04.103+00:00",
+    "device_id": "c0c0c0c0-0000-4000-8000-000000000003",
+    "discount_cents": 0,
+    "id": "c32b86d1-26e1-4b09-ab5e-c0560a22392b",
+    "status": "paid",
+    "store_id": "c0c0c0c0-0000-4000-8000-000000000002",
+    "subtotal_cents": 2100,
+    "tenant_id": "c0c0c0c0-0000-4000-8000-000000000001",
+    "total_cents": 2100
+   }
+  },
+  {
+   "entity_table": "prepaid_ledger",
+   "entity_id": "3c4d76ea-a394-4b4d-89bb-9d2f6b18d5b7",
+   "client_uuid": "66f556fe-5585-40f0-8fee-98e608f21b7b",
+   "operation": "insert",
+   "payload": {
+    "actor_user_id": "44444444-4444-4444-4444-444444444444",
+    "amount_cents": 1050,
+    "authorizer_user_id": null,
+    "created_at": "2026-09-24T05:56:04.103+00:00",
+    "customer_id": "51ebd9d0-a7e9-433f-a5c0-d9bd902f85a0",
+    "entry_type": "debit",
+    "id": "3c4d76ea-a394-4b4d-89bb-9d2f6b18d5b7",
+    "order_id": "c32b86d1-26e1-4b09-ab5e-c0560a22392b",
+    "store_id": "c0c0c0c0-0000-4000-8000-000000000002"
+   }
+  },
+  {
+   "entity_table": "audit_ledger",
+   "entity_id": "836334dc-2404-408b-adaa-373f3a1bb93e",
+   "client_uuid": "f9a35ac2-cbd3-4fe4-8a16-f3fb1882d6e6",
+   "operation": "insert",
+   "payload": {
+    "actor_user_id": "44444444-4444-4444-4444-444444444444",
+    "authorizer_user_id": null,
+    "client_uuid": "f9a35ac2-cbd3-4fe4-8a16-f3fb1882d6e6",
+    "created_at": "2026-09-24T05:56:04.104+00:00",
+    "device_id": "c0c0c0c0-0000-4000-8000-000000000003",
+    "event_type": "prepaid_redeemed",
+    "hash": "73038c6eb2abd582c299e102d1ce462c06d7fecf605e091ac5f56eeeb2e95c0f",
+    "id": "836334dc-2404-408b-adaa-373f3a1bb93e",
+    "payload_json": "{\"amount_cents\":1050,\"customer_id\":\"51ebd9d0-a7e9-433f-a5c0-d9bd902f85a0\",\"order_id\":\"c32b86d1-26e1-4b09-ab5e-c0560a22392b\"}",
+    "prev_hash": "eb35c69a5362bde59c43474fe058bdd90c78790902f0bce22e9081eb36bd483d",
+    "seq": 20,
+    "severity": "info",
+    "store_id": "c0c0c0c0-0000-4000-8000-000000000002",
+    "tenant_id": "c0c0c0c0-0000-4000-8000-000000000001"
+   }
+  },
+  {
+   "entity_table": "credit_account_ledger",
+   "entity_id": "3a430357-5230-4536-b76a-7a565f3f992f",
+   "client_uuid": "baf0179b-ffe1-4174-81e1-765c99826248",
+   "operation": "insert",
+   "payload": {
+    "actor_user_id": "44444444-4444-4444-4444-444444444444",
+    "amount_cents": 1050,
+    "authorizer_user_id": null,
+    "created_at": "2026-09-24T05:56:04.104+00:00",
+    "customer_id": "51ebd9d0-a7e9-433f-a5c0-d9bd902f85a0",
+    "due_at": "2026-10-24T05:56:04.104+00:00",
+    "entry_type": "charge",
+    "id": "3a430357-5230-4536-b76a-7a565f3f992f",
+    "order_id": "c32b86d1-26e1-4b09-ab5e-c0560a22392b",
+    "source_charge_id": null,
+    "store_id": "c0c0c0c0-0000-4000-8000-000000000002"
+   }
+  },
+  {
+   "entity_table": "audit_ledger",
+   "entity_id": "4e0eec01-9d85-4fd1-91bc-79a5b732b895",
+   "client_uuid": "0888f6ee-a1b7-47fa-b5df-dae70e7b145f",
+   "operation": "insert",
+   "payload": {
+    "actor_user_id": "44444444-4444-4444-4444-444444444444",
+    "authorizer_user_id": null,
+    "client_uuid": "0888f6ee-a1b7-47fa-b5df-dae70e7b145f",
+    "created_at": "2026-09-24T05:56:04.104+00:00",
+    "device_id": "c0c0c0c0-0000-4000-8000-000000000003",
+    "event_type": "credit_account_charged",
+    "hash": "f9d5ffa13f0574b6b954c8fad59a6ec0612c84026f9c6954c81f6f7269a52207",
+    "id": "4e0eec01-9d85-4fd1-91bc-79a5b732b895",
+    "payload_json": "{\"amount_cents\":1050,\"customer_id\":\"51ebd9d0-a7e9-433f-a5c0-d9bd902f85a0\",\"due_at\":\"2026-10-24T05:56:04.104+00:00\",\"order_id\":\"c32b86d1-26e1-4b09-ab5e-c0560a22392b\"}",
+    "prev_hash": "73038c6eb2abd582c299e102d1ce462c06d7fecf605e091ac5f56eeeb2e95c0f",
+    "seq": 21,
+    "severity": "warning",
+    "store_id": "c0c0c0c0-0000-4000-8000-000000000002",
+    "tenant_id": "c0c0c0c0-0000-4000-8000-000000000001"
+   }
+  },
+  {
+   "entity_table": "payments",
+   "entity_id": "cc35dd8f-ab34-44a8-8a64-51b3087476ae",
+   "client_uuid": "2ac53623-c128-4037-b392-bdbf647df1b0",
+   "operation": "insert",
+   "payload": {
+    "amount_cents": 1050,
+    "change_cents": 0,
+    "created_at": "2026-09-24T05:56:04.104+00:00",
+    "id": "cc35dd8f-ab34-44a8-8a64-51b3087476ae",
+    "method": "prepaid",
+    "order_id": "c32b86d1-26e1-4b09-ab5e-c0560a22392b"
+   }
+  },
+  {
+   "entity_table": "payments",
+   "entity_id": "d4c8d4b5-dcda-4c6b-9c7a-71c3067fbac2",
+   "client_uuid": "0927a5e1-e110-49c0-95f9-cb38a40b46c2",
+   "operation": "insert",
+   "payload": {
+    "amount_cents": 1050,
+    "change_cents": 0,
+    "created_at": "2026-09-24T05:56:04.104+00:00",
+    "id": "d4c8d4b5-dcda-4c6b-9c7a-71c3067fbac2",
+    "method": "credit_account",
+    "order_id": "c32b86d1-26e1-4b09-ab5e-c0560a22392b"
+   }
+  },
+  {
+   "entity_table": "cashback_ledger",
+   "entity_id": "0fad4699-b82a-4f4e-bf94-d5ae31d28d70",
+   "client_uuid": "5822cfd7-7c5c-419f-b35b-6b109422dff7",
+   "operation": "insert",
+   "payload": {
+    "actor_user_id": "44444444-4444-4444-4444-444444444444",
+    "amount_cents": 105,
+    "customer_id": "51ebd9d0-a7e9-433f-a5c0-d9bd902f85a0",
+    "entry_type": "credit",
+    "expires_at": "2026-12-23T05:56:04.104+00:00",
+    "id": "0fad4699-b82a-4f4e-bf94-d5ae31d28d70",
+    "order_id": "c32b86d1-26e1-4b09-ab5e-c0560a22392b",
+    "source_credit_id": null,
+    "store_id": "c0c0c0c0-0000-4000-8000-000000000002"
+   }
+  },
+  {
+   "entity_table": "audit_ledger",
+   "entity_id": "289df1e1-6adf-4758-b2ff-882749cae2ad",
+   "client_uuid": "5fdb3a90-20be-408b-85f9-f0daad3188b4",
+   "operation": "insert",
+   "payload": {
+    "actor_user_id": "44444444-4444-4444-4444-444444444444",
+    "authorizer_user_id": null,
+    "client_uuid": "5fdb3a90-20be-408b-85f9-f0daad3188b4",
+    "created_at": "2026-09-24T05:56:04.105+00:00",
+    "device_id": "c0c0c0c0-0000-4000-8000-000000000003",
+    "event_type": "cashback_credited",
+    "hash": "974256b46400441aa3923e833648cd44a341c14f9db053fd0d756ec8e9797b0c",
+    "id": "289df1e1-6adf-4758-b2ff-882749cae2ad",
+    "payload_json": "{\"amount_cents\":105,\"customer_id\":\"51ebd9d0-a7e9-433f-a5c0-d9bd902f85a0\",\"expires_at\":\"2026-12-23T05:56:04.104+00:00\",\"order_id\":\"c32b86d1-26e1-4b09-ab5e-c0560a22392b\"}",
+    "prev_hash": "f9d5ffa13f0574b6b954c8fad59a6ec0612c84026f9c6954c81f6f7269a52207",
+    "seq": 22,
+    "severity": "info",
+    "store_id": "c0c0c0c0-0000-4000-8000-000000000002",
+    "tenant_id": "c0c0c0c0-0000-4000-8000-000000000001"
+   }
+  },
+  {
+   "entity_table": "audit_ledger",
+   "entity_id": "b5334ecd-279a-492a-a9ed-4c0cd954dc68",
+   "client_uuid": "eb129ba6-1d04-4b1b-8b1f-83a999cde8ae",
+   "operation": "insert",
+   "payload": {
+    "actor_user_id": "44444444-4444-4444-4444-444444444444",
+    "authorizer_user_id": null,
+    "client_uuid": "eb129ba6-1d04-4b1b-8b1f-83a999cde8ae",
+    "created_at": "2026-09-24T05:56:04.105+00:00",
+    "device_id": "c0c0c0c0-0000-4000-8000-000000000003",
+    "event_type": "sale_closed",
+    "hash": "efc65f47986bf420d7de9b6391c27d02fa47fc4b15bf7130e390d4cf4b28d751",
+    "id": "b5334ecd-279a-492a-a9ed-4c0cd954dc68",
+    "payload_json": "{\"discount_cents\":0,\"items\":1,\"local_number\":3,\"order_id\":\"c32b86d1-26e1-4b09-ab5e-c0560a22392b\",\"payments\":[{\"amount_cents\":1050,\"method\":\"prepaid\"},{\"amount_cents\":1050,\"method\":\"credit_account\"}],\"subtotal_cents\":2100,\"total_cents\":2100}",
+    "prev_hash": "974256b46400441aa3923e833648cd44a341c14f9db053fd0d756ec8e9797b0c",
+    "seq": 23,
+    "severity": "info",
+    "store_id": "c0c0c0c0-0000-4000-8000-000000000002",
+    "tenant_id": "c0c0c0c0-0000-4000-8000-000000000001"
+   }
+  },
+  {
+   "entity_table": "cashback_ledger",
+   "entity_id": "343ad6a1-76fa-4baa-bccd-f9a36da04338",
+   "client_uuid": "885d93e5-2a37-4c7b-8bfa-8184238d2f66",
+   "operation": "insert",
+   "payload": {
+    "actor_user_id": "44444444-4444-4444-4444-444444444444",
+    "amount_cents": 1,
+    "customer_id": "51ebd9d0-a7e9-433f-a5c0-d9bd902f85a0",
+    "entry_type": "debit",
+    "expires_at": null,
+    "id": "343ad6a1-76fa-4baa-bccd-f9a36da04338",
+    "order_id": "42423897-86ae-4772-b478-3c0d94eb4aa1",
+    "source_credit_id": "0fad4699-b82a-4f4e-bf94-d5ae31d28d70",
+    "store_id": "c0c0c0c0-0000-4000-8000-000000000002"
+   }
+  },
+  {
+   "entity_table": "credit_account_ledger",
+   "entity_id": "c71db836-d8d4-4eae-9bf1-70e0c550da5b",
+   "client_uuid": "e662921f-7d7e-4a4d-882a-fe2b451846a6",
+   "operation": "insert",
+   "payload": {
+    "actor_user_id": "44444444-4444-4444-4444-444444444444",
+    "amount_cents": 500,
+    "authorizer_user_id": null,
+    "created_at": "2026-09-24T05:56:04.107+00:00",
+    "customer_id": "51ebd9d0-a7e9-433f-a5c0-d9bd902f85a0",
+    "due_at": null,
+    "entry_type": "payment",
+    "id": "c71db836-d8d4-4eae-9bf1-70e0c550da5b",
+    "order_id": null,
+    "source_charge_id": "3a430357-5230-4536-b76a-7a565f3f992f",
+    "store_id": "c0c0c0c0-0000-4000-8000-000000000002"
+   }
+  },
+  {
+   "entity_table": "audit_ledger",
+   "entity_id": "46cdf4a0-df77-4891-9b52-f30c820f03a4",
+   "client_uuid": "57e18c54-d6d1-4d46-ba7a-d6e4eb4f6a91",
+   "operation": "insert",
+   "payload": {
+    "actor_user_id": "44444444-4444-4444-4444-444444444444",
+    "authorizer_user_id": null,
+    "client_uuid": "57e18c54-d6d1-4d46-ba7a-d6e4eb4f6a91",
+    "created_at": "2026-09-24T05:56:04.107+00:00",
+    "device_id": "c0c0c0c0-0000-4000-8000-000000000003",
+    "event_type": "credit_account_paid",
+    "hash": "6d48a6a35840259595ef9dc29a8ae22aa7549006ea0c171014493914818a5731",
+    "id": "46cdf4a0-df77-4891-9b52-f30c820f03a4",
+    "payload_json": "{\"amount_cents\":500,\"customer_id\":\"51ebd9d0-a7e9-433f-a5c0-d9bd902f85a0\"}",
+    "prev_hash": "efc65f47986bf420d7de9b6391c27d02fa47fc4b15bf7130e390d4cf4b28d751",
+    "seq": 24,
+    "severity": "info",
+    "store_id": "c0c0c0c0-0000-4000-8000-000000000002",
+    "tenant_id": "c0c0c0c0-0000-4000-8000-000000000001"
+   }
+  },
+  {
+   "entity_table": "store_tables",
+   "entity_id": "05ad5b1a-684d-4351-826f-6f60d61595b0",
+   "client_uuid": "69e22ed4-dc87-4258-90f0-9f73b5cd081c",
+   "operation": "insert",
+   "payload": {
+    "area": "Varanda",
+    "id": "05ad5b1a-684d-4351-826f-6f60d61595b0",
+    "is_active": true,
+    "label": "Varanda 9",
+    "seats": 2,
+    "sort_order": 11
+   }
+  },
+  {
+   "entity_table": "store_tables",
+   "entity_id": "05ad5b1a-684d-4351-826f-6f60d61595b0",
+   "client_uuid": "f357c0fe-c17c-422f-8e97-912eaaef03a0",
+   "operation": "update",
+   "payload": {
+    "id": "05ad5b1a-684d-4351-826f-6f60d61595b0",
+    "label": "Varanda 10",
+    "seats": 4
+   }
+  },
+  {
+   "entity_table": "store_tables",
+   "entity_id": "427b6c42-a895-4396-8c3e-8d5f7f31108f",
+   "client_uuid": "28343817-8334-4520-91fd-f7d7c4e4637c",
+   "operation": "insert",
+   "payload": {
+    "area": "Salão",
+    "id": "427b6c42-a895-4396-8c3e-8d5f7f31108f",
+    "is_active": true,
+    "label": "Mesa 99",
+    "seats": 4,
+    "sort_order": 12
+   }
+  },
+  {
+   "entity_table": "store_tables",
+   "entity_id": "427b6c42-a895-4396-8c3e-8d5f7f31108f",
+   "client_uuid": "44ea82d2-0db3-40bd-b482-a7106f2ba668",
+   "operation": "update",
+   "payload": {
+    "id": "427b6c42-a895-4396-8c3e-8d5f7f31108f",
+    "is_active": false
+   }
+  },
+  {
+   "entity_table": "orders",
+   "entity_id": "e1f2313f-b15b-4916-9e01-0f5681d59ed4",
+   "client_uuid": "6e55a224-b08b-4de4-8a17-e068d3ea7911",
+   "operation": "insert",
+   "payload": {
+    "channel": "waiter",
+    "id": "e1f2313f-b15b-4916-9e01-0f5681d59ed4",
+    "local_number": 4,
+    "origin_device_id": "c0c0c0c0-0000-4000-8000-0000000000aa",
+    "table_id": "7f207257-12be-4386-a11b-0c3a17aa21c4",
+    "table_label": "Mesa 1"
+   }
+  },
+  {
+   "entity_table": "order_items",
+   "entity_id": "b95b69bd-6b82-46ef-8a69-044b4dd0c831",
+   "client_uuid": "bf2a2c21-d26f-4b88-b980-299673658124",
+   "operation": "insert",
+   "payload": {
+    "client_uuid": "bf2a2c21-d26f-4b88-b980-299673658124",
+    "created_at": "2026-09-24T05:56:04.113+00:00",
+    "gross_weight_grams": 0,
+    "id": "b95b69bd-6b82-46ef-8a69-044b4dd0c831",
+    "ingredients": [],
+    "net_weight_grams": 0,
+    "order_id": "e1f2313f-b15b-4916-9e01-0f5681d59ed4",
+    "pricing_mode": "unit",
+    "product_id": "57a87644-b0ad-440d-a59d-98d93dbe50b1",
+    "product_name": "Café Expresso",
+    "quantity": "2",
+    "scale_reading_raw": null,
+    "tare_grams": 0,
+    "tenant_id": "c0c0c0c0-0000-4000-8000-000000000001",
+    "total_cents": 1400,
+    "unit_price_cents": 700
+   }
+  },
+  {
+   "entity_table": "order_items",
+   "entity_id": "b95b69bd-6b82-46ef-8a69-044b4dd0c831",
+   "client_uuid": "bf2a2c21-d26f-4b88-b980-299673658124",
+   "operation": "insert",
+   "payload": {
+    "created_by_user_id": "66666666-6666-6666-6666-666666666666",
+    "order_id": "e1f2313f-b15b-4916-9e01-0f5681d59ed4",
+    "product_id": "57a87644-b0ad-440d-a59d-98d93dbe50b1",
+    "quantity": "2",
+    "total_cents": 1400
+   }
+  },
+  {
+   "entity_table": "orders",
+   "entity_id": "e1f2313f-b15b-4916-9e01-0f5681d59ed4",
+   "client_uuid": "1a890ef0-feb9-482d-871f-a631375cd536",
+   "operation": "update",
+   "payload": {
+    "bill_requested_at": "2026-09-24T05:56:04.114+00:00",
+    "id": "e1f2313f-b15b-4916-9e01-0f5681d59ed4"
+   }
+  },
+  {
+   "entity_table": "orders",
+   "entity_id": "e1f2313f-b15b-4916-9e01-0f5681d59ed4",
+   "client_uuid": "3d8b9dc7-75e6-4387-81d1-3851788437b8",
+   "operation": "update",
+   "payload": {
+    "id": "e1f2313f-b15b-4916-9e01-0f5681d59ed4",
+    "table_id": "be2105b1-7e69-43ef-bc92-675afade566d",
+    "table_label": "Mesa 2"
+   }
+  },
+  {
+   "entity_table": "audit_ledger",
+   "entity_id": "88a4b321-751d-473b-b982-3215a5f61d3f",
+   "client_uuid": "a70eed3d-63e4-457b-8a98-02b13225f5ac",
+   "operation": "insert",
+   "payload": {
+    "actor_user_id": "55555555-5555-5555-5555-555555555555",
+    "authorizer_user_id": "55555555-5555-5555-5555-555555555555",
+    "client_uuid": "a70eed3d-63e4-457b-8a98-02b13225f5ac",
+    "created_at": "2026-09-24T05:56:04.115+00:00",
+    "device_id": "c0c0c0c0-0000-4000-8000-000000000003",
+    "event_type": "price_override",
+    "hash": "470ba4af1889f9b10b9020d910155a5b773742b078b004ab626f61cab9d9bfc6",
+    "id": "88a4b321-751d-473b-b982-3215a5f61d3f",
+    "payload_json": "{\"authorizer_name\":\"Bruno Gerente\",\"channel\":\"waiter\",\"from_table\":\"Mesa 1\",\"operation\":\"table_transfer\",\"order_id\":\"e1f2313f-b15b-4916-9e01-0f5681d59ed4\",\"to_table\":\"Mesa 2\"}",
+    "prev_hash": "6d48a6a35840259595ef9dc29a8ae22aa7549006ea0c171014493914818a5731",
+    "seq": 25,
+    "severity": "warning",
+    "store_id": "c0c0c0c0-0000-4000-8000-000000000002",
+    "tenant_id": "c0c0c0c0-0000-4000-8000-000000000001"
+   }
+  },
+  {
+   "entity_table": "payments",
+   "entity_id": "1666fa00-e343-43ac-81b8-1127f695ab5c",
+   "client_uuid": "00d69692-4f8a-4c98-8113-de77338703c0",
+   "operation": "insert",
+   "payload": {
+    "amount_cents": 1600,
+    "change_cents": 0,
+    "created_at": "2026-09-24T05:56:04.116+00:00",
+    "id": "1666fa00-e343-43ac-81b8-1127f695ab5c",
+    "method": "debit",
+    "order_id": "e1f2313f-b15b-4916-9e01-0f5681d59ed4"
+   }
+  },
+  {
+   "entity_table": "orders",
+   "entity_id": "e1f2313f-b15b-4916-9e01-0f5681d59ed4",
+   "client_uuid": "1f52daeb-0d37-42c8-b74f-946c02028a6f",
+   "operation": "update",
+   "payload": {
+    "closed_at": "2026-09-24T05:56:04.116+00:00",
+    "id": "e1f2313f-b15b-4916-9e01-0f5681d59ed4",
+    "served_by_user_id": "66666666-6666-6666-6666-666666666666",
+    "status": "paid",
+    "table_id": "be2105b1-7e69-43ef-bc92-675afade566d",
+    "tip_cents": 200,
+    "total_cents": 1400
+   }
+  },
+  {
+   "entity_table": "audit_ledger",
+   "entity_id": "3b9b0730-e516-4e7d-85f4-37a072cd6025",
+   "client_uuid": "3c01e574-06bc-434f-b2e8-741408ed2aee",
+   "operation": "insert",
+   "payload": {
+    "actor_user_id": "44444444-4444-4444-4444-444444444444",
+    "authorizer_user_id": null,
+    "client_uuid": "3c01e574-06bc-434f-b2e8-741408ed2aee",
+    "created_at": "2026-09-24T05:56:04.116+00:00",
+    "device_id": "c0c0c0c0-0000-4000-8000-000000000003",
+    "event_type": "sale_closed",
+    "hash": "5733c2dbd49247cf6983a6d01bf7efc176ea3166364408877b6eb43954b50b4b",
+    "id": "3b9b0730-e516-4e7d-85f4-37a072cd6025",
+    "payload_json": "{\"channel\":\"waiter\",\"items\":1,\"local_number\":4,\"order_id\":\"e1f2313f-b15b-4916-9e01-0f5681d59ed4\",\"payments\":[{\"amount_cents\":1600,\"method\":\"debit\"}],\"received_by_name\":\"Ana Caixa\",\"served_by_name\":\"João Garçom\",\"served_by_user_id\":\"66666666-6666-6666-6666-666666666666\",\"table_label\":\"Mesa 2\",\"tip_cents\":200,\"total_cents\":1400}",
+    "prev_hash": "470ba4af1889f9b10b9020d910155a5b773742b078b004ab626f61cab9d9bfc6",
+    "seq": 26,
+    "severity": "info",
+    "store_id": "c0c0c0c0-0000-4000-8000-000000000002",
+    "tenant_id": "c0c0c0c0-0000-4000-8000-000000000001"
+   }
+  },
+  {
+   "entity_table": "orders",
+   "entity_id": "6d3cb7e1-74ae-4e2b-88b1-8ad37e0c811f",
+   "client_uuid": "34907e35-51ae-4247-bbb4-e41304304a02",
+   "operation": "insert",
+   "payload": {
+    "channel": "waiter",
+    "id": "6d3cb7e1-74ae-4e2b-88b1-8ad37e0c811f",
+    "local_number": 5,
+    "origin_device_id": "c0c0c0c0-0000-4000-8000-0000000000aa",
+    "table_id": "7a0dc622-dccf-4e6d-8558-2e648ec3c5c4",
+    "table_label": "Mesa 3"
+   }
+  },
+  {
+   "entity_table": "order_items",
+   "entity_id": "661c2399-bc02-437c-9687-3eafbfe23795",
+   "client_uuid": "58a47c07-e66f-4046-8865-76ab1aa01da8",
+   "operation": "insert",
+   "payload": {
+    "client_uuid": "58a47c07-e66f-4046-8865-76ab1aa01da8",
+    "created_at": "2026-09-24T05:56:04.118+00:00",
+    "gross_weight_grams": 0,
+    "id": "661c2399-bc02-437c-9687-3eafbfe23795",
+    "ingredients": [],
+    "net_weight_grams": 0,
+    "order_id": "6d3cb7e1-74ae-4e2b-88b1-8ad37e0c811f",
+    "pricing_mode": "unit",
+    "product_id": "57a87644-b0ad-440d-a59d-98d93dbe50b1",
+    "product_name": "Café Expresso",
+    "quantity": "1",
+    "scale_reading_raw": null,
+    "tare_grams": 0,
+    "tenant_id": "c0c0c0c0-0000-4000-8000-000000000001",
+    "total_cents": 700,
+    "unit_price_cents": 700
+   }
+  },
+  {
+   "entity_table": "order_items",
+   "entity_id": "661c2399-bc02-437c-9687-3eafbfe23795",
+   "client_uuid": "58a47c07-e66f-4046-8865-76ab1aa01da8",
+   "operation": "insert",
+   "payload": {
+    "created_by_user_id": "66666666-6666-6666-6666-666666666666",
+    "order_id": "6d3cb7e1-74ae-4e2b-88b1-8ad37e0c811f",
+    "product_id": "57a87644-b0ad-440d-a59d-98d93dbe50b1",
+    "quantity": "1",
+    "total_cents": 700
+   }
+  },
+  {
+   "entity_table": "orders",
+   "entity_id": "6d3cb7e1-74ae-4e2b-88b1-8ad37e0c811f",
+   "client_uuid": "82e53ef2-e7c4-443a-ae8a-20a80a262f94",
+   "operation": "update",
+   "payload": {
+    "authorized_by_user_id": "55555555-5555-5555-5555-555555555555",
+    "id": "6d3cb7e1-74ae-4e2b-88b1-8ad37e0c811f",
+    "reason": "Mesa aberta por engano",
+    "status": "canceled"
+   }
+  },
+  {
+   "entity_table": "audit_ledger",
+   "entity_id": "155f8850-d5f3-4c59-a6d9-d67c1bceb603",
+   "client_uuid": "fbb4d863-bc7b-4bb6-a316-479043f780aa",
+   "operation": "insert",
+   "payload": {
+    "actor_user_id": "55555555-5555-5555-5555-555555555555",
+    "authorizer_user_id": "55555555-5555-5555-5555-555555555555",
+    "client_uuid": "fbb4d863-bc7b-4bb6-a316-479043f780aa",
+    "created_at": "2026-09-24T05:56:04.119+00:00",
+    "device_id": "c0c0c0c0-0000-4000-8000-000000000003",
+    "event_type": "item_canceled",
+    "hash": "51efd652fd2beb17a781d948724b05e6f1e0c1577f344053b9e9b28d5766349c",
+    "id": "155f8850-d5f3-4c59-a6d9-d67c1bceb603",
+    "payload_json": "{\"authorizer_name\":\"Bruno Gerente\",\"channel\":\"waiter\",\"item_count\":1,\"local_number\":5,\"order_id\":\"6d3cb7e1-74ae-4e2b-88b1-8ad37e0c811f\",\"reason\":\"Mesa aberta por engano\",\"table_label\":\"Mesa 3\",\"total_cents\":700}",
+    "prev_hash": "5733c2dbd49247cf6983a6d01bf7efc176ea3166364408877b6eb43954b50b4b",
+    "seq": 27,
+    "severity": "critical",
+    "store_id": "c0c0c0c0-0000-4000-8000-000000000002",
+    "tenant_id": "c0c0c0c0-0000-4000-8000-000000000001"
+   }
+  },
+  {
+   "entity_table": "audit_ledger",
+   "entity_id": "7a0a10d2-531d-4e61-acd3-e7cb7a0a8cc2",
+   "client_uuid": "4f05009d-75a3-4187-a8e9-18e3b71a524d",
+   "operation": "insert",
+   "payload": {
+    "actor_user_id": "44444444-4444-4444-4444-444444444444",
+    "authorizer_user_id": "55555555-5555-5555-5555-555555555555",
+    "client_uuid": "4f05009d-75a3-4187-a8e9-18e3b71a524d",
+    "created_at": "2026-09-24T05:56:04.120+00:00",
+    "device_id": "c0c0c0c0-0000-4000-8000-000000000003",
+    "event_type": "session_closed",
+    "hash": "31bc84c28be81eaabc0c56d47b51262f4a586468fd20adb3817dbcd159b364fc",
+    "id": "7a0a10d2-531d-4e61-acd3-e7cb7a0a8cc2",
+    "payload_json": "{\"blind_close\":true,\"cash_session_id\":\"5486ac02-9ffa-4a25-9800-95245e0f80f9\",\"declared_cents\":14000,\"difference_cents\":-3615,\"expected_cents\":17615}",
+    "prev_hash": "51efd652fd2beb17a781d948724b05e6f1e0c1577f344053b9e9b28d5766349c",
+    "seq": 28,
+    "severity": "warning",
+    "store_id": "c0c0c0c0-0000-4000-8000-000000000002",
+    "tenant_id": "c0c0c0c0-0000-4000-8000-000000000001"
+   }
+  },
+  {
+   "entity_table": "cash_sessions",
+   "entity_id": "5486ac02-9ffa-4a25-9800-95245e0f80f9",
+   "client_uuid": "6dde6ed8-8c15-4abc-8076-3e153a90814c",
+   "operation": "insert",
+   "payload": {
+    "blind_close": true,
+    "client_uuid": "6dde6ed8-8c15-4abc-8076-3e153a90814c",
+    "closed_at": "2026-09-24T05:56:04.120+00:00",
+    "declared_cents": 14000,
+    "device_id": "c0c0c0c0-0000-4000-8000-000000000003",
+    "difference_cents": -3615,
+    "expected_cents": 17615,
+    "id": "5486ac02-9ffa-4a25-9800-95245e0f80f9",
+    "opened_at": "2026-09-24T05:56:04.083+00:00",
+    "opening_cents": 10000,
+    "operator_id": "44444444-4444-4444-4444-444444444444",
+    "store_id": "c0c0c0c0-0000-4000-8000-000000000002"
+   }
+  }
+ ]
+}

@@ -476,3 +476,247 @@ def test_the_counter_is_told_a_remote_command_is_waiting(window) -> None:  # noq
 
     assert widget._command_label.isVisibleTo(widget) is True
     assert "1 comando" in widget._command_label.text()
+
+
+# --------------------------------------------------------------------------- #
+# Aceite no caixa (trava 7 do canal remoto)
+# --------------------------------------------------------------------------- #
+
+
+def _kitchen_cancel(database: Database, config: AppConfig) -> tuple[str, str]:
+    """Mesa 4 com um café na cozinha e o pedido de cancelamento dele na inbox.
+
+    Devolve `(command_uuid, order_item_id)`.
+    """
+    from pdv.data.seed import DEMO_MANAGER_ID, DEMO_MANAGER_NAME
+    from pdv.domain.models import iso
+    from pdv.edge.tables import TableService
+    from pdv.remote.inbox import InboxRepository
+    from pdv.remote.protocol import CommandKind, RemoteCommand, sign_command
+
+    orders = TableOrderService(database, config)
+    table = TableService(database, config).find_by_label("Mesa 4")
+    order = orders.open_order(
+        client_uuid=EntityId(new_id()),
+        operator_id=EntityId(DEMO_OPERATOR_ID),
+        table_id=table.id,
+        origin_device_id=EntityId(new_id()),
+    )
+    coffee = database.query_one("SELECT id FROM products WHERE sku = 'CAFE-EXP'")
+    orders.add_item(
+        order_id=order.id,
+        client_uuid=EntityId(new_id()),
+        product_id=EntityId(str(coffee["id"])),
+        quantity=Decimal("1"),
+    )
+    item_id = str(orders.list_items(order.id)[0]["id"])
+
+    uuid, issued_at = new_id(), iso(utc_now())
+    payload = {"order_id": str(order.id), "order_item_id": item_id, "reason": "desistiu"}
+    InboxRepository(database).accept(
+        RemoteCommand(
+            command_uuid=uuid,
+            tenant_id=TENANT,
+            store_id=STORE,
+            device_id=DEVICE,
+            kind=CommandKind.CANCEL_ITEM,
+            payload=payload,
+            issued_by_user_id=DEMO_MANAGER_ID,
+            issued_by_name=DEMO_MANAGER_NAME,
+            issued_at=issued_at,
+            signature=sign_command(
+                secret=config.device_secret,
+                command_uuid=uuid,
+                device_id=DEVICE,
+                kind=CommandKind.CANCEL_ITEM.value,
+                payload=payload,
+                issued_at=issued_at,
+            ),
+        )
+    )
+    return uuid, item_id
+
+
+def test_a_kitchen_cancel_asks_the_counter_by_name(window) -> None:  # noqa: ANN001
+    """O pedido de aceite não se resolve sozinho: vira botão, não selo mudo."""
+    widget, _checkout, database, config = window
+    _kitchen_cancel(database, config)
+    widget._remote.apply_pending()
+
+    widget._refresh_sync_badge()
+
+    assert widget._confirm_button.isVisibleTo(widget) is True
+    assert "1 cancelamento" in widget._confirm_button.text()
+    assert "Ctrl+F4" in widget._confirm_button.text()
+    # Não é "comando a aplicar": aplicar depende de alguém aqui.
+    assert widget._command_label.isVisibleTo(widget) is False
+
+
+def test_the_counter_accepts_in_the_dialog(qtbot, window) -> None:  # noqa: ANN001
+    from pdv.ui.remote_dialog import RemoteConfirmationDialog
+
+    widget, _checkout, database, config = window
+    _uuid, item_id = _kitchen_cancel(database, config)
+    widget._remote.apply_pending()
+    dialog = RemoteConfirmationDialog(widget._remote, default_login=DEMO_OPERATOR_LOGIN)
+    qtbot.addWidget(dialog)
+    assert dialog.waiting_count == 1
+    assert "Café Expresso" in dialog._list.item(0).text()
+
+    dialog._pin.setText("000001")
+    dialog._accept_selected()
+    assert dialog._error.text(), "PIN errado aparece na tela"
+    assert dialog.waiting_count == 1, "e não decide nada"
+
+    dialog._pin.setText(DEMO_OPERATOR_PIN)
+    dialog._accept_selected()
+
+    assert dialog.waiting_count == 0
+    assert "Ana Caixa" in dialog.decisions[-1]
+    row = database.query_one("SELECT canceled_at FROM order_items WHERE id = ?", (item_id,))
+    assert row["canceled_at"] is not None
+
+
+def test_declining_in_the_dialog_needs_a_reason(qtbot, window) -> None:  # noqa: ANN001
+    from pdv.ui.remote_dialog import RemoteConfirmationDialog
+
+    widget, _checkout, database, config = window
+    uuid, item_id = _kitchen_cancel(database, config)
+    widget._remote.apply_pending()
+    dialog = RemoteConfirmationDialog(widget._remote, default_login=DEMO_OPERATOR_LOGIN)
+    qtbot.addWidget(dialog)
+
+    dialog._pin.setText(DEMO_OPERATOR_PIN)
+    dialog._decline_selected()
+    assert "motivo" in dialog._error.text().lower()
+    assert dialog.waiting_count == 1
+
+    dialog._pin.setText(DEMO_OPERATOR_PIN)
+    dialog._reason.setText("Prato já foi servido")
+    dialog._decline_selected()
+
+    assert dialog.waiting_count == 0
+    status = database.query_one(
+        "SELECT status FROM remote_commands WHERE command_uuid = ?", (uuid,)
+    )
+    assert status["status"] == "refused"
+    row = database.query_one("SELECT canceled_at FROM order_items WHERE id = ?", (item_id,))
+    assert row["canceled_at"] is None
+
+
+def test_the_dialog_offers_only_counter_logins(qtbot, window) -> None:  # noqa: ANN001
+    from pdv.data.seed import DEMO_WAITER_LOGIN
+    from pdv.ui.remote_dialog import RemoteConfirmationDialog
+
+    widget, _checkout, _database, _config = window
+    dialog = RemoteConfirmationDialog(widget._remote, default_login=DEMO_OPERATOR_LOGIN)
+    qtbot.addWidget(dialog)
+
+    logins = [dialog._login.itemText(i) for i in range(dialog._login.count())]
+    assert DEMO_OPERATOR_LOGIN in logins
+    assert DEMO_WAITER_LOGIN not in logins
+    assert dialog._accept_button.isEnabled() is False, "nada a decidir"
+
+
+# --------------------------------------------------------------------------- #
+# Atalhos e modo demonstração
+# --------------------------------------------------------------------------- #
+
+
+def test_every_shortcut_is_wired_from_the_single_table(window) -> None:  # noqa: ANN001
+    """Teclado, painel e F1 saem da mesma tabela; uma tecla órfã quebra aqui."""
+    from pdv.ui.counter_window import SHORTCUTS
+
+    widget, *_ = window
+    keys = [key for key, *_rest in SHORTCUTS]
+
+    assert len(keys) == len(set(keys)), "tecla repetida na tabela"
+    assert set(widget._shortcuts) == set(keys)
+    for key, _label, method, _panel in SHORTCUTS:
+        assert callable(getattr(widget, method)), f"{key} aponta para {method}, que não existe"
+
+
+def test_keys_without_a_button_are_visible_in_the_side_panel(window) -> None:  # noqa: ANN001
+    """F5, F7, F11, F12 e os Ctrl ficavam invisíveis: só quem decorou sabia."""
+    widget, *_ = window
+
+    assert {"F5", "F7", "F11", "F12", "Ctrl+F4", "Ctrl+F6"} <= set(widget._shortcut_buttons)
+    # Os que já têm botão na tela não se repetem no painel.
+    assert not {"F2", "F4", "F6", "F10"} & set(widget._shortcut_buttons)
+
+
+def test_f1_lists_every_shortcut(window, monkeypatch) -> None:  # noqa: ANN001
+    from PySide6.QtWidgets import QDialog, QLabel
+
+    from pdv.ui.counter_window import SHORTCUTS
+
+    widget, *_ = window
+    monkeypatch.setattr(QDialog, "exec", lambda self: 0)
+
+    widget._show_shortcuts()
+
+    texts = {label.text() for label in widget._shortcuts_dialog.findChildren(QLabel)}
+    for key, label, *_rest in SHORTCUTS:
+        assert key in texts and label in texts
+
+
+def test_the_demo_banner_shows_only_in_demo_mode(window, qtbot, env) -> None:  # noqa: ANN001
+    widget, checkout, database, config = window
+    assert widget._demo_banner.isVisibleTo(widget) is False
+
+    demo = CounterWindow(
+        checkout,
+        ScaleService(build_scale(config.scale), config.scale),
+        PrintService(build_printer(config.printer)),
+        config,
+        database,
+        operator=widget._operator,
+        on_activate=lambda parent: False,
+    )
+    qtbot.addWidget(demo)
+    demo._refresh_sync_badge()
+
+    assert demo._demo_banner.isVisibleTo(demo) is True
+    assert "demonstração" in demo._sync_label.text()
+
+
+def test_activating_from_the_banner_asks_for_a_restart(window, qtbot) -> None:  # noqa: ANN001
+    widget, checkout, database, config = window
+    calls: list[object] = []
+    demo = CounterWindow(
+        checkout,
+        ScaleService(build_scale(config.scale), config.scale),
+        PrintService(build_printer(config.printer)),
+        config,
+        database,
+        operator=widget._operator,
+        on_activate=lambda parent: calls.append(parent) or True,
+    )
+    qtbot.addWidget(demo)
+    demo.show()
+
+    demo._activate_button.click()
+
+    assert calls == [demo]
+    assert demo.restart_requested is True
+    assert demo.isVisible() is False
+
+
+def test_giving_up_on_activation_keeps_the_counter_open(window, qtbot) -> None:  # noqa: ANN001
+    widget, checkout, database, config = window
+    demo = CounterWindow(
+        checkout,
+        ScaleService(build_scale(config.scale), config.scale),
+        PrintService(build_printer(config.printer)),
+        config,
+        database,
+        operator=widget._operator,
+        on_activate=lambda parent: False,
+    )
+    qtbot.addWidget(demo)
+    demo.show()
+
+    demo._activate_button.click()
+
+    assert demo.restart_requested is False
+    assert demo.isVisible() is True

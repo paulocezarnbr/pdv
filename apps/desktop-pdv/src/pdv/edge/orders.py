@@ -209,26 +209,21 @@ class TableOrderService:
             )
 
         order_id = new_id()
+        now = iso(utc_now())
 
         try:
             with self._db.transaction() as connection:
                 local_number = self._db.next_counter(connection, "order_local_number")
-
-                SaleRepository(connection, self._outbox).create_order(
-                    order_id=order_id,
+                self._insert_table_order(
+                    connection,
+                    order_id=EntityId(order_id),
                     client_uuid=client_uuid,
-                    tenant_id=EntityId(self._config.tenant_id),
-                    store_id=EntityId(self._config.store_id),
-                    device_id=EntityId(self._config.device_id),
                     operator_id=operator_id,
                     local_number=local_number,
-                    channel="waiter",
-                    origin_device_id=origin_device_id,
-                    # `customer_id` guarda a **cópia** do rótulo, e não é
-                    # redundância com `table_id`: renomear a mesa amanhã não pode
-                    # reescrever o que saiu impresso no cupom de hoje.
                     table_id=table.id,
                     table_label=table.label,
+                    origin_device_id=origin_device_id,
+                    now=now,
                 )
         except sqlite3.IntegrityError:
             # Corrida entre dois reenvios simultâneos do mesmo celular: o outro
@@ -585,32 +580,16 @@ class TableOrderService:
         now = iso(utc_now())
         item_reason = f"[comanda cancelada] {reason}"
         with self._db.transaction() as connection:
-            live = connection.execute(
+            sales = SaleRepository(connection, self._outbox)
+            for row in connection.execute(
                 "SELECT id FROM order_items WHERE order_id = ? AND canceled_at IS NULL",
                 (order_id,),
-            ).fetchall()
-            connection.execute(
-                "UPDATE order_items SET canceled_at = ?, canceled_by_user_id = ?, "
-                "cancel_reason = ? WHERE order_id = ? AND canceled_at IS NULL",
-                (now, authorizer_id, item_reason, order_id),
-            )
-            # Os itens ANTES do pedido, e é a ordem que importa: pedido
-            # cancelado não se edita mais na nuvem. Sem estes envios o item
-            # continuava vivo lá, e o ranking de produtos contava comida que
-            # nunca foi cobrada.
-            for row in live:
-                self._outbox.enqueue(
-                    connection,
-                    entity_table="order_items",
-                    entity_id=EntityId(str(row["id"])),
-                    client_uuid=EntityId(new_id()),
-                    operation="update",
-                    payload={
-                        "id": str(row["id"]),
-                        "canceled_at": now,
-                        "canceled_by_user_id": authorizer_id,
-                        "cancel_reason": item_reason,
-                    },
+            ).fetchall():
+                sales.cancel_item(
+                    EntityId(str(row["id"])),
+                    canceled_at=now,
+                    canceled_by_user_id=authorizer_id,
+                    reason=f"[comanda cancelada] {reason}",
                 )
             # Ticket na fila da cozinha de comanda cancelada some da tela: manter
             # é mandar preparar comida que ninguém vai receber.
@@ -922,20 +901,18 @@ class TableOrderService:
         child_id = EntityId(new_id())
         with self._db.transaction() as connection:
             local_number = self._db.next_counter(connection, "order_local_number")
-            SaleRepository(connection, self._outbox).create_order(
+            self._insert_table_order(
+                connection,
                 order_id=child_id,
                 client_uuid=EntityId(new_id()),
-                tenant_id=EntityId(self._config.tenant_id),
-                store_id=EntityId(self._config.store_id),
-                device_id=EntityId(self._config.device_id),
                 # A venda é de quem atendeu a mesa, não de quem recebeu: a
                 # parte paga continua no resultado do garçom.
                 operator_id=order.operator_id or operator_id,
                 local_number=local_number,
-                channel="waiter",
-                origin_device_id=EntityId(self._config.device_id),
                 table_id=order.table_id,
                 table_label=order.table_label,
+                origin_device_id=EntityId(self._config.device_id),
+                now=iso(utc_now()),
             )
             self._move(connection, ids, order.id, child_id)
             child = self.get_order(child_id)
@@ -961,6 +938,65 @@ class TableOrderService:
             tip_cents=tip,
             charged_cents=charged,
             receipt=self._receipt(closed, settled, operator_name),
+        )
+
+    def _insert_table_order(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        order_id: EntityId,
+        client_uuid: EntityId,
+        operator_id: EntityId,
+        local_number: int,
+        table_id: EntityId | None,
+        table_label: str,
+        origin_device_id: EntityId,
+        now: str,
+    ) -> None:
+        """Grava a comanda de mesa e a anuncia à nuvem com a ficha inteira.
+
+        Um lugar só para a comanda aberta pelo garçom e para a parte paga no
+        caixa: as duas precisam chegar à nuvem iguais, ou o relatório por mesa
+        somaria as duas de jeitos diferentes.
+        """
+        SaleRepository(connection, self._outbox).create_order(
+            order_id=order_id,
+            client_uuid=client_uuid,
+            tenant_id=EntityId(self._config.tenant_id),
+            store_id=EntityId(self._config.store_id),
+            device_id=EntityId(self._config.device_id),
+            operator_id=operator_id,
+            local_number=local_number,
+            channel="waiter",
+            origin_device_id=origin_device_id,
+        )
+        # `customer_id` guarda a **cópia** do rótulo, e não é redundância
+        # com `table_id`: renomear a mesa amanhã não pode reescrever o
+        # que saiu impresso no cupom de hoje.
+        connection.execute(
+            "UPDATE orders SET table_id = ?, customer_id = ?, "
+            "updated_at = ? WHERE id = ?",
+            (table_id, table_label, now, order_id),
+        )
+        self._outbox.enqueue(
+            connection,
+            entity_table="orders",
+            entity_id=order_id,
+            client_uuid=client_uuid,
+            operation="insert",
+            payload={
+                "id": order_id,
+                "channel": "waiter",
+                "status": "open",
+                "table_id": table_id,
+                "table_label": table_label,
+                # A coluna da nuvem. `table_label` fica para a nuvem antiga.
+                "customer_id": table_label,
+                "local_number": local_number,
+                "operator_id": operator_id,
+                "opened_at": now,
+                "origin_device_id": origin_device_id,
+            },
         )
 
     def _two_open(

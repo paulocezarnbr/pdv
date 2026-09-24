@@ -18,6 +18,7 @@ reenviar.
 from __future__ import annotations
 
 import logging
+import sqlite3
 from dataclasses import replace
 
 from pdv.config import AppConfig
@@ -26,6 +27,7 @@ from pdv.domain.models import iso, utc_now
 from pdv.remote.commands import RemoteCommandService
 from pdv.remote.inbox import InboxRepository
 from pdv.sync.outbox import CursorStore, OutboxReader
+from pdv.sync.pull_mapping import NOT_APPLIED, PULL_MAPPINGS, map_row
 from pdv.sync.protocol import (
     AuthError,
     CommandCycleReport,
@@ -47,7 +49,8 @@ logger = logging.getLogger(__name__)
 #: Desvio de relógio que vira aviso no log do terminal (o painel usa o mesmo).
 CLOCK_SKEW_WARNING_MS = 120_000
 
-#: Tabelas de cadastro que descem da retaguarda para o PDV.
+#: Tabelas de cadastro que a retaguarda oferece. Quais o caixa APLICA, e como,
+#: está em `pdv.sync.pull_mapping`.
 PULLABLE_TABLES: tuple[str, ...] = (
     "products",
     "recipes",
@@ -191,6 +194,12 @@ class SyncEngine:
         applied = 0
 
         for table in PULLABLE_TABLES:
+            if table in NOT_APPLIED:
+                # Não pedir o que não se vai aplicar: avançar o cursor sem
+                # aplicar perderia essas linhas para sempre quando o caixa
+                # aprender a aplicá-las.
+                logger.debug("Pull de %s adiado: %s", table, NOT_APPLIED[table])
+                continue
             cursor = self._cursors.get(table)
             try:
                 response = self._transport.pull(
@@ -208,19 +217,34 @@ class SyncEngine:
             if not response.rows:
                 continue
 
-            applied += self._apply_pulled_rows(table, response.rows)
+            try:
+                applied += self._apply_pulled_rows(table, response.rows)
+            except sqlite3.Error:
+                # Uma tabela que não aplica não pode impedir as outras — e o
+                # cursor fica onde estava, para a próxima tentativa pegar as
+                # mesmas linhas.
+                logger.exception("Pull de %s não pôde ser aplicado", table)
+                continue
             self._cursors.set(table, response.last_server_seq)
 
         return applied
 
     def _apply_pulled_rows(self, table: str, rows: tuple[dict[str, object], ...]) -> int:
-        """Aplica linhas de cadastro com UPSERT, numa transação por tabela."""
-        if table not in PULLABLE_TABLES:
+        """Aplica linhas de cadastro com UPSERT, numa transação por tabela.
+
+        As colunas vêm de `PULL_MAPPINGS`, nunca da resposta: o nome de coluna
+        interpolado no SQL é uma constante deste código (ver `pull_mapping.py`).
+        """
+        if table not in PULL_MAPPINGS:
             return 0
 
         applied = 0
         with self._db.transaction() as connection:
-            for row in rows:
+            for raw in rows:
+                row = map_row(table, dict(raw), self._config)
+                if row is None:
+                    logger.warning("Linha de %s descartada no pull (incompleta ou de outro tenant)", table)
+                    continue
                 columns = sorted(row.keys())
                 placeholders = ", ".join("?" for _ in columns)
                 column_list = ", ".join(columns)
@@ -293,6 +317,7 @@ class SyncEngine:
             applied=report.applied,
             refused=report.refused,
             reported=reported,
+            awaiting=report.awaiting,
             error=error,
         )
 
@@ -300,7 +325,8 @@ class SyncEngine:
         """Avisa a nuvem do que foi decidido. Falhar aqui não desfaz nada."""
         inbox = InboxRepository(self._db)
         results = inbox.unreported(limit)
-        if not results:
+        awaiting = inbox.unreported_awaiting(limit)
+        if not results and not awaiting:
             return 0, None
 
         try:
@@ -310,6 +336,7 @@ class SyncEngine:
                     store_id=self._config.store_id,
                     device_id=self._config.device_id,
                     results=tuple(results),
+                    awaiting=tuple(awaiting),
                 )
             )
         except (TransportError, AuthError) as exc:
@@ -323,6 +350,13 @@ class SyncEngine:
         known = {result.command_uuid for result in results}
         confirmed = [uuid for uuid in accepted if uuid in known]
         inbox.mark_reported(confirmed)
+
+        # A espera tem marca própria. Uma nuvem antiga não a nomeia, e o aviso
+        # sobe de novo no próximo ciclo — custo de alguns bytes, e nada que
+        # ela não saiba tratar. Marcar sem confirmação deixaria o painel
+        # dizendo "entregue" para sempre num comando parado no caixa.
+        waiting = {notice.command_uuid for notice in awaiting}
+        inbox.mark_awaiting_reported([uuid for uuid in accepted if uuid in waiting])
         return len(confirmed), None
 
     # -- estado --------------------------------------------------------------- #

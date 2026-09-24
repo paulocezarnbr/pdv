@@ -55,6 +55,17 @@ APP_VERSION=1.0.0
 
 `PORT` o Coolify injeta. **Não cadastre.**
 
+Opcional, para o cardápio QR:
+
+```
+PUBLIC_BASE_URL=https://painel.minhaloja.com.br
+```
+
+É o endereço que vai impresso no QR das mesas. Sem ele, o painel usa o
+endereço pelo qual foi aberto — o que dá certo no domínio do Coolify, e dá
+errado se alguém gerar os QR acessando por IP ou por um domínio provisório:
+o QR sairia impresso apontando para lá.
+
 ### Por que duas conexões
 
 `ADMIN_DATABASE_URL` é a string que o Coolify te deu. Ela **migra**: cria
@@ -287,8 +298,26 @@ aplicação se conecta com a que está na URL.
 conectando como superusuário. Ver a seção 3 — funciona, mas sem a segunda
 barreira.
 
-**O deploy fica preso em "unhealthy".** O healthcheck está falhando, e quase
-sempre é `DATABASE_URL`. Confira no Terminal do recurso:
+**O deploy fica preso em "unhealthy".** O Coolify mostra só isso, e às vezes
+um "Return code: 1" — o motivo está nas **primeiras linhas** do log do
+contêiner novo (em *Deployments*, abra a tentativa e role até "Container
+logs"). O contêiner migra antes de atender, então a linha que importa é
+quase sempre a primeira depois de `[entrypoint] aplicando migrations...`:
+
+| Linha no log | Causa | O que fazer |
+|---|---|---|
+| `syntax error at or near "NULLS"` | Postgres 14 ou anterior com a migration 014 antiga. Corrigido: a 014 não usa mais sintaxe do 15. | Redeploy com a versão atual. Recomendado: Postgres 17. |
+| `Migration falhou:` + outro erro SQL | O banco recusou uma migration. A transação volta inteira e o deploy anterior continua no ar. | Mande a mensagem completa; não edite o banco à mão. |
+| `APP_DB_PASSWORD precisa de pelo menos 12 caracteres.` | Senha do papel `erp_app` curta. | Gere com `openssl rand -base64 24` e atualize a mesma senha em `DATABASE_URL`. |
+| `DATABASE_URL ausente` | Nem `ADMIN_DATABASE_URL` nem `DATABASE_URL` chegaram ao contêiner. | Cadastre as variáveis (seção 3). |
+| `[health] variáveis obrigatórias ausentes: [ 'SESSION_SECRET' ]` | Sobe, mas o health responde 503. | Cadastre `SESSION_SECRET`. |
+| `[health] banco indisponível` | Host do banco inacessível daqui. | Ver abaixo. |
+| `ECONNREFUSED` / `getaddrinfo ENOTFOUND` na migration | Host errado, ou banco e aplicação em redes diferentes do Coolify. | Use a URL **interna** do recurso e confira se os dois estão no mesmo projeto/servidor. |
+
+A retaguarda migra do PostgreSQL **14 ao 17** — as quinze migrations são
+testadas nas quatro versões.
+
+Quando a causa é `DATABASE_URL`, confira no Terminal do recurso:
 
 ```bash
 node -e "console.log(process.env.DATABASE_URL?.replace(/:[^:@]+@/, ':***@'))"
