@@ -271,3 +271,32 @@ def test_a_startup_failure_becomes_a_message_not_a_traceback(monkeypatch) -> Non
 
     assert main.run() == 1
     assert shown == ["Não foi possível abrir o banco de dados do PDV"]
+
+
+def test_a_database_the_counter_cannot_write_says_how_to_fix_it(installed) -> None:  # noqa: ANN001
+    """O erro de campo da 1.1.3, reproduzido: banco criado pelo instalador
+    elevado, permissões incompletas, caixa rodando como usuário comum.
+
+    Antes o balcão via só "attempt to write a readonly database". Agora vê a
+    pasta, a causa e o comando que corrige — e que nenhuma venda se perdeu.
+    """
+    import os
+    import stat
+
+    installed.mkdir(parents=True)
+    prepared, _ = main.open_database(main.build_config())
+    prepared.close()
+    db_file = installed / "pdv_local.db"
+    for leftover in installed.glob("pdv_local.db-*"):
+        leftover.unlink()
+    os.chmod(db_file, stat.S_IREAD)
+    try:
+        with pytest.raises(main.StartupError) as caught:
+            main.open_database(main.build_config())
+    finally:
+        os.chmod(db_file, stat.S_IREAD | stat.S_IWRITE)
+
+    message = str(caught.value)
+    assert str(installed) in message
+    assert 'icacls "' in message and "*S-1-5-32-545:(OI)(CI)M" in message
+    assert "Nenhuma venda foi perdida" in message

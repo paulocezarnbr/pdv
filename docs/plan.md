@@ -219,6 +219,16 @@ a baixar à parte, nenhum prompt de linha de comando.
       `-SignCert`. Falta o certificado de Assinatura de Código (EV, emitido para
       a pessoa jurídica) — nada no repositório destrava isso.
 - [x] Desinstalador que **preserva** os dados da loja.
+- [x] **1.1.4 — instalador em Windows em português.** Na 1.1.3 o PDV abria
+      com "attempt to write a readonly database". O `harden.ps1` dava dono
+      com `icacls /setowner Administrators` — nome que não existe no Windows
+      em português ("Administradores"): o icacls falhava com 1332, o script
+      parava no primeiro passo e a pasta de dados ficava sem escrita para o
+      caixa. O [Run] do instalador ignorava o código de saída, então nada
+      avisava. Agora toda conta vai pelo SID (e a auditoria pelo GUID da
+      subcategoria), a verificação final confere que o caixa grava na pasta
+      de dados, o instalador lê `logs\harden.log` e avisa se o script não
+      concluiu, e o PDV traduz o erro para o balcão com o comando que corrige.
 - [x] **Instalador gerado no CI** (`.github/workflows/installer.yml`): Windows
       limpo, só os pins, VC++ baixado com a assinatura da Microsoft
       conferida, suíte + `--selftest` no binário + Inno Setup, e o `.exe` com

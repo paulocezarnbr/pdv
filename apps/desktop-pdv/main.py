@@ -212,20 +212,47 @@ def open_database(config: AppConfig) -> tuple[Database, AppConfig]:
     database = Database(config.database_path)
     try:
         database.migrate()
-    except sqlite3.Error as exc:
-        raise StartupError(
-            f"Não foi possível abrir o banco de dados do PDV:\n"
-            f"{config.database_path}\n\n{exc}"
-        ) from exc
-    config = _apply_device_settings(database, config)
+        config = _apply_device_settings(database, config)
 
-    # Demonstração só em terminal NÃO ativado. Ativado, os usuários e o
-    # catálogo descem da nuvem; semear aqui criaria, dentro da loja real, os
-    # logins de demonstração com PINs publicados no README — um caixa que
-    # qualquer um abre.
-    if not SettingsStore(database).load().activated:
-        seed_demo_data(database, config)
+        # Demonstração só em terminal NÃO ativado. Ativado, os usuários e o
+        # catálogo descem da nuvem; semear aqui criaria, dentro da loja real, os
+        # logins de demonstração com PINs publicados no README — um caixa que
+        # qualquer um abre.
+        if not SettingsStore(database).load().activated:
+            seed_demo_data(database, config)
+    except sqlite3.Error as exc:
+        raise StartupError(database_problem(config.database_path, exc)) from exc
     return database, config
+
+
+#: Grupo "Usuários" pelo SID: o nome muda com o idioma do Windows ("Users",
+#: "Usuários"). Foi um nome em inglês que quebrou o endurecimento das
+#: permissões no Windows em português.
+USERS_SID = "*S-1-5-32-545"
+
+
+def database_problem(path: Path, exc: sqlite3.Error) -> str:
+    """A mensagem para o balcão quando o banco não abre — com o remédio.
+
+    "attempt to write a readonly database" já aconteceu em campo: o instalador
+    (elevado) cria o banco, o endurecimento das permissões falha em silêncio, e
+    o caixa — que roda como usuário comum — só consegue ler. Sem esta tradução
+    o lojista via a frase do SQLite e mais nada.
+    """
+    text = str(exc).lower()
+    if "readonly" in text or "read-only" in text:
+        folder = path.parent
+        return (
+            "O Windows não está deixando o PDV gravar as vendas nesta pasta:\n"
+            f"{folder}\n\n"
+            "As permissões da instalação ficaram incompletas. Para corrigir, "
+            "reinstale o PDV (o instalador refaz as permissões) ou peça a um "
+            "administrador para rodar, no PowerShell como Administrador:\n\n"
+            f'icacls "{folder}" /grant "{USERS_SID}:(OI)(CI)M" /T\n\n'
+            "Nenhuma venda foi perdida: o banco está intacto, só sem permissão "
+            "de escrita."
+        )
+    return f"Não foi possível abrir o banco de dados do PDV:\n{path}\n\n{exc}"
 
 
 def _has_store_users(database: Database, config: AppConfig) -> bool:

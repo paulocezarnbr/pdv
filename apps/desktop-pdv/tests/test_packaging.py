@@ -139,3 +139,48 @@ def test_the_icon_is_a_real_multi_size_ico(tmp_path) -> None:  # noqa: ANN001
         assert data[offset: offset + 8] == b"\x89PNG\r\n\x1a\n"
         assert offset + length <= len(data)
     assert {16, 32, 48, 256} <= set(sizes)
+
+
+# --------------------------------------------------------------------------- #
+# Windows em português
+# --------------------------------------------------------------------------- #
+
+
+def test_the_hardening_never_names_an_account_by_its_english_name() -> None:
+    """No Windows em português o grupo é "Administradores".
+
+    O `icacls /setowner Administrators` falhava com 1332 ("não foi feito
+    mapeamento entre os nomes de conta"), o script parava no primeiro passo e a
+    pasta de dados ficava sem escrita para o caixa: o PDV abria com "attempt to
+    write a readonly database". Toda conta vai pelo SID.
+    """
+    script = (PACKAGING / "harden.ps1").read_text(encoding="utf-8")
+    code = "\n".join(
+        line for line in script.splitlines() if not line.lstrip().startswith("#")
+    )
+
+    for name in ("Administrators", "'Users'", '"Users"', "Everyone", "SYSTEM'"):
+        assert name not in code, f"nome de conta dependente de idioma: {name}"
+    assert "/setowner', $SID_ADMINISTRATORS" in code
+    assert '/subcategory:"File System"' not in code, "subcategoria pelo GUID"
+
+
+def test_the_installer_checks_that_the_hardening_finished() -> None:
+    """O [Run] ignora código de saída: sem a conferência a falha é muda."""
+    installer = (PACKAGING / "installer.iss").read_text(encoding="utf-8-sig")
+    script = (PACKAGING / "harden.ps1").read_text(encoding="utf-8")
+
+    assert "AfterInstall: CheckHardening" in installer
+    assert "harden.log" in installer
+    marker = re.search(r"Pos\('([^']+)'", installer)
+    assert marker is not None
+    assert f"Write-Host '{marker.group(1)}.'" in script, (
+        "a frase que o instalador procura precisa ser a que o script imprime"
+    )
+
+
+def test_the_hardening_proves_the_counter_can_write_its_data() -> None:
+    script = (PACKAGING / "harden.ps1").read_text(encoding="utf-8")
+
+    assert "Test-Hardening -InstallPath $InstallDir -DataPath $DataDir" in script
+    assert "nao consegue gravar em $DataPath" in script

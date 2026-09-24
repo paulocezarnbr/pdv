@@ -92,8 +92,8 @@ try {
             --output-filename=PDV.exe `
             --company-name="ERP Food Service" `
             --product-name="PDV Balcao" `
-            --file-version=1.1.3.0 `
-            --product-version=1.1.3.0 `
+            --file-version=1.1.4.0 `
+            --product-version=1.1.4.0 `
             main.py
         if ($LASTEXITCODE -ne 0) { throw 'Nuitka falhou.' }
 
@@ -118,8 +118,8 @@ try {
             --output-filename=PDVSetup.exe `
             --company-name="ERP Food Service" `
             --product-name="PDV Balcao - Instalacao" `
-            --file-version=1.1.3.0 `
-            --product-version=1.1.3.0 `
+            --file-version=1.1.4.0 `
+            --product-version=1.1.4.0 `
             setup_wizard.py
         if ($LASTEXITCODE -ne 0) { throw 'Nuitka falhou ao compilar o assistente.' }
 

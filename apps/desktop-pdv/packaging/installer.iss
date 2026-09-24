@@ -17,7 +17,7 @@
 ; ===========================================================================
 
 #define AppName        "PDV Balcao"
-#define AppVersion     "1.1.3"
+#define AppVersion     "1.1.4"
 #define AppPublisher   "ERP Food Service"
 #define AppExeName     "PDV.exe"
 #define SetupExeName   "PDVSetup.exe"
@@ -140,10 +140,17 @@ Filename: "{tmp}\VC_redist.x64.exe"; \
 ; --- 1. Endurecimento das permissoes NTFS ---------------------------------
 ; Roda ANTES de oferecer a execucao do app: se falhar, o instalador avisa e o
 ; administrador decide. Instalar sem ACL correta e pior que nao instalar.
-Filename: "powershell.exe"; \
-    Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\tools\harden.ps1"" -InstallDir ""{app}"" -DataDir ""{#DataDir}"" -EnableAuditing"; \
+;
+; A saida vai para logs\harden.log e o AfterInstall confere se o script
+; chegou ao fim. Antes o [Run] ignorava o codigo de saida: num Windows em
+; portugues o script morria no primeiro passo (nome de grupo em ingles), a
+; pasta de dados ficava sem escrita para o caixa, e o erro so aparecia ao abrir
+; o PDV - "attempt to write a readonly database" - sem nada ligando uma coisa
+; a outra.
+Filename: "{cmd}"; \
+    Parameters: "/c powershell.exe -NoProfile -ExecutionPolicy Bypass -File ""{app}\tools\harden.ps1"" -InstallDir ""{app}"" -DataDir ""{#DataDir}"" -EnableAuditing > ""{#DataDir}\logs\harden.log"" 2>&1"; \
     StatusMsg: "Aplicando permissões de segurança..."; \
-    Flags: runhidden waituntilterminated
+    Flags: runhidden waituntilterminated; AfterInstall: CheckHardening
 
 ; --- 2. Regra de firewall para o servidor local (app do garcom) -----------
 Filename: "netsh.exe"; \
@@ -210,6 +217,33 @@ Type: filesandordirs; Name: "{app}"
   O caminho seguro de rollback e desinstalar (os dados ficam) e instalar a
   versao desejada, com decisao consciente de quem da suporte.
   --------------------------------------------------------------------------- }
+
+{ ---------------------------------------------------------------------------
+  Conferencia do endurecimento.
+
+  O harden.ps1 termina escrevendo "Endurecimento concluido". Sem essa linha no
+  log, ele parou no meio - e a parte que costuma faltar e justamente a que
+  libera a pasta de dados para o caixa gravar. O aviso diz o que fazer e onde
+  esta o log, em vez de deixar o lojista descobrir ao abrir o PDV.
+  --------------------------------------------------------------------------- }
+
+procedure CheckHardening();
+var
+  LogPath: String;
+  Content: AnsiString;
+begin
+  LogPath := ExpandConstant('{#DataDir}\logs\harden.log');
+  if LoadStringFromFile(LogPath, Content) and
+     (Pos('Endurecimento concluido', String(Content)) > 0) then
+    Exit;
+
+  Log('harden.ps1 nao concluiu; ver ' + LogPath);
+  if not WizardSilent then
+    MsgBox('As permissões de segurança não foram aplicadas por completo.' + #13#10 + #13#10 +
+      'Sem elas o PDV pode não conseguir gravar as vendas. Rode este instalador ' +
+      'de novo como administrador; se o aviso voltar, envie ao suporte o arquivo:' +
+      #13#10 + LogPath, mbCriticalError, MB_OK);
+end;
 
 function InstalledVersion(): String;
 var
@@ -281,7 +315,7 @@ end;
 { ---------------------------------------------------------------------------
   Codigo de ativacao para implantacao em massa.
 
-      PDV-Setup-1.1.3.exe /SILENT /ACTIVATIONCODE=A1B2C3D4
+      PDV-Setup-1.1.4.exe /SILENT /ACTIVATIONCODE=A1B2C3D4
 
   Na instalacao interativa isto fica vazio e quem pergunta e o proprio
   PDVSetup.exe, numa caixa de dialogo - o codigo e gerado no painel no momento
@@ -307,7 +341,7 @@ end;
 { ---------------------------------------------------------------------------
   Endereco do painel da retaguarda, para a ativacao.
 
-      PDV-Setup-1.1.3.exe /SILENT /SERVER=painel.minhaloja.com.br /ACTIVATIONCODE=A1B2C3D4
+      PDV-Setup-1.1.4.exe /SILENT /SERVER=painel.minhaloja.com.br /ACTIVATIONCODE=A1B2C3D4
 
   Sem ele o terminal nao tem para onde ativar: o endereco que vinha no codigo
   era de exemplo. Na instalacao interativa o proprio PDVSetup.exe pergunta.

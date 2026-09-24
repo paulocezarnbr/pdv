@@ -83,7 +83,12 @@ function Protect-ProgramDirectory {
 
     # Dono explicito: se o diretorio ficasse com o instalador como dono, um
     # usuario "dono" poderia reescrever a propria ACL (WRITE_DAC implicito).
-    Invoke-Icacls @($Path, '/setowner', 'Administrators', '/T', '/C', '/Q') | Out-Null
+    #
+    # Pelo SID, como as concessoes acima. O nome "Administrators" so existe no
+    # Windows em ingles; no portugues o grupo e "Administradores", o icacls
+    # falhava, o script parava AQUI - antes de liberar a pasta de dados - e o
+    # caixa abria com "attempt to write a readonly database".
+    Invoke-Icacls @($Path, '/setowner', $SID_ADMINISTRATORS, '/T', '/C', '/Q') | Out-Null
 
     Write-Host '      OK - usuarios sem permissao de escrita no programa.'
 }
@@ -161,7 +166,9 @@ function Enable-DatabaseAuditing {
     Write-Host "[4/4] Ativando auditoria de acesso ao banco: $DatabasePath"
 
     # A politica de auditoria precisa estar ligada, senao a SACL nao gera evento.
-    $null = & auditpol.exe /set /subcategory:"File System" /success:enable /failure:enable 2>&1
+    # Pelo GUID da subcategoria "Sistema de Arquivos": o nome e traduzido
+    # conforme o idioma do Windows, e "File System" nao existe no portugues.
+    $null = & auditpol.exe /set /subcategory:"{0CCE921D-69AE-11D9-BED3-505054503030}" /success:enable /failure:enable 2>&1
     if ($LASTEXITCODE -ne 0) {
         Write-Warning '      auditpol falhou; a SACL sera gravada mas nao gerara eventos.'
     }
@@ -187,7 +194,7 @@ function Test-Hardening {
         Verificacao explicita. Um instalador que "parece" ter endurecido as
         permissoes e pior que um que nao tentou: cria confianca sem base.
     #>
-    param([string] $InstallPath)
+    param([string] $InstallPath, [string] $DataPath)
 
     Write-Host ''
     Write-Host 'Verificacao final:'
@@ -205,6 +212,20 @@ function Test-Hardening {
 
     Write-Host '  OK - grupo Usuarios sem escrita no diretorio do programa.'
     Write-Host "  Dono: $($acl.Owner)"
+
+    # O outro lado da assimetria: sem escrita na pasta de dados o caixa nem abre
+    # ("attempt to write a readonly database"). Foi exatamente o que passou
+    # despercebido quando o script parava antes de chegar aqui.
+    $dataAcl = Get-Acl -LiteralPath $DataPath
+    $usersCanWrite = $dataAcl.Access | Where-Object {
+        $_.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value -eq 'S-1-5-32-545' -and
+        $_.AccessControlType -eq 'Allow' -and
+        ($_.FileSystemRights -band [System.Security.AccessControl.FileSystemRights]::Modify) -eq [System.Security.AccessControl.FileSystemRights]::Modify
+    }
+    if (-not $usersCanWrite) {
+        throw "FALHA: o grupo Usuarios nao consegue gravar em $DataPath - o caixa nao abriria"
+    }
+    Write-Host '  OK - grupo Usuarios grava na pasta de dados.'
 }
 
 # ---------------------------------------------------------------------------
@@ -218,7 +239,7 @@ if ($EnableAuditing) {
     Enable-DatabaseAuditing -DatabasePath (Join-Path $DataDir 'pdv_local.db')
 }
 
-Test-Hardening -InstallPath $InstallDir
+Test-Hardening -InstallPath $InstallDir -DataPath $DataDir
 
 Write-Host ''
 Write-Host 'Endurecimento concluido.'
