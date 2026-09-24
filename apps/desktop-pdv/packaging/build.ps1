@@ -40,6 +40,16 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
+
+function Write-Annotation([string[]] $Lines) {
+    # No GitHub Actions o log da execucao so abre com login, mas a anotacao
+    # aparece no resumo publico. Sem isto, um build vermelho dizia apenas
+    # "exit code 1" e o motivo tinha de ser adivinhado.
+    if (-not $env:GITHUB_ACTIONS) { return }
+    foreach ($line in $Lines) {
+        if ($line -and $line.Trim()) { Write-Host "::error::$($line.Trim())" }
+    }
+}
 Push-Location $root
 
 try {
@@ -48,8 +58,10 @@ try {
     # -- 0. Os testes sao porta de entrada, nao etapa opcional ---------------
     Write-Host "`n[0/5] Rodando os testes..."
     $env:PYTHONPATH = 'src'
-    & python -m pytest tests/ -q
+    & python -m pytest tests/ -q -rfE | Tee-Object -Variable testOutput | Out-Host
     if ($LASTEXITCODE -ne 0) {
+        Write-Annotation ($testOutput | Where-Object { $_ -match '^(FAILED|ERROR) ' } |
+            Select-Object -First 10)
         throw 'Testes falharam. Build abortado - nao se empacota codigo quebrado.'
     }
 
@@ -179,10 +191,12 @@ try {
     if (-not (Test-Path $report)) {
         throw 'Autoteste nao gerou relatorio: o PDV.exe nem chegou a rodar.'
     }
-    Get-Content $report | ForEach-Object { "      $_" }
+    $reportLines = Get-Content $report -Encoding utf8
+    $reportLines | ForEach-Object { "      $_" }
     # O relatorio e do build, nao da loja: nao vai dentro do instalador.
     Remove-Item $report -Force
     if ($selftestCode -ne 0) {
+        Write-Annotation ($reportLines | Where-Object { $_ -notmatch '^\s*(ok\s|=)' })
         throw "Autoteste falhou (codigo $selftestCode): o pacote esta incompleto. Nao publique."
     }
 
@@ -228,8 +242,18 @@ try {
             Write-Warning '      Inno Setup nao encontrado - baixe em https://jrsoftware.org/isdl.php'
         }
         else {
-            & $iscc 'packaging\installer.iss'
-            if ($LASTEXITCODE -ne 0) { throw 'Inno Setup falhou.' }
+            # O ISCC escreve o erro de compilacao (linha e motivo) no stderr.
+            # O PowerShell 5.1 transformaria cada linha em excecao com 'Stop'.
+            $previous = $ErrorActionPreference
+            $ErrorActionPreference = 'Continue'
+            $isccOutput = & $iscc 'packaging\installer.iss' 2>&1 | ForEach-Object { "$_" }
+            $isccCode = $LASTEXITCODE
+            $ErrorActionPreference = $previous
+            $isccOutput | Out-Host
+            if ($isccCode -ne 0) {
+                Write-Annotation ($isccOutput | Where-Object { $_ -match 'Error|Erro' })
+                throw 'Inno Setup falhou.'
+            }
 
             $setup = Get-ChildItem 'dist\installer\*.exe' | Select-Object -First 1
             if ($SignCert -and $setup) {

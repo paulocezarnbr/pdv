@@ -234,7 +234,7 @@ var
 begin
   LogPath := ExpandConstant('{#DataDir}\logs\harden.log');
   if LoadStringFromFile(LogPath, Content) and
-     (Pos('Endurecimento concluido', String(Content)) > 0) then
+     (Pos('Endurecimento concluido', Content) > 0) then
     Exit;
 
   Log('harden.ps1 nao concluiu; ver ' + LogPath);
