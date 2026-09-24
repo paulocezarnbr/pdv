@@ -22,6 +22,7 @@ from dataclasses import replace
 
 from pdv.config import AppConfig
 from pdv.data.database import Database
+from pdv.domain.models import iso, utc_now
 from pdv.remote.commands import RemoteCommandService
 from pdv.remote.inbox import InboxRepository
 from pdv.sync.outbox import CursorStore, OutboxReader
@@ -34,12 +35,17 @@ from pdv.sync.protocol import (
     PullRequest,
     PushBatch,
     SyncReport,
+    TerminalHealth,
     Transport,
     TransportError,
     speaks_commands,
+    speaks_heartbeat,
 )
 
 logger = logging.getLogger(__name__)
+
+#: Desvio de relógio que vira aviso no log do terminal (o painel usa o mesmo).
+CLOCK_SKEW_WARNING_MS = 120_000
 
 #: Tabelas de cadastro que descem da retaguarda para o PDV.
 PULLABLE_TABLES: tuple[str, ...] = (
@@ -320,6 +326,38 @@ class SyncEngine:
         return len(confirmed), None
 
     # -- estado --------------------------------------------------------------- #
+
+    def heartbeat(self) -> int | None:
+        """Conta à nuvem como a fila está. Devolve o desvio do relógio, em ms.
+
+        Roda **mesmo quando o envio falhou** — é quando mais importa: fila
+        travada com o painel mostrando "online" foi como o defeito de
+        sincronização passou despercebido. Falha aqui não é erro de venda:
+        registra e segue.
+        """
+        if not speaks_heartbeat(self._transport):
+            return None
+        pending, quarantined, oldest, reason = self._reader.health()
+        health = TerminalHealth(
+            device_id=self._config.device_id,
+            tenant_id=self._config.tenant_id,
+            terminal_clock=iso(utc_now()),
+            pending_items=pending,
+            quarantined_items=quarantined,
+            oldest_pending_at=oldest,
+            last_quarantine_reason=reason[:300] if reason else None,
+        )
+        try:
+            drift = self._transport.heartbeat(health)  # type: ignore[attr-defined]
+        except (TransportError, AuthError) as exc:
+            logger.info("Relato de saúde não enviado: %s", exc)
+            return None
+        if abs(drift) > CLOCK_SKEW_WARNING_MS:
+            logger.warning(
+                "Relógio do caixa %+d s em relação à nuvem: a hora das vendas "
+                "sai errada nos relatórios.", drift // 1000,
+            )
+        return drift
 
     def pending_count(self) -> int:
         return self._reader.pending_count()

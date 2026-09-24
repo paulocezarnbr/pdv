@@ -4,6 +4,15 @@ import { ApiError, handler, json } from "@/lib/http";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Venda na fila há mais que isto é venda presa. O ciclo de sincronização roda
+ * a cada poucos segundos com internet; quinze minutos é queda longa ou fila
+ * travada — as duas pedem alguém olhando.
+ */
+const QUEUE_STUCK_MINUTES = 15;
+/** Dois minutos de desvio já trocam a hora da venda no relatório por hora. */
+const CLOCK_SKEW_MS = 120_000;
+
 const MAX_RANGE_DAYS = 93;
 
 function validDate(value: string | null, fallback: Date): Date {
@@ -130,17 +139,33 @@ export const GET = handler(async (request) => {
       last_seen_at: string | null;
       pending_commands: string;
       open_alerts: string;
+      reported_at: string | null;
+      pending_items: number | null;
+      quarantined_items: number | null;
+      oldest_pending_at: string | null;
+      clock_drift_ms: string | null;
+      last_quarantine_reason: string | null;
+      queue_stuck: boolean;
+      clock_skewed: boolean;
     }[]>`
       SELECT d.id, d.label, s.name AS store_name, d.last_seen_at::text,
              count(DISTINCT c.command_uuid) FILTER (WHERE c.status = 'pending') AS pending_commands,
-             count(DISTINCT f.id) FILTER (WHERE f.resolved_at IS NULL) AS open_alerts
+             count(DISTINCT f.id) FILTER (WHERE f.resolved_at IS NULL) AS open_alerts,
+             t.reported_at::text, t.pending_items, t.quarantined_items,
+             t.oldest_pending_at::text, t.clock_drift_ms::text, t.last_quarantine_reason,
+             -- Os limiares moram aqui, e não na tela: o painel e um alerta
+             -- futuro por e-mail precisam concordar sobre o que é "preso".
+             coalesce(t.oldest_pending_at < now() - ${`${QUEUE_STUCK_MINUTES} minutes`}::interval, false)
+               AS queue_stuck,
+             coalesce(abs(t.clock_drift_ms) > ${CLOCK_SKEW_MS}, false) AS clock_skewed
         FROM devices d
         JOIN stores s ON s.id = d.store_id
+        LEFT JOIN device_telemetry t ON t.device_id = d.id AND t.tenant_id = d.tenant_id
         LEFT JOIN remote_commands c ON c.tenant_id = d.tenant_id AND c.device_id = d.id
         LEFT JOIN fraud_alerts f ON f.tenant_id = d.tenant_id AND f.device_id = d.id
        WHERE d.tenant_id = ${user.tenantId} AND d.revoked_at IS NULL
          ${deviceStoreFilter}
-       GROUP BY d.id, d.label, s.name, d.last_seen_at
+       GROUP BY d.id, d.label, s.name, d.last_seen_at, t.device_id
        ORDER BY s.name, d.label
     `;
 

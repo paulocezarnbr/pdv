@@ -30,6 +30,7 @@ from pdv.sync.protocol import (
     PullResponse,
     PushBatch,
     PushResponse,
+    TerminalHealth,
     TransportError,
 )
 
@@ -236,6 +237,26 @@ class HttpTransport:
         return tuple(str(uuid) for uuid in body.get("accepted", []))
 
     # -- interno -------------------------------------------------------------- #
+
+    def heartbeat(self, health: TerminalHealth) -> int:
+        """Relata a saúde da fila. Devolve o desvio do relógio calculado na nuvem."""
+        client = self._get_client()
+        try:
+            response = client.post(
+                "/devices/heartbeat",
+                json={
+                    "device_id": health.device_id,
+                    "tenant_id": health.tenant_id,
+                    "terminal_clock": health.terminal_clock,
+                    "pending_items": health.pending_items,
+                    "quarantined_items": health.quarantined_items,
+                    "oldest_pending_at": health.oldest_pending_at,
+                    "last_quarantine_reason": health.last_quarantine_reason,
+                },
+            )
+        except Exception as exc:
+            raise TransportError(f"Falha de rede: {exc}") from exc
+        return int(self._body(response).get("clock_drift_ms") or 0)
 
     def _body(self, response: Any) -> dict[str, Any]:
         """Trata os códigos de erro do mesmo jeito em toda rota."""

@@ -248,8 +248,15 @@ desconto, cancelar um item — sem precisar estar na loja.
       filtro de loja validado no servidor, não confiado ao navegador.
 - [~] Estado operacional de cada terminal: online/offline, **itens pendentes de
       sincronização**, último ACK, drift de relógio, papel da impressora.
-      Já entrega último contato e comandos remotos pendentes; a telemetria de
-      papel, drift e tamanho da Outbox ainda precisa nascer no terminal.
+      A cada ciclo — **inclusive quando o envio falhou**, que é quando importa —
+      o terminal relata fila viva, quarentena com o último motivo, a idade do
+      item mais antigo e o próprio relógio (`POST /api/devices/heartbeat`). O
+      desvio é medido pela nuvem, não informado pelo caixa. O painel mostra, na
+      linha do terminal e em ordem de gravidade, "N vendas presas há X min"
+      (fila parada há mais de 15 min), a quarentena com o motivo e "relógio do
+      caixa -9 min" (desvio acima de 2 min). Foi o que faltou para enxergar o
+      defeito de sincronização: o terminal aparecia "online" com o faturamento
+      vazio. **Falta** o papel da impressora (exige consulta de status ESC/POS).
 - [x] Indicador explícito de **frescor do dado**: "atualizado há 8 s" vs
       "terminal offline há 40 min — números podem estar defasados". Dashboard
       que mente sobre estar atualizado é pior que dashboard sem dado.

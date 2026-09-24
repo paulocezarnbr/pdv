@@ -6,6 +6,7 @@ import { FormEvent, useCallback, useEffect, useState, type ReactNode } from "rea
 
 import { fail, toast } from "./alerts";
 import { FiscalAdmin } from "./fiscal-admin";
+import { deviceIssues, queueSummary, type DeviceTelemetry } from "@/lib/device-health";
 
 type SessionUser = { name: string; email: string; role: string };
 type Summary = { revenue_cents: string; tips_cents: string; discount_cents: string; orders_count: string; avg_ticket_cents: string; cmv_cents: string };
@@ -16,7 +17,7 @@ type Dashboard = {
   hourly: { bucket: string; revenue_cents: string; orders_count: string }[];
   products: { name: string; quantity: string; revenue_cents: string }[];
   staff: { id: string; name: string; orders_count: string; revenue_cents: string; tips_cents: string }[];
-  devices: { id: string; label: string; store_name: string; last_seen_at: string | null; pending_commands: string; open_alerts: string }[];
+  devices: ({ id: string; label: string; store_name: string; last_seen_at: string | null; pending_commands: string; open_alerts: string } & DeviceTelemetry)[];
   alerts: { id: string; reason: string; store_name: string | null; device_id: string; raised_at: string }[];
 };
 type Owner = { id: string; name: string; login: string; is_active: boolean; updated_at: string };
@@ -119,7 +120,7 @@ export function DashboardApp() {
       </section>
       <section className="operations-grid">
         <article className="panel hourly-panel"><PanelTitle icon={<ChartLine size={18} />} title="Venda por hora" subtitle="Somente comandas pagas" />{data?.hourly.length ? <div className="hour-chart" aria-label="Gráfico de vendas por hora">{data.hourly.map((row) => { const value = Number(row.revenue_cents); return <div className="hour-column" key={row.bucket} title={`${new Date(row.bucket).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}: ${cents(value)}`}><div className="hour-value">{cents(value)}</div><div className="hour-bar" style={{ height: `${Math.max(4, value / maxHour * 148)}px` }} /><div className="hour-label">{new Date(row.bucket).toLocaleTimeString("pt-BR", { hour: "2-digit" })}</div></div>; })}</div> : <Empty text="Nenhuma venda paga neste período." />}</article>
-        <article className="panel"><PanelTitle icon={<Store size={18} />} title="Terminais" subtitle="Frescor e fila remota" /><div className="rows">{data?.devices.length ? data.devices.map((device) => { const seen = since(device.last_seen_at); return <div className="data-row" key={device.id}><div><strong>{device.label}</strong><small>{device.store_name}</small></div><div className="row-end"><span className={seen.stale ? "state stale" : "state online"}>{seen.label}</span><small>{device.pending_commands} comando(s) pendente(s)</small></div></div>; }) : <Empty text="Nenhum terminal ativado." />}</div></article>
+        <article className="panel"><PanelTitle icon={<Store size={18} />} title="Terminais" subtitle="Frescor, fila e relógio de cada caixa" /><div className="rows">{data?.devices.length ? data.devices.map((device) => { const seen = since(device.last_seen_at); const issues = deviceIssues(device); return <div className="data-row device-row" key={device.id}><div><strong>{device.label}</strong><small>{device.store_name}</small>{issues.map((issue) => <small key={issue.text} className={`device-issue ${issue.tone}`}>{issue.text}</small>)}</div><div className="row-end"><span className={seen.stale ? "state stale" : "state online"}>{seen.label}</span><small>{queueSummary(device) || `${device.pending_commands} comando(s) pendente(s)`}</small></div></div>; }) : <Empty text="Nenhum terminal ativado." />}</div></article>
       </section>
       <section className="triple-grid">
         <article className="panel"><PanelTitle icon={<Restaurant size={18} />} title="Produtos" subtitle="Ranking por faturamento" /><RankRows rows={(data?.products ?? []).map((p) => ({ key: p.name, name: p.name, value: cents(p.revenue_cents), note: `${p.quantity} lançamento(s)` }))} /></article>

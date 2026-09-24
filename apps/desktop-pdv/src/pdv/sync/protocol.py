@@ -217,6 +217,28 @@ class CommandTransport(Protocol):
         ...
 
 
+@dataclass(frozen=True, slots=True)
+class TerminalHealth:
+    """Como a fila deste terminal está, contado por ele mesmo.
+
+    `terminal_clock` vai cru: quem calcula o desvio é a nuvem, contra o relógio
+    dela. O caixa não é testemunha confiável da própria hora.
+    """
+
+    device_id: str
+    tenant_id: str
+    terminal_clock: str
+    pending_items: int
+    quarantined_items: int
+    oldest_pending_at: str | None
+    last_quarantine_reason: str | None
+
+
+def speaks_heartbeat(transport: object) -> bool:
+    """O transporte sabe relatar a saúde do terminal? Opcional, como comando."""
+    return callable(getattr(transport, "heartbeat", None))
+
+
 def speaks_commands(transport: object) -> bool:
     """O transporte sabe falar de comando?
 

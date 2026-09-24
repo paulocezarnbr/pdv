@@ -192,6 +192,12 @@ report = engine.drain()
 check("nada recusado pela nuvem", report.rejected == 0, str(report))
 check("a fila esvaziou", engine.pending_count() == 0, f"restam {engine.pending_count()}")
 check("nada em quarentena", engine.quarantined_count() == 0)
+drift = engine.heartbeat()
+check("o terminal relata a saúde e a nuvem mede o relógio",
+      drift is not None and abs(drift) < 60_000, str(drift))
+check("o painel vê a fila vazia do terminal",
+      psql(f"SELECT concat_ws('|', pending_items, quarantined_items) FROM device_telemetry "
+           f"WHERE device_id = '{device}'") == "0|0")
 
 print("\n[3] o que a nuvem guardou")
 

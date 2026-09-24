@@ -71,3 +71,9 @@ body { margin: 0; min-height: 100dvh; background: #0f1114; color: #f4f4f4; font-
 .swal2-styled { border-radius: 0 !important; }
 @media (max-width: 1050px) { .fiscal-grid { grid-template-columns: 1fr; } }
 @media (max-width: 760px) { .fiscal-heading { flex-direction: column; align-items: stretch; } .form-pair { grid-template-columns: 1fr; } }
+
+/* Terminal com problema: a primeira linha é a que o dono lê. */
+.device-row { align-items: flex-start; }
+.device-row .device-issue { font-size: 12px; white-space: normal; }
+.device-row .device-issue.danger { color: #ff8389; }
+.device-row .device-issue.warning { color: #ffb784; }

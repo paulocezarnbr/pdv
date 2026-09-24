@@ -94,6 +94,7 @@ class SyncWorker(QObject):
 
         self._set_online(report.error is None)
         self.cycle_finished.emit(report)
+        self._report_health()
 
         pending = self._engine.pending_count()
         self.pending_changed.emit(pending)
@@ -110,6 +111,13 @@ class SyncWorker(QObject):
                 logger.exception("Falha no pull de cadastros")
 
         return BUSY_INTERVAL_SECONDS if pending > 0 else IDLE_INTERVAL_SECONDS
+
+    def _report_health(self) -> None:
+        """Depois do envio, dê ele certo ou não: fila presa é o que se quer ver."""
+        try:
+            self._engine.heartbeat()
+        except Exception:  # noqa: BLE001 - telemetria nunca derruba o worker
+            logger.exception("Erro inesperado no relato de saúde")
 
     def _run_commands(self) -> None:
         """Busca e aplica comandos do painel, **depois** de o push ter ido.

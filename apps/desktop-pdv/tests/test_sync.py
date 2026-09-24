@@ -69,6 +69,9 @@ class FakeCloud:
         self.alerts: list[str] = []
         self.push_count = 0
         self.received_keys: list[str] = []
+        self.health_reports: list = []
+        self.heartbeat_fails = False
+        self.clock_drift_ms = 0
 
         # Programação de falhas
         self.fail_remaining = 0
@@ -118,6 +121,12 @@ class FakeCloud:
             raise TransportError("conexão perdida após o commit")
 
         return PushResponse(acks=tuple(acks))
+
+    def heartbeat(self, health) -> int:  # noqa: ANN001
+        self.health_reports.append(health)
+        if self.heartbeat_fails:
+            raise TransportError("heartbeat sem rede")
+        return self.clock_drift_ms
 
     def pull(self, request) -> PullResponse:  # noqa: ANN001
         return PullResponse(
@@ -604,3 +613,65 @@ def _audit_item(seq: int, client_uuid: str, digest: str):  # noqa: ANN202
             "created_at": "2026-01-01T00:00:00.000+00:00",
         },
     )
+
+
+# --------------------------------------------------------------------------- #
+# Saúde do terminal no painel
+# --------------------------------------------------------------------------- #
+
+
+def test_the_heartbeat_tells_the_queue_as_it_is(env) -> None:  # noqa: ANN001
+    database, config, checkout, cloud, engine = env
+    make_sale(checkout, database, config)
+    pending = engine.pending_count()
+
+    engine.heartbeat()
+
+    [health] = cloud.health_reports
+    assert (health.pending_items, health.quarantined_items) == (pending, 0)
+    assert health.oldest_pending_at is not None
+    assert health.device_id == config.device_id
+
+
+def test_the_heartbeat_names_the_quarantine(env) -> None:  # noqa: ANN001
+    """O dono precisa ler POR QUE a venda não subiu, não só que não subiu."""
+    database, config, checkout, cloud, engine = env
+    make_sale(checkout, database, config)
+    items = OutboxReader(database).claim_batch(1)
+    OutboxReader(database).quarantine(items, "orders#abc: 23502 local_number nulo")
+
+    engine.heartbeat()
+
+    health = cloud.health_reports[-1]
+    assert health.quarantined_items == 1
+    assert "23502" in health.last_quarantine_reason
+
+
+def test_the_heartbeat_goes_out_even_when_the_push_failed(env, qtbot) -> None:  # noqa: ANN001
+    """Fila travada com o painel mostrando "online" foi como o defeito passou."""
+    from pdv.sync.worker import SyncWorker
+
+    database, config, checkout, cloud, engine = env
+    make_sale(checkout, database, config)
+    cloud.schedule_failure(times=100)
+
+    SyncWorker(engine)._tick()  # noqa: SLF001
+
+    assert cloud.health_reports, "o relato saiu sem o envio ter dado certo"
+    assert cloud.health_reports[-1].pending_items > 0
+
+
+def test_a_failed_heartbeat_does_not_stop_the_counter(env) -> None:  # noqa: ANN001
+    _, _, _, cloud, engine = env
+    cloud.heartbeat_fails = True
+
+    assert engine.heartbeat() is None
+
+
+def test_the_cloud_measures_the_clock_not_the_terminal(env, caplog) -> None:  # noqa: ANN001
+    _, _, _, cloud, engine = env
+    cloud.clock_drift_ms = -600_000
+
+    with caplog.at_level("WARNING"):
+        assert engine.heartbeat() == -600_000
+    assert "Relógio do caixa" in caplog.text

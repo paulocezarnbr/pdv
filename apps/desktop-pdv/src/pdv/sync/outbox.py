@@ -101,6 +101,31 @@ class OutboxReader:
         ).fetchone()
         return int(row["total"])
 
+    def health(self) -> tuple[int, int, str | None, str | None]:
+        """Fila viva, quarentena, o item vivo mais antigo e o último motivo.
+
+        "Vivo" é o que ainda vai ser tentado; a quarentena é contada à parte
+        porque pede gente, não paciência.
+        """
+        live = self._db.connection.execute(
+            "SELECT COUNT(*) AS total, MIN(created_at) AS oldest FROM sync_outbox "
+            "WHERE attempts < ?",
+            (MAX_ATTEMPTS,),
+        ).fetchone()
+        dead = self._db.connection.execute(
+            "SELECT COUNT(*) AS total, "
+            "       (SELECT last_error FROM sync_outbox WHERE attempts >= ? "
+            "         ORDER BY available_at DESC, seq DESC LIMIT 1) AS reason "
+            "  FROM sync_outbox WHERE attempts >= ?",
+            (MAX_ATTEMPTS, MAX_ATTEMPTS),
+        ).fetchone()
+        return (
+            int(live["total"]),
+            int(dead["total"]),
+            str(live["oldest"]) if live["oldest"] else None,
+            str(dead["reason"]) if dead["reason"] else None,
+        )
+
     def dead_letter_count(self) -> int:
         row = self._db.connection.execute(
             "SELECT COUNT(*) AS total FROM sync_outbox WHERE attempts >= ?",
