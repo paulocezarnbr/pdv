@@ -317,6 +317,7 @@ class SaleRepository:
         *,
         order_id: EntityId,
         tenant_id: EntityId,
+        created_by_user_id: EntityId | None = None,
     ) -> None:
         now = iso(item.created_at)
         self._connection.execute(
@@ -325,19 +326,25 @@ class SaleRepository:
                 (id, order_id, tenant_id, product_id, product_name, pricing_mode,
                  quantity, gross_weight_grams, tare_grams, net_weight_grams,
                  unit_price_cents, total_cents, scale_reading_raw, created_at,
-                 client_uuid, is_synced)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+                 created_by_user_id, client_uuid, is_synced)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
             """,
             (
                 item.id, order_id, tenant_id, item.product_id, item.product_name,
                 item.pricing_mode.value, str(item.quantity),
                 int(item.gross_weight_grams), int(item.tare_grams),
                 int(item.net_weight_grams), int(item.unit_price_cents),
-                int(item.total_cents), item.scale_reading_raw, now, item.client_uuid,
+                int(item.total_cents), item.scale_reading_raw, now,
+                created_by_user_id, item.client_uuid,
             ),
         )
 
+        # Os ids ficam guardados para irem no payload: a nuvem grava a linha com
+        # o MESMO id e `client_uuid` que ela tem aqui, e o reenvio cai no mesmo
+        # `ON CONFLICT` em vez de virar um segundo consumo.
+        ingredients: list[dict[str, object]] = []
         for consumption in item.consumptions:
+            ingredient_id, ingredient_uuid = new_id(), new_id()
             self._connection.execute(
                 """
                 INSERT INTO order_item_ingredients
@@ -346,11 +353,19 @@ class SaleRepository:
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
                 """,
                 (
-                    new_id(), item.id, consumption.inventory_item_id,
+                    ingredient_id, item.id, consumption.inventory_item_id,
                     consumption.inventory_item_name, int(consumption.consumed_mg),
-                    int(consumption.unit_cost_cents), now, new_id(),
+                    int(consumption.unit_cost_cents), now, ingredient_uuid,
                 ),
             )
+            ingredients.append({
+                "id": ingredient_id,
+                "client_uuid": ingredient_uuid,
+                "inventory_item_id": consumption.inventory_item_id,
+                "inventory_item_name": consumption.inventory_item_name,
+                "consumed_mg": int(consumption.consumed_mg),
+                "unit_cost_cents": int(consumption.unit_cost_cents),
+            })
 
         self._outbox.enqueue(
             self._connection,
@@ -374,16 +389,52 @@ class SaleRepository:
                 "scale_reading_raw": item.scale_reading_raw,
                 "created_at": now,
                 "client_uuid": item.client_uuid,
-                "ingredients": [
-                    {
-                        "inventory_item_id": c.inventory_item_id,
-                        "consumed_mg": int(c.consumed_mg),
-                        "unit_cost_cents": int(c.unit_cost_cents),
-                    }
-                    for c in item.consumptions
-                ],
+                "created_by_user_id": created_by_user_id,
+                "ingredients": ingredients,
             },
         )
+
+    def cancel_item(
+        self,
+        item_id: EntityId,
+        *,
+        canceled_at: str,
+        canceled_by_user_id: EntityId,
+        reason: str,
+    ) -> bool:
+        """Marca o item cancelado E avisa a nuvem, na mesma transação.
+
+        Os três caminhos de cancelamento (balcão, comanda inteira, comando
+        remoto) só faziam o `UPDATE` local. O item seguia vivo na nuvem: entrava
+        no "mais vendidos" do painel e nas sugestões do cardápio, que existem
+        justamente para ignorar o que foi cancelado. Um lugar só para os três.
+
+        Devolve `False` se o item já estava cancelado — o primeiro cancelamento
+        é o que vale, porque é ele que tem quem autorizou.
+        """
+        changed = self._connection.execute(
+            "UPDATE order_items SET canceled_at = ?, canceled_by_user_id = ?, "
+            "cancel_reason = ? WHERE id = ? AND canceled_at IS NULL",
+            (canceled_at, canceled_by_user_id, reason, item_id),
+        ).rowcount
+        if not changed:
+            return False
+        self._outbox.enqueue(
+            self._connection,
+            entity_table="order_items",
+            entity_id=item_id,
+            # `client_uuid` novo: é uma mudança, não o item de novo. Com o do
+            # item, a nuvem a leria como reenvio e descartaria.
+            client_uuid=EntityId(new_id()),
+            operation="update",
+            payload={
+                "id": item_id,
+                "canceled_at": canceled_at,
+                "canceled_by_user_id": canceled_by_user_id,
+                "cancel_reason": reason,
+            },
+        )
+        return True
 
     def update_totals(
         self, order_id: EntityId, subtotal: Cents, discount: Cents, total: Cents
@@ -412,6 +463,13 @@ class SaleRepository:
             "subtotal_cents = ?, discount_cents = ?, total_cents = ? WHERE id = ?",
             (now, now, int(subtotal), int(discount), int(total), order_id),
         )
+        # A nuvem exige o número da venda e só por ele o cupom na mão do cliente
+        # é achado no painel. Até a 1.1.2 ele não ia, e o lote inteiro abortava.
+        opened = self._connection.execute(
+            "SELECT local_number, channel, operator_id, opened_at FROM orders "
+            "WHERE id = ?",
+            (order_id,),
+        ).fetchone()
         self._outbox.enqueue(
             self._connection,
             entity_table="orders",
@@ -424,6 +482,10 @@ class SaleRepository:
                 "store_id": store_id,
                 "device_id": device_id,
                 "status": "paid",
+                "local_number": int(opened["local_number"]),
+                "channel": opened["channel"],
+                "operator_id": opened["operator_id"],
+                "opened_at": opened["opened_at"],
                 "subtotal_cents": int(subtotal),
                 "discount_cents": int(discount),
                 "total_cents": int(total),

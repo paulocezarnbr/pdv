@@ -308,7 +308,9 @@ class TableService:
             entity_id=EntityId(table_id),
             client_uuid=EntityId(client_uuid),
             operation=operation,
-            payload={"id": table_id, **payload},
+            # `updated_at` decide, na nuvem, qual de duas mudanças é a mais nova:
+            # um lote antigo reenviado não desfaz o rótulo de hoje.
+            payload={"id": table_id, **payload, "updated_at": iso(utc_now())},
         )
 
 

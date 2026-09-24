@@ -242,9 +242,12 @@ class TableOrderService:
                     payload={
                         "id": order_id,
                         "channel": "waiter",
+                        "status": "open",
                         "table_id": table.id,
                         "table_label": table.label,
                         "local_number": local_number,
+                        "operator_id": operator_id,
+                        "opened_at": now,
                         "origin_device_id": origin_device_id,
                     },
                 )
@@ -559,11 +562,17 @@ class TableOrderService:
 
         now = iso(utc_now())
         with self._db.transaction() as connection:
-            connection.execute(
-                "UPDATE order_items SET canceled_at = ?, canceled_by_user_id = ?, "
-                "cancel_reason = ? WHERE order_id = ? AND canceled_at IS NULL",
-                (now, authorizer_id, f"[comanda cancelada] {reason}", order_id),
-            )
+            sales = SaleRepository(connection, self._outbox)
+            for row in connection.execute(
+                "SELECT id FROM order_items WHERE order_id = ? AND canceled_at IS NULL",
+                (order_id,),
+            ).fetchall():
+                sales.cancel_item(
+                    EntityId(str(row["id"])),
+                    canceled_at=now,
+                    canceled_by_user_id=authorizer_id,
+                    reason=f"[comanda cancelada] {reason}",
+                )
             # Ticket na fila da cozinha de comanda cancelada some da tela: manter
             # é mandar preparar comida que ninguém vai receber.
             connection.execute(
@@ -765,17 +774,15 @@ class TableOrderService:
         now = iso(utc_now())
 
         with self._db.transaction() as connection:
-            SaleRepository(connection, self._outbox).add_item(
-                item, order_id=order_id, tenant_id=EntityId(self._config.tenant_id)
-            )
             # Quem lançou, gravado no item e não só na comanda: mesa grande é
             # atendida por mais de uma pessoa, e atribuir tudo a quem abriu
             # apagaria o segundo garçom do relatório e da trilha.
-            if created_by_user_id:
-                connection.execute(
-                    "UPDATE order_items SET created_by_user_id = ? WHERE id = ?",
-                    (created_by_user_id, item.id),
-                )
+            SaleRepository(connection, self._outbox).add_item(
+                item,
+                order_id=order_id,
+                tenant_id=EntityId(self._config.tenant_id),
+                created_by_user_id=created_by_user_id,
+            )
             connection.execute(
                 "UPDATE orders SET subtotal_cents = subtotal_cents + ?, "
                 "total_cents = total_cents + ?, updated_at = ? WHERE id = ?",
@@ -795,20 +802,6 @@ class TableOrderService:
                     notes.strip()[:200] or None, now, now, now,
                     self._config.device_id, new_id(),
                 ),
-            )
-            self._outbox.enqueue(
-                connection,
-                entity_table="order_items",
-                entity_id=item.id,
-                client_uuid=client_uuid,
-                operation="insert",
-                payload={
-                    "order_id": order_id,
-                    "product_id": product.id,
-                    "quantity": str(quantity),
-                    "total_cents": int(total),
-                    "created_by_user_id": created_by_user_id,
-                },
             )
 
         self._hub.publish(

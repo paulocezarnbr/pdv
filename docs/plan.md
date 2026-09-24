@@ -92,6 +92,51 @@ Cada fase termina com **critério de aceite verificável**. Não avance sem ele.
 - **Aceite:** 500 vendas offline com 3 quedas de rede no meio do upload →
   zero duplicidade e zero perda no PostgreSQL.
 
+### Fase 2.1 — Contrato entre as pontas ✅ **CONCLUÍDA**
+O aceite da Fase 2 foi medido contra uma nuvem **falsa**, que aceitava qualquer
+payload; a nuvem de verdade era testada com payloads escritos à mão no formato
+dela. As duas pontas nunca se encontraram, e nas duas direções nada passava:
+
+| Direção | O que acontecia | Efeito |
+|---|---|---|
+| Pull (nuvem → caixa) | O caixa gravava todas as colunas da nuvem; `users.server_seq` e `products` sem `store_id` quebravam o insert | Nenhum operador ou produto cadastrado no painel chegava ao caixa |
+| Push (caixa → nuvem) | Estoque ia como `qty_mg` e a nuvem exige `quantity_mg`; a venda de balcão ia sem `local_number` | A **primeira venda com receita derrubava o lote inteiro com 500**: nada do caixa chegava |
+| Push | Insumos consumidos iam aninhados no item e a nuvem descartava a chave | CMV do painel sempre zero |
+| Push | Mudança de comanda (conta, transferência, pagamento, cancelamento) com `client_uuid` novo batia na chave primária | Lote abortado; mesa nunca fechava na nuvem |
+| Push | Cadastros (nível de desconto, limite de fiado) reusam o `client_uuid` ao mudar | Mudança descartada como duplicata: 15% ficava 10% para sempre |
+| Push | Cancelamento de item não era enviado por nenhum dos três caminhos | Item cancelado entrava no "mais vendidos" e no upsell |
+| Push | Mesas (`store_tables`) não existiam na nuvem | Cada mesa criada virava item em quarentena no caixa |
+
+- [x] **Pull:** mapeamento explícito coluna a coluna (`pull_mapping.py`); o teste
+      de contrato monta as linhas a partir das migrations reais da nuvem.
+- [x] **Push — `contracts/push-day.json`:** a fila de um dia de caixa real
+      (balcão com receita e cancelamento, mesa do início ao fim, caixa,
+      cashback, pré-pago, fiado, níveis, cadastro de mesa), gerada rodando os
+      fluxos de verdade. O caixa confere que o arquivo é o que ele manda hoje,
+      que todo `enqueue` do código aparece no dia e que nenhuma chave some lá
+      sem decisão escrita; a nuvem aplica o arquivo no `SyncMerger` real, com
+      o papel `erp_app` e RLS, e o `e2e.py` o manda pela imagem Docker.
+- [x] **A tradução mora na nuvem.** Os caixas instalados já têm a fila cheia
+      no formato antigo; corrigir só lá deixaria essa fila presa para sempre.
+      `contracts/push-day-1.1.2.json` é essa fila e **não se regenera**: é a
+      garantia de que a nuvem continua aceitando o que já espera nos balcões.
+- [x] **Atualização tem regra própria:** lista branca por tabela; comanda paga
+      ou cancelada não muda de estado; o primeiro cancelamento de item vale;
+      mudança mais velha não desfaz a recente (`updated_at`); cadastro cuja
+      criação se perdeu nasce da mudança, movimento nunca (um "pago" sem venda
+      seria faturamento sem venda); id de outro restaurante é recusado.
+- [x] Caixa 1.1.3 completa o que manda: número, operador e abertura da venda;
+      item do garçom com nome, preço e quem lançou (antes ia duas vezes, e só a
+      segunda — descartada — tinha quem lançou); cancelamento de item nos três
+      caminhos, por um método só; insumos com o id local.
+- [x] Migration cloud 017 (`store_tables`, `local_number` opcional para o caixa
+      antigo). No caminho, o gatilho de proteção de níveis (011) devolvia `NEW`
+      no DELETE — nulo — e **toda** exclusão de vínculo de nível era cancelada
+      em silêncio; restaurante com cliente classificado não podia ser excluído.
+- **Aceite:** o dia inteiro (81 itens) sincronizado pelo `SyncEngine` com o
+  transporte HTTP real contra a nuvem standalone: zero quarentena, zero alerta
+  de fraude, CMV de R$ 0,00 para R$ 29,30.
+
 ### Fase 2.5 — Instalador Único e Autossuficiente (Sprint 7–8)
 
 **Requisito do cliente:** o instalador é **um único `.exe`**. O lojista executa,

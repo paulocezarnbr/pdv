@@ -52,7 +52,9 @@ from pdv.domain.models import (
     Sale,
     SaleItem,
     ScaleReading,
+    iso,
     new_id,
+    utc_now,
 )
 from pdv.hardware.printer.layout import ReceiptContext, build_sale_receipt
 from pdv.services.audit import AuditService
@@ -604,10 +606,12 @@ class CheckoutService:
                 connection, authorizer_id, frozenset({"manager"}),
                 "Cancelamento de item exige autorização de gerente.",
             )
-            connection.execute(
-                "UPDATE order_items SET canceled_at = datetime('now'), "
-                "canceled_by_user_id = ?, cancel_reason = ? WHERE id = ?",
-                (authorizer_id, reason, item.id),
+            sales = SaleRepository(connection, self._outbox)
+            sales.cancel_item(
+                item.id,
+                canceled_at=iso(utc_now()),
+                canceled_by_user_id=authorizer_id,
+                reason=reason,
             )
 
             stock_repository = StockRepository(connection, self._outbox)
@@ -640,7 +644,7 @@ class CheckoutService:
             )
 
             sale.items.pop(index)
-            SaleRepository(connection, self._outbox).update_totals(
+            sales.update_totals(
                 sale.id, sale.subtotal_cents, sale.discount_cents, sale.total_cents
             )
 

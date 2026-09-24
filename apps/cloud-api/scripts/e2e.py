@@ -43,6 +43,7 @@ import sys
 import urllib.error
 import urllib.request
 import uuid
+from pathlib import Path
 
 BASE = "http://localhost:3111"
 PG = ["docker", "exec", "erp-pg-test", "psql", "-U", "erp", "-d", "erp", "-tAc"]
@@ -381,5 +382,81 @@ check("com cursor para o proximo ciclo", pull["last_server_seq"] > 0)
 
 status, _ = http("GET", "/api/sync/pull?entity_table=panel_users&since=0", None, auth)
 check("tabela fora da lista branca e recusada", status == 400)
+
+# -- 9. um dia de caixa de verdade --------------------------------------------- #
+# Os lotes acima sao escritos a mao, no formato daqui. A primeira venda de
+# balcao com receita de um caixa de verdade abortava o lote inteiro com 500 e
+# nenhum deles percebia. Os arquivos de `contracts/` sao a fila de um caixa
+# real (ver apps/desktop-pdv/tests/push_day.py): o de 1.1.2 e o que os caixas
+# instalados ja tem esperando, o outro e o formato atual.
+CONTRACTS = Path(__file__).resolve().parents[3] / "contracts"
+MOVEMENT = (
+    "audit_ledger", "order_item_ingredients", "order_items", "payments", "orders",
+    "stock_movements", "cash_sessions", "cashback_ledger", "prepaid_ledger",
+    "credit_account_ledger", "customer_credit_accounts", "customer_discount_tiers",
+    "discount_tiers", "customers", "store_tables", "device_anchors", "fraud_alerts",
+)
+# Os ids do arquivo sao fixos; uma segunda rodada do script sobre o mesmo banco
+# colidiria na chave primaria. Limpa o que a rodada anterior deixou.
+for leftover in psql(
+    "SELECT string_agg(id::text, ' ') FROM tenants WHERE name LIKE 'E2E contrato%'"
+).split():
+    for table in (*MOVEMENT, "sync_batches", "device_secrets", "devices", "stores"):
+        psql(f"DELETE FROM {table} WHERE tenant_id = '{leftover}'")
+    psql(f"DELETE FROM tenants WHERE id = '{leftover}'")
+
+for name in ("push-day-1.1.2.json", "push-day.json"):
+    print(f"\n[6] o dia de caixa de {name}")
+    day = json.loads((CONTRACTS / name).read_text(encoding="utf-8"))
+    day_tenant = psql(f"INSERT INTO tenants (name) VALUES ('E2E contrato {name}') RETURNING id")
+    day_store = psql(
+        f"INSERT INTO stores (tenant_id, name) VALUES ('{day_tenant}', 'Loja do dia') RETURNING id"
+    )
+    day_device = psql("SELECT gen_random_uuid()")
+    day_code = uuid.uuid4().hex[:8].upper()
+    psql(
+        "INSERT INTO device_activation_codes (code_hash, tenant_id, store_id, device_id, label) "
+        f"VALUES (encode(sha256('{day_code}'::bytea), 'hex'), "
+        f"'{day_tenant}', '{day_store}', '{day_device}', 'Caixa do dia')"
+    )
+    status, activated = http("POST", "/api/devices/activate", {
+        "activation_code": day_code,
+        "fingerprint": {"hostname": "CAIXA-DIA", "os": "Windows 11", "arch": "x64"},
+        "device_secret_hex": day["device_secret_hex"],
+    })
+    check("o caixa do dia e ativado", status == 200, str(activated)[:120])
+    day_auth = {"Authorization": f"Bearer {activated['sync_token']}"}
+
+    # Lotes de 25, como o motor do caixa manda quando a fila esta cheia: a
+    # cadeia de auditoria atravessa lotes, e e ai que ela quebraria.
+    applied = 0
+    for start in range(0, len(day["items"]), 25):
+        status, answer = http("POST", "/api/sync/push", {
+            "device_id": day_device,
+            "tenant_id": day_tenant,
+            "store_id": day_store,
+            "items": day["items"][start:start + 25],
+        }, {**day_auth, "Idempotency-Key": str(uuid.uuid4())})
+        check(f"lote {start // 25 + 1} entra sem 500", status == 200, str(answer)[:200])
+        check(f"lote {start // 25 + 1} sem recusa", answer["rejected"] == 0,
+              str([r for r in answer["results"] if r["status"] == "rejected"])[:300])
+        applied += answer["applied"] + answer["duplicates"]
+    # Duplicata e legitima: o caixa 1.1.2 enfileirava o item do garcom duas
+    # vezes com o mesmo client_uuid, e reconhecer isso e o trabalho da nuvem.
+    check("o dia inteiro foi aceito", applied == len(day["items"]), f"{applied} de {len(day['items'])}")
+    check(
+        "a baixa de estoque chegou",
+        psql(f"SELECT count(*) FROM stock_movements WHERE tenant_id = '{day_tenant}' "
+             "AND quantity_mg IS NOT NULL") != "0",
+    )
+    check(
+        "o CMV deixou de ser zero",
+        int(psql(f"SELECT coalesce(sum(unit_cost_cents), 0) FROM order_item_ingredients "
+                 f"WHERE tenant_id = '{day_tenant}'")) > 0,
+    )
+    check(
+        "nenhum alerta de fraude num dia honesto",
+        psql(f"SELECT count(*) FROM fraud_alerts WHERE tenant_id = '{day_tenant}'") == "0",
+    )
 
 print("\nTODAS AS VERIFICACOES PASSARAM.")

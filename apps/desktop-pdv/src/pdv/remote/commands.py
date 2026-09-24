@@ -470,15 +470,11 @@ class RemoteCommandService:
 
         with self._db.transaction() as connection:
             self._claim(connection, command)
-            connection.execute(
-                "UPDATE order_items SET canceled_at = ?, canceled_by_user_id = ?, "
-                "cancel_reason = ? WHERE id = ?",
-                (
-                    iso(utc_now()),
-                    command.issued_by_user_id,
-                    f"[{CHANNEL}] {reason}",
-                    item_id,
-                ),
+            SaleRepository(connection, self._outbox).cancel_item(
+                EntityId(item_id),
+                canceled_at=iso(utc_now()),
+                canceled_by_user_id=EntityId(command.issued_by_user_id),
+                reason=f"[{CHANNEL}] {reason}",
             )
 
             # O ticket sai da fila junto com o item, na mesma transação. Deixá-lo
