@@ -38,8 +38,11 @@ SolidCompression=yes
 WizardStyle=modern
 
 ; Exige elevacao: sem ela nao ha como gravar em Program Files nem aplicar ACL.
+; `PrivilegesRequiredOverridesAllowed` fica AUSENTE de proposito: ausente, nem a
+; linha de comando nem o assistente podem trocar para instalacao sem admin. O
+; Inno so aceita `commandline`/`dialog` ali - `none` nao existe, e com ele o
+; compilador abortava.
 PrivilegesRequired=admin
-PrivilegesRequiredOverridesAllowed=none
 
 ; O PDV so faz sentido em 64 bits; limitar evita instalacao em maquina errada.
 ArchitecturesAllowed=x64compatible

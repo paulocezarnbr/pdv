@@ -61,3 +61,20 @@ def test_the_selftest_waits_for_the_gui_binary() -> None:
     assert "& $exePath --selftest" not in build
     assert "Start-Process -FilePath $exePath -ArgumentList '--selftest'" in build
     assert "-Wait -PassThru" in build
+
+
+def test_the_installer_never_allows_a_non_admin_install() -> None:
+    """Sem admin não há ACL nem Program Files: o endurecimento não roda.
+
+    E a diretiva só aceita `commandline`/`dialog`. Um `none` ali — que parece
+    o jeito de dizer "nenhuma troca" — faz o Inno Setup abortar a compilação.
+    """
+    text = (PACKAGING / "installer.iss").read_text(encoding="utf-8")
+    directives = {
+        line.split("=", 1)[0].strip(): line.split("=", 1)[1].strip()
+        for line in text.splitlines()
+        if "=" in line and not line.lstrip().startswith((";", "#", "{"))
+        and line.split("=", 1)[0].strip().isidentifier()
+    }
+    assert directives.get("PrivilegesRequired") == "admin"
+    assert "PrivilegesRequiredOverridesAllowed" not in directives
