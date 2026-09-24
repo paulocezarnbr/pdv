@@ -204,6 +204,19 @@ describeDb("emissão fiscal contra PostgreSQL real", () => {
     await admin.end({ timeout: 5 });
   });
 
+  it("a loja tem uma série normal só, e cada terminal a sua de contingência", async () => {
+    // Guarda a regra que era `UNIQUE NULLS NOT DISTINCT` (PostgreSQL 15+) e
+    // virou índice parcial para o banco 14 também migrar.
+    await expect(admin`INSERT INTO fiscal_series(tenant_id,store_id,model,series,purpose)
+                       VALUES (${tenant},${store},65,2,'normal')`).rejects.toMatchObject({ code: "23505" });
+
+    await admin`INSERT INTO fiscal_series(tenant_id,store_id,device_id,model,series,purpose)
+                VALUES (${tenant},${store},${device},65,900,'offline_contingency')`;
+    await expect(admin`INSERT INTO fiscal_series(tenant_id,store_id,device_id,model,series,purpose)
+                       VALUES (${tenant},${store},${device},65,901,'offline_contingency')`).rejects.toMatchObject({ code: "23505" });
+    await admin`DELETE FROM fiscal_series WHERE tenant_id=${tenant} AND purpose='offline_contingency'`;
+  });
+
   it("repete a mesma solicitação sem chamar o provedor ou consumir número", async () => {
     const provider = new FakeProvider({ status: "authorized", code: "100",
       reason: "Autorizado", accessKey: "3".repeat(44), protocol: "123" });
