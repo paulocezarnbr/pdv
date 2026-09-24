@@ -87,6 +87,25 @@ def test_accents_in_the_installer_need_the_utf8_bom() -> None:
         assert raw.startswith(b"\xef\xbb\xbf")
 
 
+def test_only_preprocessor_directives_start_a_line_with_hash() -> None:
+    """O ISPP lê toda linha que começa com `#` como diretiva.
+
+    Na 1.1.4 um `#13#10` (quebra de linha do Pascal) caiu no começo da linha,
+    dentro de um MsgBox, e o build morreu com "Unknown preprocessor directive"
+    — depois de dez minutos de testes e PyInstaller.
+    """
+    text = (PACKAGING / "installer.iss").read_text(encoding="utf-8-sig")
+    directives = ("define", "include", "if", "ifdef", "ifndef", "elif", "else",
+                  "endif", "error", "pragma", "expr", "emit", "sub", "endsub")
+    for number, line in enumerate(text.splitlines(), start=1):
+        stripped = line.lstrip()
+        if stripped.startswith("#") and not stripped.startswith("#{"):
+            word = re.match(r"#\s*(\w+)", stripped)
+            assert word and word.group(1) in directives, (
+                f"installer.iss:{number} começa com '#' e não é diretiva: {stripped[:40]}"
+            )
+
+
 def test_names_that_live_on_the_customer_machine_do_not_change() -> None:
     """Mudar estes nomes deixaria atalho duplicado e regra de firewall órfã
     nas lojas que atualizarem por cima."""

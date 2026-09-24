@@ -241,8 +241,8 @@ begin
   if not WizardSilent then
     MsgBox('As permissões de segurança não foram aplicadas por completo.' + #13#10 + #13#10 +
       'Sem elas o PDV pode não conseguir gravar as vendas. Rode este instalador ' +
-      'de novo como administrador; se o aviso voltar, envie ao suporte o arquivo:' +
-      #13#10 + LogPath, mbCriticalError, MB_OK);
+      'de novo como administrador; se o aviso voltar, envie ao suporte o arquivo:' + #13#10 +
+      LogPath, mbCriticalError, MB_OK);
 end;
 
 function InstalledVersion(): String;
