@@ -1,0 +1,25 @@
+// Carbon compilado aqui, e não o CSS pronto do pacote.
+//
+// O `styles.css` distribuído aponta as fontes IBM Plex para a CDN da IBM
+// (s81c.com). A CSP do painel só aceita fontes da própria origem — como deve:
+// a retaguarda não depende de terceiro no ar nem conta a ele quem abre o
+// painel. Resultado: o navegador bloqueava as fontes e caía na fonte do
+// sistema.
+//
+// Compilando o SCSS, as fontes vêm dos pacotes `@ibm/plex-*` já instalados; o
+// Next copia os `.woff2` para `/_next/static/media` com hash no nome, e elas
+// saem da mesma origem, com cache imutável.
+@use '@carbon/styles/scss/config' with (
+  $font-path: '~@ibm/plex',
+  $use-per-family-plex: true,
+  $use-akamai-cdn: false
+);
+
+// Serifada não aparece em nenhuma tela: não embarca.
+@use '@carbon/styles/scss/fonts' with (
+  $fonts: (
+    IBM-Plex-Serif: false,
+  )
+);
+
+@use '@carbon/styles';

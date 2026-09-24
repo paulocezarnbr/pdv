@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 
-import "@carbon/styles/css/styles.css";
+import "./carbon.scss";
 import "./globals.css";
 
 export const metadata: Metadata = {
