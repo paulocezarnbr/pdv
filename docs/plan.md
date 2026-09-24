@@ -160,6 +160,13 @@ a baixar à parte, nenhum prompt de linha de comando.
       `-SignCert`. Falta o certificado de Assinatura de Código (EV, emitido para
       a pessoa jurídica) — nada no repositório destrava isso.
 - [x] Desinstalador que **preserva** os dados da loja.
+- [x] **Instalador gerado no CI** (`.github/workflows/installer.yml`): Windows
+      limpo, só os pins, VC++ baixado com a assinatura da Microsoft
+      conferida, suíte + `--selftest` no binário + Inno Setup, e o `.exe` com
+      SHA-256 nos artifacts (Release em tag `pdv-v*`). Assina sozinho quando o
+      certificado existir nos secrets. *Defeito corrigido no caminho:* o
+      `build.ps1` chamava o `PDV.exe` (app gráfico) com `&`, e o PowerShell não
+      espera app gráfico — o autoteste do pacote "passava" sem ter rodado.
 
 **Aceite:** numa máquina Windows recém-formatada, sem Python, sem Visual C++ e
 sem drivers, um único duplo-clique deixa o PDV vendendo — com balança lendo,

@@ -10,6 +10,11 @@
                            Esta e a opcao correta quando proteger a logica de
                            negocio importa de verdade.
 
+.PARAMETER RequireInstaller
+    Falha se o Inno Setup nao estiver instalado, em vez de so avisar. O CI
+    liga isto: um build "verde" sem o instalador entregaria o binario solto,
+    sem ACL, sem VC++ e sem o assistente de instalacao.
+
 .PARAMETER SignCert
     Caminho do .pfx de Assinatura de Codigo. Sem assinatura o SmartScreen do
     Windows exibe "Editor desconhecido" e parte dos clientes nao conclui a
@@ -29,7 +34,8 @@ param(
     [string] $SignCert,
     [string] $SignPassword,
     [string] $TimestampUrl = 'http://timestamp.digicert.com',
-    [switch] $SkipInstaller
+    [switch] $SkipInstaller,
+    [switch] $RequireInstaller
 )
 
 $ErrorActionPreference = 'Stop'
@@ -79,8 +85,8 @@ try {
             --output-filename=PDV.exe `
             --company-name="ERP Food Service" `
             --product-name="PDV Balcao" `
-            --file-version=1.0.0.0 `
-            --product-version=1.0.0.0 `
+            --file-version=1.1.0.0 `
+            --product-version=1.1.0.0 `
             main.py
         if ($LASTEXITCODE -ne 0) { throw 'Nuitka falhou.' }
 
@@ -105,8 +111,8 @@ try {
             --output-filename=PDVSetup.exe `
             --company-name="ERP Food Service" `
             --product-name="PDV Balcao - Instalacao" `
-            --file-version=1.0.0.0 `
-            --product-version=1.0.0.0 `
+            --file-version=1.1.0.0 `
+            --product-version=1.1.0.0 `
             setup_wizard.py
         if ($LASTEXITCODE -ne 0) { throw 'Nuitka falhou ao compilar o assistente.' }
 
@@ -150,12 +156,27 @@ try {
     Write-Host "`n[3/5] Rodando o autoteste dentro do pacote..."
     # O PDV.exe e compilado sem console, entao o relatorio sai num arquivo ao
     # lado do binario — do contrario ele se perderia inteiro aqui.
-    & $exePath --selftest
-    $selftestCode = $LASTEXITCODE
+    #
+    # `Start-Process -Wait`, e nao `& $exePath`: o PDV.exe e um app GRAFICO, e o
+    # PowerShell nao espera app grafico terminar nem preenche $LASTEXITCODE
+    # com o codigo dele. Com `&`, o autoteste "passava" sem ter rodado — o
+    # codigo lido era o do PyInstaller, e o relatorio ainda nem existia.
     $report = 'dist\PDV\selftest.log'
-    if (Test-Path $report) { Get-Content $report | ForEach-Object { "      $_" } }
+    if (Test-Path $report) { Remove-Item $report -Force }
+    $selftest = Start-Process -FilePath $exePath -ArgumentList '--selftest' `
+        -Wait -PassThru -NoNewWindow
+    $selftestCode = $selftest.ExitCode
+    if ($null -eq $selftestCode) {
+        throw 'Autoteste sem codigo de saida: nao da para afirmar que o pacote esta completo.'
+    }
+    if (-not (Test-Path $report)) {
+        throw 'Autoteste nao gerou relatorio: o PDV.exe nem chegou a rodar.'
+    }
+    Get-Content $report | ForEach-Object { "      $_" }
+    # O relatorio e do build, nao da loja: nao vai dentro do instalador.
+    Remove-Item $report -Force
     if ($selftestCode -ne 0) {
-        throw 'Autoteste falhou: o pacote esta incompleto. Nao publique.'
+        throw "Autoteste falhou (codigo $selftestCode): o pacote esta incompleto. Nao publique."
     }
 
     # -- 3. Assinatura -------------------------------------------------------
@@ -196,6 +217,7 @@ try {
         ) | Where-Object { Test-Path $_ } | Select-Object -First 1
 
         if (-not $iscc) {
+            if ($RequireInstaller) { throw 'Inno Setup nao encontrado.' }
             Write-Warning '      Inno Setup nao encontrado - baixe em https://jrsoftware.org/isdl.php'
         }
         else {
@@ -209,8 +231,11 @@ try {
                 $signtool = Get-ChildItem `
                     'C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe' |
                     Select-Object -Last 1
-                & $signtool.FullName sign /fd SHA256 /f $SignCert `
-                    /tr $TimestampUrl /td SHA256 $setup.FullName
+                $signArgs = @('sign', '/fd', 'SHA256', '/f', $SignCert)
+                if ($SignPassword) { $signArgs += @('/p', $SignPassword) }
+                $signArgs += @('/tr', $TimestampUrl, '/td', 'SHA256', $setup.FullName)
+                & $signtool.FullName @signArgs
+                if ($LASTEXITCODE -ne 0) { throw 'Assinatura do instalador falhou.' }
             }
             Write-Host "      OK - $($setup.FullName)"
         }
