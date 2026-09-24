@@ -138,8 +138,10 @@ a baixar à parte, nenhum prompt de linha de comando.
       `None` e o cupom vai para arquivo: a impressora padrão do Windows **não**
       é promovida a candidata.
 - [x] `device_secret` gerado localmente na primeira execução e protegido por
-      DPAPI em escopo de máquina. Nunca trafega pela rede, nunca entra no banco
-      que ele protege.
+      DPAPI em escopo de máquina. Nunca entra no banco que ele protege, e
+      trafega **uma única vez**, na ativação, por HTTPS: a nuvem confere cada
+      elo do ledger com a mesma chave (HMAC é simétrico), guarda a cópia só
+      para conferir e não a troca numa reativação.
 - [x] **Ativação do terminal**: o lojista digita um código curto gerado no
       painel (`/ACTIVATIONCODE=` para implantação em massa) e o terminal recebe
       `tenant_id`, `store_id`, `device_id` e o token de sincronização, guardado
