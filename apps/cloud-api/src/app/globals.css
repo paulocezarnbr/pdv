@@ -25,6 +25,11 @@ body { margin: 0; min-height: 100dvh; background: #0f1114; color: #f4f4f4; font-
 .owner-admin { display: grid; grid-template-columns: minmax(360px, .9fr) minmax(0, 1.1fr); gap: 16px; margin-top: 16px; }
 .owner-form { padding: 20px 16px; display: grid; gap: 18px; }
 .owner-form > small { color: #8d8d8d; line-height: 1.45; }
+.activation-result { padding: 20px 16px; display: grid; gap: 8px; }
+.activation-result small { color: #8d8d8d; }
+.activation-server { font-size: 1.1rem; word-break: break-all; margin-bottom: 12px; }
+.activation-code-row { display: flex; align-items: center; gap: 8px; }
+.activation-code { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 2rem; letter-spacing: .08em; user-select: all; }
 .owner-list .state { margin-left: auto; }
 .panel { min-width: 0; background: #161616; border: 1px solid #393939; }
 .panel-title { display: flex; gap: 12px; align-items: flex-start; padding: 16px; border-bottom: 1px solid #393939; }

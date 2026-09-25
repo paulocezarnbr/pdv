@@ -28,17 +28,15 @@
  * que o terminal envia; ela nunca volta para o terminal nem para o painel.
  */
 
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 
 import { z } from "zod";
 
 import { sql, withTenant } from "@/lib/db";
+import { CODE_TTL_MINUTES, codeHash } from "@/lib/devices/activation-code";
 import { ApiError, clientIp, handler, json, parseBody } from "@/lib/http";
 
 export const dynamic = "force-dynamic";
-
-/** Validade do código a partir da geração no painel. */
-const CODE_TTL_MINUTES = 15;
 
 /**
  * Tentativas por IP na janela, antes de recusar. Com este teto a força bruta
@@ -67,12 +65,6 @@ const ActivationSchema = z.object({
   device_secret_hex: z.string().regex(/^[0-9a-f]{32,128}$/i).optional(),
 });
 
-function codeHash(code: string): string {
-  // SHA-256 sem sal basta aqui: o código é aleatório de alta entropia e vive
-  // 15 minutos, então não há dicionário a proteger — diferente de uma senha
-  // escolhida por gente.
-  return createHash("sha256").update(code.trim().toUpperCase(), "utf8").digest("hex");
-}
 
 export const POST = handler(async (request) => {
   const body = await parseBody(request, ActivationSchema);

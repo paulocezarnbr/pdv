@@ -8,6 +8,7 @@ import { fail, toast } from "./alerts";
 import { FiscalAdmin } from "./fiscal-admin";
 import { ForecastPanel } from "./forecast-panel";
 import { MenuAdmin } from "./menu-admin";
+import { TerminalActivation } from "./terminal-activation";
 import { deviceIssues, queueSummary, type DeviceTelemetry } from "@/lib/device-health";
 
 type SessionUser = { name: string; email: string; role: string };
@@ -129,6 +130,7 @@ export function DashboardApp() {
         <article className="panel"><PanelTitle icon={<Store size={18} />} title="Equipe" subtitle="Resultado e gorjeta" /><RankRows rows={(data?.staff ?? []).map((s) => ({ key: s.id, name: s.name, value: cents(s.revenue_cents), note: `${s.orders_count} mesa(s), ${cents(s.tips_cents)} em gorjetas` }))} /></article>
         <article className="panel alert-panel"><PanelTitle icon={<Security size={18} />} title="Segurança" subtitle="Alertas antifraude em aberto" /><div className="rows">{data?.alerts.length ? data.alerts.map((alert) => <div className="alert-row" key={alert.id}><WarningAlt size={16} /><div><strong>{alert.reason}</strong><small>{alert.store_name ?? "Loja não identificada"} - {since(alert.raised_at).label}</small></div></div>) : <Empty text="Nenhum alerta em aberto." />}</div></article>
       </section>
+      {(user.role === "owner" || user.role === "manager") && <TerminalActivation stores={data?.stores ?? []} />}
       <ForecastPanel stores={data?.stores ?? []} storeId={storeId} />
       <MenuAdmin stores={data?.stores ?? []} />
       {user.role === "owner" && <><OwnerAdmin /><FiscalAdmin stores={data?.stores ?? []} /></>}
