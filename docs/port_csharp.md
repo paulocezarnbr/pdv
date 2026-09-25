@@ -216,6 +216,8 @@ A arquitetura existe para que a tela seja testável:
     auditoria, o reenvio não duplica, e o heartbeat e o pull respondem. O
     `PDV.exe` aberto sobre esse banco manda o heartbeat sozinho.
   - 224 testes; duas regras verificadas por mutação.
+- [x] **Serviço fiscal em C#** (`apps/fiscal-net`, DFe.NET): substituiu o
+      serviço em Python. Ver `docs/fiscal_architecture.md`.
 - [ ] **C5b-3. Comandos remotos** (desconto e cancelamento pelo painel,
       assinados).
 - [ ] **C6. O resto da paridade.**
@@ -232,6 +234,45 @@ A arquitetura existe para que a tela seja testável:
       de `ITefProvider`: CliSiTef por P/Invoke, PayGo ou TEF Dial por
       arquivos. Mais o roteiro de homologação do provedor, rodado contra o
       caixa.
+
+## O que falta para não sobrar Python (25/09/2026)
+
+**Já em C#.** Três partes fecham com testes, contratos e prova no binário ou
+no contêiner:
+
+- **PDV — fundação:** auditoria, venda com TEF (simulado), item por unidade
+  com baixa por ficha técnica, login por PIN com freio, cofre, ativação e
+  sincronização (push, pull e heartbeat).
+- **PDV — tela:** WinUI de login, venda e ativação.
+- **Serviço fiscal inteiro** (`apps/fiscal-net`). O serviço em Python foi
+  removido.
+
+**Ainda em Python: o PDV do balcão** (`apps/desktop-pdv`, ~16 mil linhas).
+Na ordem em que dá para trocar:
+
+| # | Fase | Python de hoje | O que é |
+|---|---|---|---|
+| 1 | C5b-3 | `remote/` (~1.300) | Comandos remotos do painel: desconto e cancelamento assinados, inbox idempotente, aceite no caixa |
+| 2 | C3c | `hardware/scale/` (~700), `services/pricing.py`, parte de `authorization.py` | Item por peso com a balança serial, cancelamento de item e desconto com autorização de gerente |
+| 3 | C6a | `services/cash_session.py` | Abertura e fechamento cego do caixa |
+| 4 | C6b | `services/cashback.py`, `prepaid.py`, `credit_account.py`, `discount_tiers.py` (~700) | Cashback, pré-pago, fiado e níveis de desconto (a decisão cashback × desconto está no `plan.md`) |
+| 5 | C6c | `hardware/printer/` (~620), `fiscal/danfe.py` (~440) | Impressora ESC/POS, cupom e DANFE NFC-e 80 mm |
+| 6 | C6d | `fiscal/cloud.py`, `fiscal/service.py`, `fiscal/gateway.py` (~500) | NFC-e pedida pelo caixa à nuvem, e a **contingência offline** com série própria e QR Code v3 assinado com o A1 (o DFe.NET já gera) |
+| 7 | C6e | `edge/` (~4.000) + `edge/webapp` | Servidor do salão para os celulares dos garçons, KDS, mesas, contas e descoberta na rede, em ASP.NET Core dentro do PDV. O app web do garçom é reaproveitado como está |
+| 8 | C6f | `ui/salon_panel.py`, `ui/tables_dialog.py`, `ui/dialogs.py`, `ui/remote_dialog.py`, `services/staff_report.py` (~2.300) | Telas do salão, mesas, relatórios de equipe e diálogos que faltam no WinUI |
+| 9 | C7a | `data/database.py` (~800), `data/seed.py` | Migrations em C#: criar e atualizar o banco sem o Python, e a demonstração |
+| 10 | C7b | `provisioning/detection.py`, `selftest.py`, `smoke.py` (~1.000) | Detecção de periféricos, autoteste do pacote e fumaça pós-instalação |
+| 11 | C7c | `setup_wizard.py`, `main.py`, `packaging/` | O instalador entrega o `PDV.exe` .NET self-contained, com reparo e atualização, e o `harden.ps1` continua |
+| 12 | C7d | `apps/desktop-pdv/tests/test_*_contract.py`, `apps/pdv-net/crosscheck.py` | Os contratos gerados pelo Python viram arquivos congelados, e o crosscheck sai |
+| 13 | C7e | `apps/cloud-api/scripts/e2e.py`, `e2e_terminal.py` | O ponta a ponta do CI passa a usar o `tools/CloudE2E` em C# contra a imagem Docker |
+| 14 | — | `apps/desktop-pdv` inteiro e o job "PDV (Windows, Python)" do CI | Removidos quando 1 a 13 estiverem no ar e uma loja tiver rodado o PDV em C# |
+
+**Fora do porte e dependente de terceiros:** TEF real (escolher o provedor) e
+a homologação fiscal na SEFAZ-RJ (certificado A1 e inscrição da loja).
+
+**Não é Python e não entra no "tudo C#"** sem uma decisão à parte: a
+retaguarda e o painel web são TypeScript (Next.js), no Coolify, e o app do
+garçom é web.
 
 ## TEF: o que já está decidido
 

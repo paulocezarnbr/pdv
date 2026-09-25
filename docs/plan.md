@@ -626,12 +626,18 @@ paralelo.
       completo e chama um serviço fiscal interno com dupla idempotência. O PDV
       só entra em contingência quando a conexão nem foi estabelecida; timeout
       ambíguo vira `unknown` e bloqueia emissão duplicada.
-- [x] Serviço fiscal Python privado, sem porta pública, token em comparação
-      constante, cofre por referência sem path traversal e estado durável. O
-      motor permanece travado para produção até QR Code v3/NT 2025.002 e RJ/SVRS
-      passarem em homologação — não inventa XML nem tributação.
-- [x] Interface `FiscalProvider` no Next.js: permite substituir PyNFe por motor
-      JavaScript ou API fiscal sem alterar contratos, séries ou o PDV.
+- [x] Serviço fiscal privado **em C# (`apps/fiscal-net`, DFe.NET)**, no
+      lugar do serviço em Python, que nunca passou da trava. Não tem porta
+      pública. O token é comparado em tempo constante, o cofre é por
+      referência (sem path traversal) e o estado é durável.
+  - **NFC-e 4.00:** montada, assinada e validada no XSD oficial.
+  - **QR Code v3 por padrão:** o CSC é opcional.
+  - **Reconciliação por chave na SEFAZ:** retransmite o mesmo XML assinado.
+  - **Certificado barrado no TLS:** descarta o XML sem queimar o número.
+  - **Produção:** segue travada nas duas pontas até a homologação RJ/SVRS com
+    o A1 real. Detalhes em `docs/fiscal_architecture.md`.
+- [x] Interface `FiscalProvider` (`HttpFiscalProvider`) no Next.js: o motor
+      fiscal pode ser trocado sem alterar contratos, séries ou o PDV.
 - [x] Numeração de série por PDV, nunca compartilhada entre estações. A reserva
       usa `BEGIN IMMEDIATE`, chave única por terminal/modelo/série/número e
       devolve o mesmo documento quando a mesma venda é reenviada.
@@ -758,6 +764,97 @@ paralelo.
 - [ ] Contagem e entrada de compra também no caixa (hoje só pelo painel).
 
 ---
+
+### Decisões e pendências anotadas (25/09/2026)
+
+#### Cashback: desconto ou pagamento?
+
+**Hoje é pagamento.** O resgate grava `payments.method = 'cashback'`, e a NFC-e
+sai com `tPag 19` ("programa de fidelidade, cashback, crédito virtual"). O
+valor da nota (`vNF`) inclui a parte paga com cashback.
+
+**A alternativa é desconto.** O resgate viraria `vDesc` rateado nos itens, e
+o `vNF` cai.
+
+| | Pagamento (`tPag 19`) | Desconto (`vDesc`) |
+|---|---|---|
+| Base de ICMS e receita bruta do Simples | Não reduz: tributa-se o valor cheio | Reduz, se o desconto for **incondicional** |
+| Leitura fiscal | Cashback como moeda da loja, passivo que se extingue no resgate | Cashback como abatimento no preço |
+| Risco | Pagar imposto sobre o que a loja devolveu ao cliente | O fisco entender o desconto como **condicional** (dependia de compra anterior) e glosar a redução da base |
+| O que muda no sistema | Nada | O resgate sai do fechamento de pagamento e vai para o desconto do pedido, com rateio e auditoria como o desconto autorizado |
+
+- [ ] **Decisão do contador da loja**, por escrito, antes de ligar a produção
+      fiscal. A escolha muda o imposto pago, não só o XML.
+- [ ] Qualquer que seja a escolha, o ledger de cashback continua igual
+      (crédito, resgate FIFO, validade). Muda só como o resgate aparece na
+      venda e na nota.
+- Não confundir com o **cashback da Reforma Tributária** (LC 214/2025,
+      devolução de CBS/IBS a famílias de baixa renda). É do governo, não da
+      loja, e não passa por aqui.
+
+#### Novas formas de pagamento pelo painel web
+
+Hoje as formas são fixas no código, em três lugares que precisam concordar:
+
+- o PDV (`PaymentMethods`);
+- a retaguarda (`FISCAL_PAYMENT_METHODS`, validação do sync);
+- o emissor fiscal (`PaymentCode` → `tPag`).
+
+Um nome novo gravado no PDV faria o lote de sync ser recusado.
+
+- [ ] **Tabela `payment_methods` por tenant**, editável pelo dono no painel:
+  - nome na tela e código interno;
+  - `tPag` da SEFAZ, escolhido de uma lista fechada, com `xPag` obrigatório
+    para `99`;
+  - se exige o grupo `card` (e se é TEF);
+  - se abre a gaveta;
+  - se aceita troco;
+  - ativo/inativo.
+- [ ] **Distribuição ao caixa pelo pull de cadastro**, como `products`. O PDV
+      só oferece o que está ativo.
+- [ ] **O sync e o emissor aceitam** o código cadastrado para o tenant, e não
+      mais uma lista fixa. Cada um valida contra a tabela do próprio tenant.
+- [ ] **Formas de sistema não editáveis:** dinheiro, cartões e PIX, que têm
+      regra própria (TEF, gaveta, `card`). O dono só acrescenta, por exemplo
+      vale-refeição (`tPag 10/11`), voucher de parceiro ou "pagamento
+      posterior".
+- [ ] **Auditoria em `panel_admin_events`.** Desativar uma forma não apaga
+      histórico: vendas antigas continuam apontando para ela.
+
+#### Mensagens que revelam a arquitetura interna
+
+Várias respostas mostram nomes internos a quem não precisa saber: variáveis de
+ambiente, componentes, tecnologias e caminhos. Isso ajuda quem sonda o
+sistema e confunde o lojista.
+
+- [ ] **Respostas da API ao terminal e ao painel:**
+  - "Serviço fiscal interno não configurado." / "Serviço fiscal indisponível"
+    (`provider.ts`);
+  - "o motor fiscal não foi homologado" (`registry.ts`, `service.ts`);
+  - "Serviço fiscal não configurado na retaguarda." (blockers do painel);
+  - motivos do emissor com nomes de variável: `FISCAL_PRODUCTION_ENABLED`,
+    `FISCAL_ENGINE=gate` (`NfceEngine`, `HomologationGateEngine`);
+  - a referência do cofre (`loja-centro/a1.pfx`) no motivo que chega ao
+    caixa.
+
+  O correto é trocar por mensagens de negócio ("emissão de nota
+  indisponível; a venda está salva") e manter o detalhe só no log do
+  servidor e na tela do **dono**.
+- [ ] **`/api/health` público:** hoje expõe `service`, `version`,
+      `uptime_seconds`, `tenant_isolation` e o estado fiscal. Deixar só
+      `ok` para quem não é o healthcheck interno. O detalhe fica atrás de
+      token ou só na rede do Coolify.
+- [ ] **PDV:** as mensagens de abertura mostram o caminho do banco e do log
+      (`C:\ProgramData\...`) e o nome de exceções. O operador vê "chame o
+      suporte, código X"; o caminho vai para o log.
+- [ ] **Cabeçalhos:** `X-Idempotent-Replay` no `/api/sync/push` só serve ao
+      terminal. Avaliar se sai ou fica restrito ao token de dispositivo (hoje
+      já exige). Conferir que nenhuma resposta traz `x-powered-by` (o Next já
+      está com `poweredByHeader: false`).
+- [ ] **Regra para o que vier:** mensagem de erro para lojista ou operador
+      nunca cita variável de ambiente, arquivo, biblioteca, linguagem, banco
+      ou serviço interno. Um teste varre as mensagens de `ApiError` e os
+      motivos do emissor atrás desses nomes.
 
 ## 4. Invariantes do Sistema (nunca violar)
 
