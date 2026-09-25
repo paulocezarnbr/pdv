@@ -42,6 +42,7 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
             <Grid ColumnSpacing="8">
@@ -56,7 +57,21 @@
                 <Button Grid.Column="1" AutomationProperties.AutomationId="Scan" Content="Buscar"
                         Command="{x:Bind ViewModel.ScanCommand}" />
             </Grid>
-            <ListView Grid.Row="1" AutomationProperties.AutomationId="Results" MaxHeight="200"
+            <!-- O mostrador da balança: o item pesado cobra o peso estável que está aqui. -->
+            <Border Grid.Row="1" Padding="12,8" CornerRadius="6" BorderThickness="1"
+                    Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <FontIcon Glyph="&#xE7EF;" FontSize="16" />
+                    <TextBlock AutomationProperties.AutomationId="Scale" Text="{x:Bind ViewModel.ScaleText, Mode=OneWay}"
+                               FontSize="16" FontFamily="Consolas" VerticalAlignment="Center" />
+                    <TextBlock Text="estável" VerticalAlignment="Center"
+                               Foreground="{ThemeResource SystemFillColorSuccessBrush}"
+                               Visibility="{x:Bind ViewModel.ScaleStable, Mode=OneWay}" />
+                </StackPanel>
+            </Border>
+
+            <ListView Grid.Row="2" AutomationProperties.AutomationId="Results" MaxHeight="200"
                       ItemsSource="{x:Bind ViewModel.Results}" IsItemClickEnabled="True" ItemClick="OnResultClick"
                       SelectionMode="None">
                 <ListView.ItemTemplate>
@@ -65,15 +80,16 @@
                     </DataTemplate>
                 </ListView.ItemTemplate>
             </ListView>
-            <ListView Grid.Row="2" AutomationProperties.AutomationId="Lines" ItemsSource="{x:Bind ViewModel.Lines}"
-                      SelectionMode="None" BorderThickness="1"
+            <ListView x:Name="LinesList" Grid.Row="3" AutomationProperties.AutomationId="Lines"
+                      ItemsSource="{x:Bind ViewModel.Lines}" SelectionMode="Single"
+                      SelectionChanged="OnLineSelected" BorderThickness="1"
                       BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
                 <ListView.ItemTemplate>
                     <DataTemplate x:DataType="app:SaleLine">
                         <Grid ColumnSpacing="12" Padding="0,4">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="60" />
+                                <ColumnDefinition Width="90" />
                                 <ColumnDefinition Width="110" />
                             </Grid.ColumnDefinitions>
                             <TextBlock Text="{x:Bind Name}" />
@@ -93,6 +109,27 @@
                 <TextBlock Text="Total" Style="{StaticResource CaptionTextBlockStyle}" />
                 <TextBlock AutomationProperties.AutomationId="Total" Text="{x:Bind ViewModel.Total, Mode=OneWay}"
                            FontSize="40" FontWeight="SemiBold" />
+                <TextBlock AutomationProperties.AutomationId="Discount" Text="{x:Bind ViewModel.Discount, Mode=OneWay}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+
+                <!-- Cancelar e descontar pedem o PIN de quem pode liberar. -->
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition /><ColumnDefinition />
+                    </Grid.ColumnDefinitions>
+                    <Button AutomationProperties.AutomationId="CancelItem" Content="F4  Cancelar item"
+                            HorizontalAlignment="Stretch" Command="{x:Bind ViewModel.CancelItemCommand}">
+                        <Button.KeyboardAccelerators>
+                            <KeyboardAccelerator Key="F4" />
+                        </Button.KeyboardAccelerators>
+                    </Button>
+                    <Button Grid.Column="1" AutomationProperties.AutomationId="Discount6" Content="F6  Desconto"
+                            HorizontalAlignment="Stretch" Command="{x:Bind ViewModel.DiscountCommand}">
+                        <Button.KeyboardAccelerators>
+                            <KeyboardAccelerator Key="F6" />
+                        </Button.KeyboardAccelerators>
+                    </Button>
+                </Grid>
 
                 <TextBox AutomationProperties.AutomationId="CashReceived" Header="Recebido em dinheiro"
                          PlaceholderText="valor exato"

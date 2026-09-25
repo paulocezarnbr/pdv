@@ -190,6 +190,28 @@ public partial class App : Application
         Exit();
     }
 
+    /// <summary>
+    /// A balança que a detecção gravou em <c>device_settings</c>, ou a simulada.
+    /// Porta que não abre vira aviso no mostrador, não um caixa que não abre:
+    /// a loja continua vendendo por unidade.
+    /// </summary>
+    private static Core.Scale.ScaleMonitor StartScale(PdvDatabase database)
+    {
+        var settings = Data.Hardware.ScaleSettings.Load(database);
+        Core.Scale.IScaleDriver driver;
+        try
+        {
+            driver = settings.BuildDriver();
+        }
+        catch (Core.Scale.ScaleException error)
+        {
+            CrashLog.Write("balança", error);
+            driver = new Core.Scale.SimulatedScale();
+        }
+        return new Core.Scale.ScaleMonitor(
+            driver, TimeSpan.FromMilliseconds(settings.PollIntervalMilliseconds), settings.StableReadings);
+    }
+
     /// <summary>O caixa depois do login: segredo do terminal, auditoria, TEF.</summary>
     /// <remarks>
     /// TEF pelo simulador até o provedor ser escolhido (docs/port_csharp.md):
@@ -204,14 +226,32 @@ public partial class App : Application
             var journal = new SqliteTefJournal(path);
             var tef = new TefCoordinator(new TefSimulator(), journal);
             var terminal = profile.Identity;
-            _window!.ShowCounter(new SaleViewModel(
+            var scale = StartScale(database);
+            var sale = new SaleViewModel(
                 new ItemRegistration(database, terminal, ledger),
                 new Catalog(database.Connection, profile.TenantId),
                 new Checkout(database, terminal, ledger, tef),
                 identity,
                 token => tef.RecoverPendingAsync(
-                    entry => SaleRepository.WasRecorded(database.Connection, entry.TransactionId), token)),
-                _sync);
+                    entry => SaleRepository.WasRecorded(database.Connection, entry.TransactionId), token),
+                new SaleAdjustments(database, terminal, ledger),
+                new StaffAuthentication(database, profile.TenantId),
+                () => scale.LastStable);
+
+            // Os eventos saem da thread da balança; a tela só é tocada pela dela.
+            var ui = _window!.DispatcherQueue;
+            scale.ReadingReceived += reading => ui.TryEnqueue(() => sale.ShowReading(reading));
+            scale.WeightChanged += () => ui.TryEnqueue(() => sale.ShowReading(
+                new Core.Scale.ScaleReading(Core.Scale.ScaleStatus.Unstable, 0, "", DateTimeOffset.UtcNow)));
+            scale.ErrorOccurred += message =>
+            {
+                CrashLog.Write($"balança: {message}", null);
+                ui.TryEnqueue(() => sale.ShowScaleError(message));
+            };
+            scale.Start();
+            _window.Closed += (_, _) => scale.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(2));
+
+            _window.ShowCounter(sale, _sync);
         }
         catch (Exception error) when (error is SecretVaultException or PdvDatabaseException)
         {

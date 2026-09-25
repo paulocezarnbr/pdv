@@ -81,6 +81,21 @@ with db.transaction() as c:
     c.execute("INSERT INTO products (id, tenant_id, store_id, sku, barcode, name, pricing_mode, price_cents, is_active, updated_at) "
               "VALUES ('p-1', '11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222222', "
               "'F1', '7890000000011', 'Fatia de torta', 'unit', 1450, 1, 'x')")
+    # Gerente com PIN e teto de 30%, e uma torta por quilo com ficha, para a
+    # balança simulada (847 g), o desconto e o cancelamento.
+    c.execute("INSERT INTO users (id, tenant_id, name, login, role, pin_hash, can_authorize, max_discount_percent, is_active, updated_at) "
+              "VALUES ('u-2', '11111111-1111-1111-1111-111111111111', 'Bruno Gerente', 'bruno', 'manager', ?, 1, '30', 1, 'x')",
+              (hash_pin('730514'),))
+    c.execute("PRAGMA defer_foreign_keys = ON")
+    c.execute("INSERT INTO inventory_items (id, tenant_id, store_id, name, unit, balance_mg, min_stock_mg, avg_cost_cents_per_kg, updated_at) "
+              "VALUES ('i-1', '11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222222', 'Farinha', 'mg', 5000000, 0, 520, 'x')")
+    c.execute("INSERT INTO recipes (id, tenant_id, product_id, base_qty_g, yield_factor, updated_at) "
+              "VALUES ('r-1', '11111111-1111-1111-1111-111111111111', 'p-2', 1000, '1', 'x')")
+    c.execute("INSERT INTO recipe_lines (id, recipe_id, inventory_item_id, qty_per_base_mg, waste_percent, updated_at) "
+              "VALUES ('l-1', 'r-1', 'i-1', 250000, '0', 'x')")
+    c.execute("INSERT INTO products (id, tenant_id, store_id, sku, barcode, name, pricing_mode, price_cents, tare_grams, recipe_id, is_active, updated_at) "
+              "VALUES ('p-2', '11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222222', "
+              "'T1', '2000000000017', 'Torta por quilo', 'weight', 4990, 0, 'r-1', 1, 'x')")
 db.close()
 "@
 # Por arquivo, e não por -c: o PowerShell 5.1 come as aspas duplas ao passar
@@ -206,7 +221,88 @@ try {
     elseif ($tef -notmatch 'Transação aprovada') { $failures += "débito: a conversa do TEF não apareceu ('$tef')" }
     else { Write-Host 'ok  venda no débito, com a conversa do TEF na tela' }
 
-    # 5. ativação pela tela, contra uma retaguarda de mentira em localhost: o
+    # 5. item pesado pela balança simulada (847 g), desconto de 10% com o PIN
+    #    do gerente e cancelamento do item, pelos diálogos da tela.
+    $deadline = (Get-Date).AddSeconds(15)
+    do { $scale = Text (Find $window 'Scale'); Start-Sleep -Milliseconds 200 } while ($scale -notmatch '0,847' -and (Get-Date) -lt $deadline)
+    if ($scale -notmatch '0,847 kg') { $failures += "balança: o mostrador diz '$scale'" }
+    else { Write-Host 'ok  balança simulada no mostrador' }
+
+    $deadline = (Get-Date).AddSeconds(15)
+    do {
+        $query.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue('2000000000017')
+        Click (Find $window 'Scan')
+        Start-Sleep -Milliseconds 500
+        $total = Text (Find $window 'Total')
+    } while ($total -notmatch '42,27' -and (Get-Date) -lt $deadline)
+    if ($total -notmatch '42,27') { $failures += "peso: esperado R$ 42,27 por 847 g, veio '$total'" }
+    else { Write-Host 'ok  item pesado cobra o peso estável' }
+
+    function Named($name, [int] $seconds = 10) {
+        $condition = New-Object System.Windows.Automation.PropertyCondition($A::NameProperty, $name)
+        $deadline = (Get-Date).AddSeconds($seconds)
+        do {
+            # O ContentDialog abre numa camada própria da janela.
+            $found = $window.FindFirst($Tree::Descendants, $condition)
+            if (-not $found) { Start-Sleep -Milliseconds 200 }
+        } while (-not $found -and (Get-Date) -lt $deadline)
+        if (-not $found) { throw "Botão '$name' não apareceu em $seconds s." }
+        return $found
+    }
+    function SetText($element, [string] $text, [string] $what) {
+        $deadline = (Get-Date).AddSeconds(5)
+        while ($true) {
+            try { $element.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue($text); return }
+            catch {
+                if ((Get-Date) -gt $deadline) { throw "$what recusou o texto: $($_.Exception.Message)" }
+                Start-Sleep -Milliseconds 250
+            }
+        }
+    }
+    function Answer([string] $text) {
+        SetText (Find $window 'DialogText') $text 'a caixa de texto do diálogo'
+        Click (Named 'Confirmar')
+        Start-Sleep -Milliseconds 400
+    }
+    function Authorize([string] $login, [string] $pin) {
+        # A caixa de seleção editável guarda o texto num campo interno.
+        $combo = Find $window 'AuthorizerLogin'
+        $edit = $combo.FindFirst($Tree::Descendants,
+            (New-Object System.Windows.Automation.PropertyCondition($A::ControlTypeProperty, [System.Windows.Automation.ControlType]::Edit)))
+        SetText $(if ($edit) { $edit } else { $combo }) $login 'o login do diálogo de autorização'
+        SetText (Find $window 'AuthorizerPin') $pin 'o PIN do diálogo de autorização'
+        Click (Named 'Autorizar')
+        Start-Sleep -Milliseconds 600
+    }
+    function NoticeText {
+        ((Find $window 'Notice').FindAll($Tree::Descendants, [System.Windows.Automation.Condition]::TrueCondition) |
+            ForEach-Object { $_.Current.Name }) -join ' '
+    }
+
+    Click (Find $window 'Discount6')
+    Answer '10'
+    Authorize 'bruno' '730514'
+    Answer 'cliente fiel'
+    $deadline = (Get-Date).AddSeconds(10)
+    do { $total = Text (Find $window 'Total'); Start-Sleep -Milliseconds 200 } while ($total -notmatch '38,04' -and (Get-Date) -lt $deadline)
+    $message = NoticeText
+    if ($total -notmatch '38,04' -or $message -notmatch 'autorizado por Bruno Gerente') { $failures += "desconto: total '$total', aviso '$message'" }
+    else { Write-Host 'ok  desconto de 10% com o PIN do gerente' }
+
+    $line = (Find $window 'Lines').FindFirst($Tree::Descendants,
+        (New-Object System.Windows.Automation.PropertyCondition($A::ControlTypeProperty, [System.Windows.Automation.ControlType]::ListItem)))
+    $line.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
+    Start-Sleep -Milliseconds 300
+    Click (Find $window 'CancelItem')
+    Answer 'cliente desistiu'
+    Authorize 'bruno' '730514'
+    $deadline = (Get-Date).AddSeconds(10)
+    do { $total = Text (Find $window 'Total'); Start-Sleep -Milliseconds 200 } while ($total -notmatch '0,00' -and (Get-Date) -lt $deadline)
+    $message = NoticeText
+    if ($total -notmatch '0,00' -or $message -notmatch 'Item cancelado') { $failures += "cancelamento: total '$total', aviso '$message'" }
+    else { Write-Host 'ok  cancelamento do item com o PIN do gerente' }
+
+    # 6. ativação pela tela, contra uma retaguarda de mentira em localhost: o
     #    caixa grava no banco novo, reinicia sozinho e volta com a loja.
     Stop-Process -Id $process.Id -Force
     $process.WaitForExit(10000) | Out-Null
@@ -290,4 +386,4 @@ if ($failures.Count -gt 0) {
     }
     exit 1
 }
-Write-Host 'Caixa: ok (login, venda, TEF e ativação)'
+Write-Host 'Caixa: ok (login, venda, TEF, balança, desconto, cancelamento e ativação)'

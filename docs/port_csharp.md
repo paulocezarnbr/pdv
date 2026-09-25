@@ -110,8 +110,53 @@ A arquitetura existe para que a tela seja testável:
     `ingredients`) e `stock_movements` sobem com as chaves do
     `push-day.json`.
   - **Venda completa.** Item mais cartão, de ponta a ponta. 121 testes.
-- [ ] **C3c. Item por peso** (com o quadro cru da balança), **cancelamento de
-      item e desconto** com autorização.
+- [x] **C3c. Item por peso, cancelamento de item e desconto com autorização.**
+  - **Balança** (`Pdv.Core.Scale`). Toledo Prix 3, Filizola e Urano, conferidas
+    quadro a quadro contra `contracts/scale-weighing.json`, gerado pelo
+    Python (`tests/test_scale_contract.py`). O contrato fixa as manias que
+    divergiriam em silêncio:
+    - o `strip()` do Python, que também tira 0x1C–0x1F;
+    - o quadro cru gravado com `backslashreplace`;
+    - os 5 dígitos finais na Toledo e os 5 iniciais na Filizola;
+    - o último quadro completo do buffer, cortado em 4096 bytes.
+  - **Leitura.** O peso só vale depois de 3 leituras estáveis idênticas, e o
+    leitor roda fora da thread da tela. A `SerialScale` usa
+    `System.IO.Ports`. Sem balança detectada em `device_settings`, entra a
+    simulada, e a porta que não abre vira aviso no mostrador.
+  - **Item pesado** (`RegisterWeighedItem`). Tara descontada, preço por peso
+    `ROUND_HALF_UP` uma vez, e o quadro cru no item e na auditoria. Os eventos
+    `weight_captured` e `item_registered` vão com as chaves do
+    `push-day.json`. Diferente do Python, nada fica gravado quando a tara
+    passa do peso (lá sobrava um pedido vazio).
+  - **Cancelamento** (`SaleAdjustments.CancelItem`).
+    - Só gerente, como no Python: o PIN do proprietário não libera.
+    - O item recebe `canceled_at` e sobe como `update` com `client_uuid`
+      novo.
+    - O estoque volta por movimento de ajuste, e o evento vai como
+      `critical`, com quem pediu e quem liberou.
+  - **Desconto** (`ApplyDiscount`).
+    - É percentual sobre o subtotal e substitui o anterior.
+    - Arredonda "meio para o par", como o `quantize` do Python, e fica
+      gravado em centavos.
+  - **Regras a mais que o Python.**
+    - O papel, o poder de autorizar e o teto de desconto são conferidos de
+      novo dentro da transação, contra o cadastro de agora: um gerente
+      desativado ou com teto reduzido depois do PIN não libera nada.
+    - O desconto nunca passa do subtotal depois de um cancelamento; a NFC-e
+      rateia o desconto pelos itens.
+  - **Tela.** Mostrador da balança, F4 (cancelar o item marcado) e F6
+    (desconto), com o diálogo de login e PIN. O diálogo confere com o freio,
+    mostra o motivo da recusa e continua aberto. O `ui-smoke.ps1` pesa 847 g
+    na balança simulada, dá 10% com o PIN do gerente e cancela o item, no
+    `PDV.exe`.
+  - 327 testes. Nove regras foram verificadas por mutação:
+    - papel, `can_authorize` e teto;
+    - sinal do estorno;
+    - peso instável;
+    - teto do desconto sobre o subtotal;
+    - dígitos da Toledo;
+    - estabilidade;
+    - o freio no papel errado.
 - [ ] **C4. Interface (WinUI 3).**
   - [x] **C4.0.** Casca WinUI 3 *unpackaged* e *self-contained*, que compila
         e abre.
@@ -241,9 +286,10 @@ A arquitetura existe para que a tela seja testável:
 no contêiner:
 
 - **PDV — fundação:** auditoria, venda com TEF (simulado), item por unidade
-  com baixa por ficha técnica, login por PIN com freio, cofre, ativação e
-  sincronização (push, pull e heartbeat).
-- **PDV — tela:** WinUI de login, venda e ativação.
+  e por peso (balança serial) com baixa por ficha técnica, cancelamento e
+  desconto com autorização de gerente, login por PIN com freio, cofre,
+  ativação e sincronização (push, pull e heartbeat).
+- **PDV — tela:** WinUI de login, venda (com balança, F4 e F6) e ativação.
 - **Serviço fiscal inteiro** (`apps/fiscal-net`). O serviço em Python foi
   removido.
 
@@ -252,8 +298,8 @@ Na ordem em que dá para trocar:
 
 | # | Fase | Python de hoje | O que é |
 |---|---|---|---|
-| 1 | C3c | `hardware/scale/` (~700), `services/pricing.py`, parte de `authorization.py` | Item por peso com a balança serial, cancelamento de item e desconto com autorização de gerente |
-| 2 | C5b-3 | `remote/` (~1.300) | Comandos remotos do painel: desconto e cancelamento assinados, inbox idempotente, aceite no caixa. Depende da C3c: o comando aplica o mesmo desconto e o mesmo cancelamento |
+| ~~1~~ | ~~C3c~~ | ~~`hardware/scale/`, `services/pricing.py`, parte de `authorization.py`~~ | **Feito** (item por peso, cancelamento e desconto com autorização) |
+| 2 | C5b-3 | `remote/` (~1.300) | Comandos remotos do painel: desconto e cancelamento assinados, inbox idempotente, aceite no caixa. Usa o `SaleAdjustments` da C3c |
 | 3 | C6a | `services/cash_session.py` | Abertura e fechamento cego do caixa |
 | 4 | C6b | `services/cashback.py`, `prepaid.py`, `credit_account.py`, `discount_tiers.py` (~700) | Cashback, pré-pago, fiado e níveis de desconto (a decisão cashback × desconto está no `plan.md`) |
 | 5 | C6c | `hardware/printer/` (~620), `fiscal/danfe.py` (~440) | Impressora ESC/POS, cupom e DANFE NFC-e 80 mm |
