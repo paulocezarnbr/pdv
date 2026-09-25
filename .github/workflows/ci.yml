@@ -231,7 +231,7 @@ jobs:
         shell: python
         run: |
           import glob, sys, xml.etree.ElementTree as ET
-          report = glob.glob("apps/fiscal-net/TestResults/**/fiscal.trx", recursive=True)[0]
+          report = glob.glob("TestResults/**/fiscal.trx", recursive=True)[0]  # o job já roda em apps/fiscal-net
           ns = {"t": "http://microsoft.com/schemas/VisualStudio/TeamTest/2010"}
           counters = ET.parse(report).getroot().find("t:ResultSummary/t:Counters", ns)
           total, executed = int(counters.get("total")), int(counters.get("executed"))
