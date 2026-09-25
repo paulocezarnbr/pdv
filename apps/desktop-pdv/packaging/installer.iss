@@ -17,10 +17,13 @@
 ; ===========================================================================
 
 #define AppName        "PDV Balcao"
-#define AppVersion     "1.1.4"
+#define AppVersion     "1.1.5"
 #define AppPublisher   "ERP Food Service"
 #define AppExeName     "PDV.exe"
 #define SetupExeName   "PDVSetup.exe"
+#define AppGuid        "8F3A6C21-4E7B-4D19-9A2F-5C8E1B7D3A64"
+; O "{{" e escape do [Setup] para UMA chave. No [Code] nao ha escape: la a
+; chave do registro e montada com AppGuid (ver UninstallKey).
 #define AppId          "{{8F3A6C21-4E7B-4D19-9A2F-5C8E1B7D3A64}"
 #define DataDir        "{commonappdata}\ERPFood\PDV"
 
@@ -98,7 +101,8 @@ Name: "firewall";   Description: "Liberar a porta do servidor local (app do gar�
 [Files]
 ; Todo o build onedir do PyInstaller: ja inclui o interpretador Python, o Qt
 ; e cada biblioteca de terceiros. Nada e baixado durante a instalacao.
-Source: "..\dist\PDV\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\dist\PDV\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; \
+    Check: not QuickRepair
 
 ; Scripts de manutencao ficam no diretorio protegido: o operador nao pode
 ; edita-los para desfazer o proprio endurecimento.
@@ -114,7 +118,11 @@ Source: "redist\VC_redist.x64.exe"; DestDir: "{tmp}"; \
 
 [Dirs]
 ; Criados com ACL explicita logo depois, pelo harden.ps1.
-Name: "{#DataDir}"
+;
+; `users-modify` e a rede de seguranca: o proprio Inno concede, pelo SID (vale
+; em qualquer idioma do Windows) e sem depender do PowerShell. Se o harden.ps1
+; nao rodar - politica de execucao, antivirus -, o caixa ainda grava a venda.
+Name: "{#DataDir}"; Permissions: users-modify
 Name: "{#DataDir}\logs"
 Name: "{#DataDir}\cupons"
 
@@ -207,18 +215,6 @@ Type: filesandordirs; Name: "{app}"
   --------------------------------------------------------------------------- }
 
 { ---------------------------------------------------------------------------
-  Bloqueio de downgrade.
-
-  Reinstalar versao antiga por cima reintroduz vulnerabilidade ja corrigida e,
-  pior neste sistema, pode rodar um binario que desconhece migrations ja
-  aplicadas no banco da loja - com a fila de sincronizacao cheia de vendas em
-  um esquema que ele nao entende.
-
-  O caminho seguro de rollback e desinstalar (os dados ficam) e instalar a
-  versao desejada, com decisao consciente de quem da suporte.
-  --------------------------------------------------------------------------- }
-
-{ ---------------------------------------------------------------------------
   Conferencia do endurecimento.
 
   O harden.ps1 termina escrevendo "Endurecimento concluido". Sem essa linha no
@@ -245,77 +241,211 @@ begin
       LogPath, mbCriticalError, MB_OK);
 end;
 
-function InstalledVersion(): String;
+{ ---------------------------------------------------------------------------
+  Instalacao existente: deteccao, atualizacao e reparo.
+
+  A versao instalada vem de dois lugares, e os dois sao lidos: o registro do
+  desinstalador (o que o Inno gravou) e o proprio PDV.exe (o que de fato esta
+  no disco). Se divergem, a instalacao anterior ficou pela metade - atualizacao
+  interrompida, arquivo trocado a mao - e o unico reparo honesto e reinstalar
+  os arquivos. Sem registro mas com PDV.exe na pasta padrao, a instalacao e
+  reconhecida pelo executavel.
+
+  Ate a 1.1.4 esta deteccao nunca funcionou: o [Code] montava a chave do
+  registro com o AppId, e o "{{" do AppId e escape so do [Setup]. A chave
+  procurada tinha duas chaves, nao existia, e toda instalacao por cima era
+  tratada como nova - sem bloqueio de downgrade e sem aviso de fechar o caixa.
+
+  O que o lojista escolhe:
+    * versao mais nova neste instalador -> atualizar (e refazer permissoes);
+    * mesma versao -> reparar tudo, ou so as permissoes e o banco (rapido);
+    * versao mais velha neste instalador -> bloqueado. Um binario antigo sobre
+      um banco ja migrado abriria um schema que nao conhece. Para voltar de
+      versao: desinstalar (os dados ficam) e instalar a desejada.
+
+  Nos tres casos o harden.ps1 roda de novo: e ele que devolve ao caixa a
+  escrita na pasta de dados, a falha que motivou tudo isto.
+
+  Instalacao silenciosa: atualiza ou repara tudo. Para so as permissoes:
+      PDV-Setup-1.1.5.exe /SILENT /REPARO=permissoes
+  --------------------------------------------------------------------------- }
+
+var
+  ExistingVersion: String;     { a versao que vale: registro, ou o exe }
+  RegistryVersion: String;     { DisplayVersion do desinstalador }
+  ExeVersion: String;          { versao gravada no PDV.exe instalado }
+  ExistingDir: String;
+  VersionComparison: Integer;  { instalada comparada a esta: <0, 0, >0 }
+  Inconsistent: Boolean;
+  MaintenancePage: TInputOptionWizardPage;
+  QuickRepairIndex: Integer;
+
+function UninstallKey(): String;
+begin
+  Result := 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{' + '{#AppGuid}' + '}_is1';
+end;
+
+function UninstallValue(Name: String): String;
 var
   Value: String;
-  Key: String;
 begin
   Result := '';
-  Key := 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{#AppId}_is1';
-
-  { As duas visoes do registro sao consultadas de proposito. Em InitializeSetup
-    o modo de instalacao 64 bits ainda nao esta decidido, entao HKLM sozinho
-    poderia ler a visao errada e concluir "instalacao nova" onde ha uma
-    instalacao anterior - justamente o caso em que a protecao de downgrade e o
-    aviso de fechar o caixa mais importam. }
-  if RegQueryStringValue(HKLM64, Key, 'DisplayVersion', Value) then
+  { As duas visoes do registro: em InitializeSetup o modo 64 bits ainda nao
+    esta decidido, e ler so uma poderia concluir "instalacao nova". }
+  if RegQueryStringValue(HKLM64, UninstallKey(), Name, Value) then
     Result := Value
-  else if RegQueryStringValue(HKLM32, Key, 'DisplayVersion', Value) then
+  else if RegQueryStringValue(HKLM32, UninstallKey(), Name, Value) then
     Result := Value;
 end;
 
-function InitializeSetup(): Boolean;
+{ -2 quando uma das versoes nao e legivel; senao o sinal de A comparada a B. }
+function CompareVersions(A, B: String): Integer;
 var
-  Existing: String;
-  InstalledVer, ThisVer: Int64;
-  Comparison: Integer;
+  PackedA, PackedB: Int64;
+begin
+  if (not StrToVersion(A, PackedA)) or (not StrToVersion(B, PackedB)) then
+    Result := -2
+  else
+  begin
+    Result := ComparePackedVersion(PackedA, PackedB);
+    if Result > 0 then Result := 1;
+    if Result < 0 then Result := -1;
+  end;
+end;
+
+procedure DetectExistingInstallation();
+var
+  Exe: String;
+begin
+  RegistryVersion := UninstallValue('DisplayVersion');
+  ExistingDir := RemoveBackslashUnlessRoot(UninstallValue('InstallLocation'));
+  if ExistingDir = '' then
+    ExistingDir := ExpandConstant('{commonpf64}\ERPFood\PDV');
+
+  ExeVersion := '';
+  Exe := AddBackslash(ExistingDir) + '{#AppExeName}';
+  if FileExists(Exe) then
+    if not GetVersionNumbersString(Exe, ExeVersion) then
+      ExeVersion := '';
+
+  ExistingVersion := RegistryVersion;
+  if ExistingVersion = '' then
+    ExistingVersion := ExeVersion;
+
+  Inconsistent := False;
+  if RegistryVersion <> '' then
+    Inconsistent := (ExeVersion = '') or (CompareVersions(RegistryVersion, ExeVersion) <> 0);
+
+  VersionComparison := -1;
+  if ExistingVersion <> '' then
+    VersionComparison := CompareVersions(ExistingVersion, '{#AppVersion}');
+
+  Log('Instalacao existente: registro="' + RegistryVersion + '" exe="' + ExeVersion +
+      '" pasta="' + ExistingDir + '"');
+end;
+
+function InitializeSetup(): Boolean;
 begin
   Result := True;
-  Existing := InstalledVersion();
+  DetectExistingInstallation();
 
-  if Existing = '' then
+  if ExistingVersion = '' then
     Exit;  { instalacao nova }
 
-  { Versao gravada em formato inesperado: seguimos, mas sem prometer nada
-    sobre a ordem - melhor atualizar do que travar a loja por um registro
-    estranho. }
-  if (not StrToVersion(Existing, InstalledVer)) or
-     (not StrToVersion('{#AppVersion}', ThisVer)) then
-    Exit;
-
-  Comparison := ComparePackedVersion(InstalledVer, ThisVer);
-
-  if Comparison > 0 then
+  if VersionComparison = 1 then
   begin
-    MsgBox('Versao mais recente ja instalada: ' + Existing + '.' + #13#10 + #13#10 +
+    MsgBox('Versão mais recente já instalada: ' + ExistingVersion + '.' + #13#10 + #13#10 +
            'Instalar a {#AppVersion} por cima seria um downgrade e pode deixar ' +
-           'o banco da loja num formato que esta versao nao entende.' + #13#10 + #13#10 +
-           'Para voltar de versao, desinstale primeiro (os dados sao mantidos).',
+           'o banco da loja num formato que esta versão não entende.' + #13#10 + #13#10 +
+           'Para voltar de versão, desinstale primeiro (os dados são mantidos).',
            mbError, MB_OK);
     Result := False;
-    Exit;
   end;
+end;
 
-  if Comparison = 0 then
+function DatabaseSummary(): String;
+var
+  Size: Integer;
+  Path: String;
+begin
+  Path := ExpandConstant('{#DataDir}\pdv_local.db');
+  if FileSize(Path, Size) then
+    Result := 'Dados da loja: ' + Path + ' (' + IntToStr(Size div 1024) + ' KB).' + #13#10 +
+      'Vendas, fila de sincronização e ativação são sempre preservadas.'
+  else
+    Result := 'Dados da loja: nenhum banco em ' + ExpandConstant('{#DataDir}') + '.';
+end;
+
+function ExeVersionText(): String;
+begin
+  if ExeVersion = '' then
+    Result := 'PDV.exe não encontrado em ' + ExistingDir
+  else
+    Result := ExeVersion;
+end;
+
+procedure InitializeWizard();
+var
+  Heading, Details: String;
+begin
+  QuickRepairIndex := -1;
+  if ExistingVersion = '' then
+    Exit;
+
+  if VersionComparison = 0 then
+    Heading := 'A versão {#AppVersion} já está instalada. O que fazer?'
+  else
+    Heading := 'Há uma versão anterior instalada. Ela será atualizada.';
+
+  Details :=
+    'Versão no registro do Windows: ' + RegistryVersion + #13#10 +
+    'Versão do PDV.exe: ' + ExeVersionText() + #13#10 +
+    'Pasta do programa: ' + ExistingDir + #13#10 +
+    'Este instalador: {#AppVersion}' + #13#10 + #13#10 +
+    DatabaseSummary() + #13#10 + #13#10;
+
+  if Inconsistent then
+    Details := Details +
+      'ATENÇÃO: as duas versões não batem - a instalação anterior ficou pela ' +
+      'metade. Os arquivos do programa serão reinstalados.' + #13#10 + #13#10;
+
+  Details := Details +
+    'Feche o caixa antes de continuar: o PDV aberto será encerrado e uma ' +
+    'venda em andamento seria perdida.';
+
+  MaintenancePage := CreateInputOptionPage(wpWelcome,
+    'Instalação existente encontrada', Heading, Details, True, False);
+
+  if VersionComparison = 0 then
   begin
-    Result := (MsgBox('A versao {#AppVersion} ja esta instalada.' + #13#10 + #13#10 +
-                      'Reinstalar por cima? Os dados da loja serao preservados.',
-                      mbConfirmation, MB_YESNO) = IDYES);
-    Exit;
-  end;
+    MaintenancePage.Add('Reparar tudo: reinstalar os arquivos do programa e refazer as permissões');
+    if not Inconsistent then
+      QuickRepairIndex := MaintenancePage.Add(
+        'Reparar só as permissões e conferir o banco (rápido, não troca arquivos)');
+  end
+  else if VersionComparison = -1 then
+    MaintenancePage.Add('Atualizar de ' + ExistingVersion + ' para {#AppVersion} e refazer as permissões')
+  else
+    MaintenancePage.Add('Reinstalar a versão {#AppVersion} e refazer as permissões');
 
-  MsgBox('Atualizando o PDV de ' + Existing + ' para {#AppVersion}.' + #13#10 + #13#10 +
-         'FECHE O CAIXA antes de continuar: o PDV aberto sera encerrado e uma ' +
-         'venda em andamento seria perdida.' + #13#10 + #13#10 +
-         'O banco de dados, a fila de sincronizacao e a ativacao do terminal ' +
-         'sao preservados.',
-         mbInformation, MB_OK);
+  MaintenancePage.SelectedValueIndex := 0;
+  if (QuickRepairIndex >= 0) and
+     (CompareText(ExpandConstant('{param:REPARO|}'), 'permissoes') = 0) then
+    MaintenancePage.SelectedValueIndex := QuickRepairIndex;
+end;
+
+{ Usado no [Files]: no reparo rapido o programa nao e recopiado. O harden.ps1,
+  sim - e a versao nova dele que corrige as permissoes. }
+function QuickRepair(): Boolean;
+begin
+  Result := (MaintenancePage <> nil) and (QuickRepairIndex >= 0) and
+            (MaintenancePage.SelectedValueIndex = QuickRepairIndex);
 end;
 
 { ---------------------------------------------------------------------------
   Codigo de ativacao para implantacao em massa.
 
-      PDV-Setup-1.1.4.exe /SILENT /ACTIVATIONCODE=A1B2C3D4
+      PDV-Setup-1.1.5.exe /SILENT /ACTIVATIONCODE=A1B2C3D4
 
   Na instalacao interativa isto fica vazio e quem pergunta e o proprio
   PDVSetup.exe, numa caixa de dialogo - o codigo e gerado no painel no momento
@@ -341,7 +471,7 @@ end;
 { ---------------------------------------------------------------------------
   Endereco do painel da retaguarda, para a ativacao.
 
-      PDV-Setup-1.1.4.exe /SILENT /SERVER=painel.minhaloja.com.br /ACTIVATIONCODE=A1B2C3D4
+      PDV-Setup-1.1.5.exe /SILENT /SERVER=painel.minhaloja.com.br /ACTIVATIONCODE=A1B2C3D4
 
   Sem ele o terminal nao tem para onde ativar: o endereco que vinha no codigo
   era de exemplo. Na instalacao interativa o proprio PDVSetup.exe pergunta.

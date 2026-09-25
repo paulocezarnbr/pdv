@@ -203,3 +203,66 @@ def test_the_hardening_proves_the_counter_can_write_its_data() -> None:
 
     assert "Test-Hardening -InstallPath $InstallDir -DataPath $DataDir" in script
     assert "nao consegue gravar em $DataPath" in script
+
+
+def test_a_single_unreadable_file_does_not_stop_the_hardening() -> None:
+    """1.1.4: o icacls escreveu "Acesso negado" (um pdv.log com ACL própria).
+
+    No Windows PowerShell 5.1, stderr redirecionado com 'Stop' vira exceção: o
+    script morreu depois de liberar a pasta de dados e antes de tudo o mais, e
+    o instalador avisou "permissões não aplicadas". O icacls roda com
+    'Continue', cada etapa segue mesmo que outra falhe, e a pasta de dados vem
+    primeiro — é a única cuja falha impede o caixa de abrir.
+    """
+    script = (PACKAGING / "harden.ps1").read_text(encoding="utf-8")
+    invoke = script[script.index("function Invoke-Icacls"):script.index("function Test-UsersCanModify")]
+    assert "$ErrorActionPreference = 'Continue'" in invoke
+    assert "[switch] $BestEffort" in invoke
+
+    main = script[script.index("Assert-Elevated\n", script.index("# ----")):]
+    steps = [main.index(f"Invoke-Step '{name}'") for name in ("pasta de dados", "logs", "programa")]
+    assert steps == sorted(steps), "a pasta de dados precisa vir primeiro"
+    assert "Protect-DataDirectory   -Path" not in main, "etapa solta, fora do Invoke-Step"
+
+
+def test_the_hardening_checks_the_database_files_not_only_the_folder() -> None:
+    script = (PACKAGING / "harden.ps1").read_text(encoding="utf-8")
+    for name in ("'pdv_local.db'", "'pdv_local.db-wal'", "'pdv_local.db-shm'"):
+        assert name in script
+    assert "somente leitura - o caixa nao abriria" in script
+
+
+def test_the_data_folder_is_writable_even_if_powershell_never_runs() -> None:
+    """`users-modify` é concedido pelo próprio Inno, pelo SID."""
+    installer = (PACKAGING / "installer.iss").read_text(encoding="utf-8-sig")
+    assert 'Name: "{#DataDir}"; Permissions: users-modify' in installer
+
+
+def test_the_installer_finds_the_existing_installation_in_the_registry() -> None:
+    """O "{{" do AppId é escape só do [Setup].
+
+    Até a 1.1.4 o [Code] procurava `Uninstall\\{{8F3A…}_is1` — chave que não
+    existe —, e toda instalação por cima era tratada como nova: sem detectar a
+    versão, sem bloquear downgrade, sem oferecer reparo.
+    """
+    installer = (PACKAGING / "installer.iss").read_text(encoding="utf-8-sig")
+    guid = re.search(r'#define AppGuid\s+"([0-9A-F-]{36})"', installer)
+    app_id = re.search(r'#define AppId\s+"(.+)"', installer)
+    assert guid and app_id
+    assert app_id.group(1) == "{{" + guid.group(1) + "}"
+
+    code = installer[installer.index("\n[Code]\n"):]
+    assert "{#AppId}" not in code, "no [Code] a chave vem do AppGuid"
+    assert r"Uninstall\{' + '{#AppGuid}' + '}_is1'" in code
+
+
+def test_the_installer_offers_update_and_repair_with_the_versions_it_found() -> None:
+    installer = (PACKAGING / "installer.iss").read_text(encoding="utf-8-sig")
+    code = installer[installer.index("\n[Code]\n"):]
+    assert "GetVersionNumbersString" in code, "a versão do PDV.exe é lida do arquivo"
+    assert "UninstallValue('DisplayVersion')" in code
+    assert "CreateInputOptionPage" in code
+    assert "Check: not QuickRepair" in installer, "reparo rápido não recopia o programa"
+    # O harden.ps1 é copiado sempre: é a versão nova dele que conserta.
+    harden = next(line for line in installer.splitlines() if line.startswith('Source: "harden.ps1"'))
+    assert "Check:" not in harden

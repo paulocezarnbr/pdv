@@ -229,6 +229,18 @@ a baixar à parte, nenhum prompt de linha de comando.
       subcategoria), a verificação final confere que o caixa grava na pasta
       de dados, o instalador lê `logs\harden.log` e avisa se o script não
       concluiu, e o PDV traduz o erro para o balcão com o comando que corrige.
+- [x] **1.1.5 — atualizar e reparar.** Na 1.1.4 a pasta de dados foi corrigida,
+      mas o script morreu logo depois: um `pdv.log` com ACL própria fez o
+      icacls escrever "Acesso negado" no stderr, e no PowerShell 5.1 isso com
+      `Stop` vira exceção. Agora o icacls roda com `Continue`, cada etapa
+      segue mesmo que outra falhe, a pasta de dados vem primeiro e a
+      verificação final confere também o `.db`, o `-wal` e o `-shm`.
+      O Inno concede `users-modify` na pasta de dados por conta própria. O
+      instalador detecta a instalação existente, lendo a versão do registro e
+      a do `PDV.exe`, e oferece atualizar ou reparar. Essa detecção nunca
+      funcionou antes: a chave do registro era montada com o `{{` do AppId.
+      No CI, o `.iss` é compilado antes do build, e um erro nele aparece em
+      um minuto.
 - [x] **Instalador gerado no CI** (`.github/workflows/installer.yml`): Windows
       limpo, só os pins, VC++ baixado com a assinatura da Microsoft
       conferida, suíte + `--selftest` no binário + Inno Setup, e o `.exe` com

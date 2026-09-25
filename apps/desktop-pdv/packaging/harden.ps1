@@ -50,12 +50,46 @@ function Assert-Elevated {
 }
 
 function Invoke-Icacls {
-    param([string[]] $Arguments)
-    $output = & icacls.exe @Arguments 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        throw "icacls falhou ($LASTEXITCODE): $output"
+    <#
+        -BestEffort: com /T /C, um arquivo que o administrador nao consegue
+        abrir (um log criado pelo operador com ACL propria, por exemplo) faz o
+        icacls terminar com erro depois de tratar todos os outros. Isso vira
+        aviso; quem decide se o essencial ficou certo e o Test-Hardening.
+    #>
+    param([string[]] $Arguments, [switch] $BestEffort)
+
+    # 'Continue' so durante a chamada. No Windows PowerShell 5.1, com 'Stop',
+    # a primeira linha que o icacls escreve no stderr ("Acesso negado") vira
+    # excecao e mata o script no meio. Foi o que aconteceu na 1.1.4: a pasta
+    # de dados ja estava corrigida, e o resto do endurecimento nao rodou.
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $output = & icacls.exe @Arguments 2>&1 | ForEach-Object { "$_" }
+        $code = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previous
+    }
+
+    if ($code -ne 0) {
+        $failed = @($output | Where-Object { $_ -and $_ -notmatch '^(Processados|Successfully processed)' })
+        if (-not $BestEffort) {
+            throw "icacls falhou ($code): $($failed -join ' | ')"
+        }
+        foreach ($line in $failed) { Write-Warning "      icacls: $line" }
     }
     return $output
+}
+
+function Test-UsersCanModify {
+    param($Acl)
+    $grant = $Acl.Access | Where-Object {
+        $_.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value -eq 'S-1-5-32-545' -and
+        $_.AccessControlType -eq 'Allow' -and
+        ($_.FileSystemRights -band [System.Security.AccessControl.FileSystemRights]::Modify) -eq [System.Security.AccessControl.FileSystemRights]::Modify
+    }
+    return [bool] $grant
 }
 
 function Protect-ProgramDirectory {
@@ -65,7 +99,7 @@ function Protect-ProgramDirectory {
     #>
     param([string] $Path)
 
-    Write-Host "[1/4] Protegendo o diretorio do programa: $Path"
+    Write-Host "[3/4] Protegendo o diretorio do programa: $Path"
 
     # /inheritance:r remove as ACEs herdadas. Sem isso, uma permissao ampla
     # herdada da raiz continuaria valendo e o endurecimento seria decorativo.
@@ -79,7 +113,7 @@ function Protect-ProgramDirectory {
         # mas nao troca nenhum arquivo do programa.
         "/grant:r", "${SID_USERS}:(OI)(CI)(RX)",
         '/T', '/C', '/Q'
-    ) | Out-Null
+    ) -BestEffort | Out-Null
 
     # Dono explicito: se o diretorio ficasse com o instalador como dono, um
     # usuario "dono" poderia reescrever a propria ACL (WRITE_DAC implicito).
@@ -88,7 +122,7 @@ function Protect-ProgramDirectory {
     # Windows em ingles; no portugues o grupo e "Administradores", o icacls
     # falhava, o script parava AQUI - antes de liberar a pasta de dados - e o
     # caixa abria com "attempt to write a readonly database".
-    Invoke-Icacls @($Path, '/setowner', $SID_ADMINISTRATORS, '/T', '/C', '/Q') | Out-Null
+    Invoke-Icacls @($Path, '/setowner', $SID_ADMINISTRATORS, '/T', '/C', '/Q') -BestEffort | Out-Null
 
     Write-Host '      OK - usuarios sem permissao de escrita no programa.'
 }
@@ -102,11 +136,16 @@ function Protect-DataDirectory {
     #>
     param([string] $Path)
 
-    Write-Host "[2/4] Configurando o diretorio de dados: $Path"
+    Write-Host "[1/4] Configurando o diretorio de dados: $Path"
 
     if (-not (Test-Path -LiteralPath $Path)) {
         New-Item -ItemType Directory -Path $Path -Force | Out-Null
     }
+
+    # Dono = Administradores antes de mexer na ACL. Um arquivo criado pelo
+    # operador (pdv.log, -wal, -shm) pode ter ACL que nem o administrador
+    # edita - mas o dono sempre consegue reescreve-la.
+    Invoke-Icacls @($Path, '/setowner', $SID_ADMINISTRATORS, '/T', '/C', '/Q') -BestEffort | Out-Null
 
     Invoke-Icacls @($Path, '/inheritance:r', '/Q') | Out-Null
     Invoke-Icacls @(
@@ -115,7 +154,13 @@ function Protect-DataDirectory {
         "/grant:r", "${SID_ADMINISTRATORS}:(OI)(CI)(F)",
         "/grant:r", "${SID_USERS}:(OI)(CI)(M)",
         '/T', '/C', '/Q'
-    ) | Out-Null
+    ) -BestEffort | Out-Null
+
+    # O atributo "somente leitura" no arquivo tambem produz "readonly
+    # database", mesmo com a ACL certa.
+    Get-ChildItem -LiteralPath $Path -Filter 'pdv_local.db*' -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.IsReadOnly } |
+        ForEach-Object { $_.IsReadOnly = $false }
 
     Write-Host '      OK - gravavel pelo operador (necessario para vender).'
     Write-Host '      AVISO: o operador consegue abrir o .db com um editor de SQLite.'
@@ -132,7 +177,7 @@ function Protect-LogDirectory {
     #>
     param([string] $Path)
 
-    Write-Host "[3/4] Tornando os logs append-only: $Path"
+    Write-Host "[2/4] Tornando os logs append-only: $Path"
 
     if (-not (Test-Path -LiteralPath $Path)) {
         New-Item -ItemType Directory -Path $Path -Force | Out-Null
@@ -146,7 +191,7 @@ function Protect-LogDirectory {
         # Permite criar arquivo e acrescentar; nega delete e sobrescrita.
         "/grant:r", "${SID_USERS}:(OI)(CI)(AD,REA,RA,S,RC)",
         '/T', '/C', '/Q'
-    ) | Out-Null
+    ) -BestEffort | Out-Null
 
     Write-Host '      OK - log pode crescer, nao pode ser apagado pelo operador.'
 }
@@ -216,30 +261,57 @@ function Test-Hardening {
     # O outro lado da assimetria: sem escrita na pasta de dados o caixa nem abre
     # ("attempt to write a readonly database"). Foi exatamente o que passou
     # despercebido quando o script parava antes de chegar aqui.
-    $dataAcl = Get-Acl -LiteralPath $DataPath
-    $usersCanWrite = $dataAcl.Access | Where-Object {
-        $_.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value -eq 'S-1-5-32-545' -and
-        $_.AccessControlType -eq 'Allow' -and
-        ($_.FileSystemRights -band [System.Security.AccessControl.FileSystemRights]::Modify) -eq [System.Security.AccessControl.FileSystemRights]::Modify
-    }
-    if (-not $usersCanWrite) {
+    if (-not (Test-UsersCanModify (Get-Acl -LiteralPath $DataPath))) {
         throw "FALHA: o grupo Usuarios nao consegue gravar em $DataPath - o caixa nao abriria"
     }
     Write-Host '  OK - grupo Usuarios grava na pasta de dados.'
+
+    # A pasta certa nao basta: o SQLite grava no .db e cria -wal/-shm ao lado.
+    # Um arquivo com ACL propria (criado antes do endurecimento) ou marcado como
+    # somente leitura da o mesmo "attempt to write a readonly database".
+    foreach ($name in 'pdv_local.db', 'pdv_local.db-wal', 'pdv_local.db-shm') {
+        $file = Join-Path $DataPath $name
+        if (-not (Test-Path -LiteralPath $file)) { continue }
+        if (-not (Test-UsersCanModify (Get-Acl -LiteralPath $file))) {
+            throw "FALHA: o grupo Usuarios nao consegue gravar em $file - o caixa nao abriria"
+        }
+        if ((Get-Item -LiteralPath $file).IsReadOnly) {
+            throw "FALHA: $file esta marcado como somente leitura - o caixa nao abriria"
+        }
+    }
+    Write-Host '  OK - grupo Usuarios grava no banco.'
 }
 
 # ---------------------------------------------------------------------------
 Assert-Elevated
 
-Protect-ProgramDirectory -Path $InstallDir
-Protect-DataDirectory   -Path $DataDir
-Protect-LogDirectory    -Path (Join-Path $DataDir 'logs')
-
-if ($EnableAuditing) {
-    Enable-DatabaseAuditing -DatabasePath (Join-Path $DataDir 'pdv_local.db')
+# Cada etapa roda mesmo que a anterior falhe, e a pasta de dados vem PRIMEIRO:
+# e a unica cuja falha impede o caixa de abrir. Ate a 1.1.4 um erro em
+# qualquer etapa encerrava o script, e as seguintes nunca rodavam.
+$script:warnings = @()
+function Invoke-Step([string] $Name, [scriptblock] $Action) {
+    try {
+        & $Action
+    }
+    catch {
+        Write-Warning "      Etapa '$Name' falhou: $($_.Exception.Message)"
+        $script:warnings += $Name
+    }
 }
 
+Invoke-Step 'pasta de dados' { Protect-DataDirectory -Path $DataDir }
+Invoke-Step 'logs' { Protect-LogDirectory -Path (Join-Path $DataDir 'logs') }
+Invoke-Step 'programa' { Protect-ProgramDirectory -Path $InstallDir }
+if ($EnableAuditing) {
+    Invoke-Step 'auditoria' { Enable-DatabaseAuditing -DatabasePath (Join-Path $DataDir 'pdv_local.db') }
+}
+
+# A verificacao decide, e nao e etapa com aviso: sem escrita no banco o caixa
+# nao abre, e com escrita no programa o endurecimento seria decorativo.
 Test-Hardening -InstallPath $InstallDir -DataPath $DataDir
 
 Write-Host ''
+if ($script:warnings.Count -gt 0) {
+    Write-Host "Avisos nas etapas: $($script:warnings -join ', '). O essencial foi verificado acima."
+}
 Write-Host 'Endurecimento concluido.'

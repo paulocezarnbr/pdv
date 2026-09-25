@@ -98,6 +98,23 @@ jobs:
             Write-Host '::warning::Sem PDV_SIGN_CERT_BASE64: o instalador sai sem assinatura.'
           }
 
+      # O .iss compila? Em um minuto, e não depois de dez de testes e
+      # PyInstaller. Os binários são de mentira: o `/O-` compila o script
+      # inteiro (seções, [Code], ISPP) sem gerar instalador.
+      - name: O instalador compila
+        run: |
+          python packaging/branding.py packaging/assets
+          New-Item -ItemType Directory -Force dist\PDV | Out-Null
+          foreach ($stub in 'PDV.exe', 'PDVSetup.exe') { Set-Content "dist\PDV\$stub" 'stub' }
+          $output = & 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' /O- packaging\installer.iss 2>&1 | ForEach-Object { "$_" }
+          $code = $LASTEXITCODE
+          $output | Out-Host
+          Remove-Item dist -Recurse -Force
+          if ($code -ne 0) {
+            $output | Where-Object { $_ -match 'Error' } | ForEach-Object { Write-Host "::error::$_" }
+            throw "installer.iss nao compila (ISCC $code)"
+          }
+
       - name: Build (testes, binário, autoteste, instalador)
         env:
           QT_QPA_PLATFORM: offscreen

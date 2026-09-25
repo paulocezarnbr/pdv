@@ -160,7 +160,7 @@ O pipeline roda os testes antes de empacotar e **aborta se algum falhar**.
 ```
 dist\PDV\PDV.exe                       o caixa (onedir)
 dist\PDV\PDVSetup.exe                  assistente de instalação
-dist\installer\PDV-Setup-1.1.4.exe     instalador
+dist\installer\PDV-Setup-1.1.5.exe     instalador
 ```
 
 Os dois executáveis dividem o mesmo diretório e, portanto, as mesmas DLLs do Qt
@@ -202,7 +202,7 @@ chama quando a balança é trocada ou o cabo USB muda de porta.
 Implantação em massa:
 
 ```powershell
-.\PDV-Setup-1.1.4.exe /SILENT /ACTIVATIONCODE=A1B2C3D4
+.\PDV-Setup-1.1.5.exe /SILENT /ACTIVATIONCODE=A1B2C3D4
 ```
 
 Na instalação interativa o próprio `PDVSetup.exe` pergunta numa caixa de
@@ -225,6 +225,36 @@ Basta rodar o instalador novo por cima. O `{app}` é substituído; `ProgramData`
 o PDV antes de gravar — daí o aviso para **fechar o caixa** primeiro — e recusa
 downgrade, porque um binário antigo pode não entender migrations já aplicadas
 no banco da loja.
+
+### Instalação existente: atualizar ou reparar
+
+Com o PDV já instalado, o instalador mostra a página **Instalação existente
+encontrada** com o que encontrou:
+
+- a versão no registro do Windows e a versão gravada no próprio `PDV.exe`. Se
+  as duas divergem, a instalação anterior ficou pela metade, e os arquivos são
+  reinstalados;
+- a pasta do programa, e o banco da loja com o tamanho dele, que é sempre
+  preservado.
+
+| Instalado | Opções |
+|---|---|
+| versão anterior | **Atualizar** para a nova e refazer as permissões |
+| mesma versão | **Reparar tudo** (reinstala os arquivos) ou **reparar só as permissões e conferir o banco** (rápido, não troca arquivos) |
+| versão mais nova | bloqueado: downgrade |
+
+Em todos os casos o `harden.ps1` roda de novo. É ele que devolve ao caixa a
+escrita na pasta de dados. Se o PDV abrir com "attempt to write a readonly
+database", rode o mesmo instalador e escolha o reparo. Por linha de comando,
+para suporte remoto:
+
+```powershell
+.\PDV-Setup-1.1.5.exe /SILENT /REPARO=permissoes
+```
+
+Até a 1.1.4 a detecção nunca funcionou: o `[Code]` procurava a chave do
+desinstalador com o `{{` do `AppId`, que só é escape no `[Setup]`. Toda
+instalação por cima era tratada como nova.
 
 A redetecção de periféricos numa atualização só preenche o que estiver vazio.
 Uma balança desligada na hora do update não rebaixa para `simulated` um terminal
