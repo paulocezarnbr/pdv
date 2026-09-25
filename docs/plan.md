@@ -769,9 +769,17 @@ paralelo.
 
 #### Cashback: desconto ou pagamento?
 
-**Hoje é pagamento.** O resgate grava `payments.method = 'cashback'`, e a NFC-e
-sai com `tPag 19` ("programa de fidelidade, cashback, crédito virtual"). O
-valor da nota (`vNF`) inclui a parte paga com cashback.
+**Hoje o modelo é de pagamento, mas o resgate não está ligado.**
+- **Pagamento.** Existe a forma `cashback` (`payments.method`), e o emissor
+  fiscal a leva como `tPag 19` ("programa de fidelidade, cashback, crédito
+  virtual"). Com ela, o valor da nota (`vNF`) inclui a parte paga com
+  cashback.
+- **Resgate.** O serviço (`CashbackService.redeem`) só grava débitos FIFO no
+  `cashback_ledger`, e **nenhuma tela o chama**. O caixa só acumula cashback;
+  o diálogo de pagamento não oferece a forma `cashback`.
+- **Consequência.** A decisão abaixo vem **antes** de ligar o resgate no
+  caixa. Ligá-lo como pagamento exige gravar o débito do ledger e a linha de
+  `payments` na mesma transação do fechamento, como o pré-pago já faz.
 
 **A alternativa é desconto.** O resgate viraria `vDesc` rateado nos itens, e
 o `vNF` cai.
