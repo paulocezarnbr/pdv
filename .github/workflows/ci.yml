@@ -19,7 +19,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    # port/**: o porte para C# (docs/port_csharp.md) roda a suíte inteira
+    # antes de chegar à main.
+    branches: [main, "port/**"]
   pull_request:
   workflow_dispatch:
 
@@ -91,8 +93,7 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
-      # Só a biblioteca padrão: o crosscheck importa o AuditService do PDV em
-      # Python direto do código-fonte, sem pip.
+      # Para o crosscheck: ele importa o PDV em Python direto do código-fonte.
       - uses: actions/setup-python@v5
         with:
           python-version: "3.14"
@@ -102,10 +103,13 @@ jobs:
           PDV_CROSSCHECK_OUT: ${{ runner.temp }}\crosscheck.db
         run: dotnet test --logger "trx;LogFileName=report.trx" --results-directory TestResults
 
-      # A volta do contrato de auditoria: o ledger que o C# gravou, verificado
-      # pelo código do PDV em Python.
-      - name: O PDV em Python aceita o ledger gravado pelo C#
-        run: python crosscheck.py "${{ runner.temp }}\crosscheck.db"
+      # A volta dos contratos: o ledger e o hash de PIN que o C# gravou,
+      # verificados pelo código do PDV em Python. O argon2-cffi é o único
+      # pacote: o mesmo pin do requirements.txt do PDV.
+      - name: O PDV em Python aceita o que o C# gravou
+        run: |
+          python -m pip install argon2-cffi==25.1.0
+          python crosscheck.py "${{ runner.temp }}\crosscheck.db"
 
       - name: Nenhum teste pode ter pulado
         shell: pwsh

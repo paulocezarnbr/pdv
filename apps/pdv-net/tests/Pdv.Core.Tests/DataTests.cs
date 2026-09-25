@@ -91,6 +91,12 @@ public sealed class DataTests : IDisposable
                 ledger.Append(tx, "sale_closed", "user-1", Payload(810), authorizerUserId: "gerente-1");
             });
             ledger.Verify(database.Connection);
+
+            // A volta do contrato de PIN: hash gerado aqui, verificado lá.
+            database.Execute(
+                "INSERT INTO users (id, tenant_id, name, login, role, pin_hash, can_authorize, is_active, updated_at) " +
+                "VALUES ('u-crosscheck', 'tenant-1', 'Cruzado', 'cruzado', 'cashier', $hash, 0, 1, $now)",
+                ("$hash", Pdv.Data.Auth.PinHasher.Hash("480362")), ("$now", Iso.Now()));
             database.Execute("PRAGMA wal_checkpoint(TRUNCATE)");
         }
 

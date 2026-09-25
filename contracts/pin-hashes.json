@@ -1,0 +1,131 @@
+{
+  "comment": "Gerado por apps/desktop-pdv/tests/test_pin_contract.py. Não edite à mão.",
+  "hashes": [
+    {
+      "pin": "480362",
+      "hash": "$argon2id$v=19$m=65536,t=3,p=4$o+DO4gegDHEUyKIJCDVgFQ$g8nwWsTBZh0E/vQEybc6ejUtMtWPCcWtAzshPVYcd6Q",
+      "wrong": [
+        "480363",
+        ""
+      ]
+    },
+    {
+      "pin": "9051774",
+      "hash": "$argon2id$v=19$m=65536,t=3,p=4$+K/b8DD8jbyn4lesRoHptQ$AFGjZCHISZdFNkcd4pXFiDOONoJF7uHqeDYWkEPT9Nk",
+      "wrong": [
+        "9051775",
+        ""
+      ]
+    },
+    {
+      "pin": "205813970462",
+      "hash": "$argon2id$v=19$m=65536,t=3,p=4$XMof9Q2Ez/3mtsXoWqM3sQ$WDIajp82Wt20bQg7HdlXw7eeGJ+wz7VIGrXhYJPwJHA",
+      "wrong": [
+        "205813970463",
+        ""
+      ]
+    }
+  ],
+  "dummy_hash": "$argon2id$v=19$m=65536,t=3,p=4$c29tZXNhbHRzb21lc2FsdA$RdescudvJCsgt3ub+b+dWRWJTmaaJObG",
+  "policy": [
+    {
+      "pin": "480362",
+      "accepted": true,
+      "normalized": "480362"
+    },
+    {
+      "pin": "123456",
+      "accepted": false,
+      "message": "Este PIN é um dos mais tentados. Escolha outro."
+    },
+    {
+      "pin": "654321",
+      "accepted": false,
+      "message": "Este PIN é um dos mais tentados. Escolha outro."
+    },
+    {
+      "pin": "000000",
+      "accepted": false,
+      "message": "Este PIN é um dos mais tentados. Escolha outro."
+    },
+    {
+      "pin": "111111",
+      "accepted": false,
+      "message": "Este PIN é um dos mais tentados. Escolha outro."
+    },
+    {
+      "pin": "12345",
+      "accepted": false,
+      "message": "O PIN precisa de pelo menos 6 dígitos."
+    },
+    {
+      "pin": "1234567890123",
+      "accepted": false,
+      "message": "O PIN pode ter no máximo 12 dígitos."
+    },
+    {
+      "pin": "12a456",
+      "accepted": false,
+      "message": "O PIN deve conter apenas dígitos."
+    },
+    {
+      "pin": " 480362 ",
+      "accepted": true,
+      "normalized": "480362"
+    },
+    {
+      "pin": "135790",
+      "accepted": true,
+      "normalized": "135790"
+    },
+    {
+      "pin": "987654",
+      "accepted": false,
+      "message": "O PIN não pode ser uma sequência de dígitos."
+    },
+    {
+      "pin": "909090",
+      "accepted": false,
+      "message": "O PIN não pode ser dois dígitos alternados."
+    },
+    {
+      "pin": "121212",
+      "accepted": false,
+      "message": "Este PIN é um dos mais tentados. Escolha outro."
+    },
+    {
+      "pin": "246802",
+      "accepted": true,
+      "normalized": "246802"
+    },
+    {
+      "pin": "890123",
+      "accepted": false,
+      "message": "O PIN não pode ser uma sequência de dígitos."
+    },
+    {
+      "pin": "010101",
+      "accepted": false,
+      "message": "O PIN não pode ser dois dígitos alternados."
+    },
+    {
+      "pin": "7777777",
+      "accepted": false,
+      "message": "O PIN não pode ser um único dígito repetido."
+    },
+    {
+      "pin": "5820194",
+      "accepted": true,
+      "normalized": "5820194"
+    }
+  ],
+  "throttle": {
+    "max_attempts": 5,
+    "max_global_attempts": 20,
+    "lockout_base_seconds": 30,
+    "lockout_max_seconds": 300,
+    "max_exponent": 16,
+    "failure_window_seconds": 3600,
+    "global_scope": "*"
+  }
+}

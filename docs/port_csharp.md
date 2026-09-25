@@ -101,9 +101,20 @@ A arquitetura existe para que a tela seja testável:
 - [ ] **C4. Interface (WinUI 3).**
   - [x] **C4.0.** Casca WinUI 3 *unpackaged* e *self-contained*, que compila
         e abre.
-  - [ ] **C4a. Login por PIN.** Argon2id compatível com os hashes do Python
-        (contrato nos dois sentidos) e o freio de tentativas na mesma
-        `auth_throttle`.
+  - [x] **C4a. Login por PIN** (`Pdv.Data.Auth`).
+    - **Argon2id** no formato do `argon2-cffi`. Os hashes do Python
+      (`contracts/pin-hashes.json`) verificam no C#, e o hash do C#
+      verifica no Python (`crosscheck.py`, no CI).
+    - **Política de PIN** com o mesmo veredito e a mesma mensagem do
+      `validate_pin`, caso a caso.
+    - **Freio.** Os mesmos números, na mesma `auth_throttle`, então um
+      bloqueio feito pelo Python vale no C#. Há o piso monotônico contra o
+      relógio do Windows atrasado, e o sucesso não zera o contador global.
+    - **A mais que o Python.** Só aceita `argon2id` e recusa hash com
+      parâmetros absurdos: um `m=4 GiB` plantado travaria o caixa.
+    - **Bug pego pelo contrato.** PIN vazio (Enter sem digitar) derrubava o
+      login com exceção, sem contar a tentativa.
+    - 38 testes; as quatro regras do freio verificadas por mutação.
   - [ ] **C4b.** Tela de login.
   - [ ] **C4c.** Tela de venda e pagamento com a conversa do TEF.
   - [ ] **C4d.** Diálogo de pendências do TEF na abertura.

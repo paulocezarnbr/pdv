@@ -1,8 +1,9 @@
 """Verifica, com o código do PDV em Python, um ledger gravado pelo PDV em C#.
 
-A outra metade do contrato de auditoria: `contracts/audit-chain.json` prova
-que o C# calcula o que o Python calcula; isto prova que o que o C# GRAVA no
-banco o Python aceita — colunas, ordem, formato de data, tudo.
+A outra metade dos contratos: `contracts/audit-chain.json` e
+`contracts/pin-hashes.json` provam que o C# calcula e verifica o que o Python
+calcula; isto prova que o que o C# GRAVA no banco o Python aceita — a cadeia de
+auditoria (colunas, ordem, formato de data) e o hash de PIN (Argon2id).
 
 Uso (o CI faz):
     PDV_CROSSCHECK_OUT=<arquivo.db> dotnet test
@@ -21,6 +22,7 @@ sys.path.insert(0, str(ROOT / "apps" / "desktop-pdv" / "src"))
 from pdv.data.repositories import OutboxRepository  # noqa: E402
 from pdv.domain.models import EntityId  # noqa: E402
 from pdv.services.audit import AuditService  # noqa: E402
+from pdv.services.authorization import _verify  # noqa: E402
 
 # O mesmo segredo e identidade de DataTests.cs.
 SECRET = bytes(range(32))
@@ -41,9 +43,15 @@ def main(path: str) -> int:
             outbox=OutboxRepository(),
             device_secret=SECRET,
         ).verify_chain(connection)
+
+        # PIN: hash Argon2id gerado pelo C#, verificado pelo argon2-cffi.
+        row = connection.execute("SELECT pin_hash FROM users WHERE id = 'u-crosscheck'").fetchone()
+        if row is None or not _verify(row["pin_hash"], "480362") or _verify(row["pin_hash"], "480363"):
+            print("FALHOU: o hash de PIN gravado pelo C# não verifica no Python")
+            return 1
     finally:
         connection.close()
-    print(f"ok: {rows} elos gravados pelo C# verificados pelo PDV em Python")
+    print(f"ok: {rows} elos e o hash de PIN gravados pelo C# verificados pelo PDV em Python")
     return 0
 
 
