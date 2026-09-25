@@ -193,8 +193,31 @@ A arquitetura existe para que a tela seja testável:
     demonstração fica arquivada. A volta do contrato vem pelo
     `crosscheck.py`: o Python abre o terminal que o C# ativou e lê o token no
     cofre. 197 testes, e duas regras verificadas por mutação.
-- [ ] **C5b-2. Sincronização.** Cliente HTTP da nuvem (push do outbox e pull
-      do catálogo, com o mesmo contrato), heartbeat e comandos remotos.
+- [x] **C5b-2. Sincronização** (`Pdv.Data.Sync`).
+  - **Motor.** `OutboxReader`, `SyncEngine` e `HttpSyncTransport` seguem o
+    Python regra por regra:
+    - nada sai da fila sem o veredito da nuvem, e a resposta perdida depois
+      do commit volta como `duplicate`;
+    - a chave de idempotência sai do conteúdo;
+    - status desconhecido é recusa;
+    - rejeitado vai para a quarentena e nunca é apagado;
+    - silêncio sobre um item não é sucesso;
+    - backoff até 5 min, e quarentena depois de 25 tentativas.
+  - **Pull de cadastro.** `users` e `products`, pelo mesmo `map_row`, caso a
+    caso contra `contracts/sync.json`. O tenant é conferido de novo. Nulo
+    mantém o valor local. Uma tabela que não aplica não mexe no cursor.
+  - **Worker.** Cadência de 3/15/30 s e pull a cada 20 ciclos. O heartbeat
+    sai mesmo quando o envio falha. Começa na abertura do caixa, antes do
+    login, com conexão própria ao banco. A tela do caixa mostra a fila e a
+    quarentena.
+  - **Prova contra a retaguarda real.** `tools/CloudE2E` roda um turno com o
+    código do PDV contra Next.js + Postgres: ativa, vende em dinheiro e
+    débito, e os 10 itens voltam aplicados. A nuvem valida a cadeia de
+    auditoria, o reenvio não duplica, e o heartbeat e o pull respondem. O
+    `PDV.exe` aberto sobre esse banco manda o heartbeat sozinho.
+  - 224 testes; duas regras verificadas por mutação.
+- [ ] **C5b-3. Comandos remotos** (desconto e cancelamento pelo painel,
+      assinados).
 - [ ] **C6. O resto da paridade.**
       - Periféricos: balança serial e impressora ESC/POS.
       - NFC-e.

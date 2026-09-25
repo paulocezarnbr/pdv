@@ -16,7 +16,7 @@ public sealed partial class MainWindow : Window
 
     public void ShowLogin(LoginViewModel viewModel) => Host.Content = new LoginPage(viewModel);
 
-    public void ShowCounter(SaleViewModel sale) => Host.Content = new CounterPage(sale);
+    public void ShowCounter(SaleViewModel sale, SyncStatusViewModel sync) => Host.Content = new CounterPage(sale, sync);
 
     public void ShowActivation(ActivationViewModel activation) => Host.Content = new ActivationPage(activation);
 

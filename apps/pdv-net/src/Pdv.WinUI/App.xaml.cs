@@ -8,6 +8,7 @@ using Pdv.Data.Auth;
 using Pdv.Data.Provisioning;
 using Pdv.Data.Sales;
 using Pdv.Data.Secrets;
+using Pdv.Data.Sync;
 
 namespace Pdv.WinUI;
 
@@ -23,6 +24,8 @@ public partial class App : Application
 {
     private MainWindow? _window;
     private PdvDatabase? _database;
+    private SyncStatusViewModel _sync = new() { Disabled = true };
+    private CancellationTokenSource? _syncStop;
 
     public App()
     {
@@ -45,6 +48,7 @@ public partial class App : Application
                 CrashLog.Write($"ativação concluída; demonstração arquivada em {archived}", null);
             }
             _database = new PdvDatabase(path);
+            StartSync(path, TerminalProfile.Load(_database));
             ShowLogin(path, _database);
         }
         catch (Exception error) when (error is PdvDatabaseException or StagedActivationException)
@@ -60,6 +64,59 @@ public partial class App : Application
                 "Nenhuma venda foi perdida.");
         }
         _window.Activate();
+    }
+
+    /// <summary>
+    /// Sincronização desde a abertura, antes do login: a venda de ontem que
+    /// ficou na fila não espera alguém entrar no caixa para subir.
+    /// </summary>
+    /// <remarks>
+    /// Conexão própria ao banco (o WAL deixa ler e escrever em paralelo, com um
+    /// escritor por vez) e laço fora da thread da tela. Terminal em
+    /// demonstração não sincroniza: não há token nem loja.
+    /// </remarks>
+    private void StartSync(string path, TerminalProfile profile)
+    {
+        if (!profile.Activated || string.IsNullOrEmpty(profile.CloudBaseUrl)) return;
+        byte[]? token;
+        try
+        {
+            token = new SecretVault(Path.Combine(Path.GetDirectoryName(path)!, "secrets")).Load(Activation.SyncTokenName);
+        }
+        catch (SecretVaultException error)
+        {
+            CrashLog.Write("token de sincronização", error);
+            token = null;
+        }
+        if (token is null)
+        {
+            _sync = new SyncStatusViewModel();
+            _sync.Update(online: false);
+            CrashLog.Write("terminal ativado sem token de sincronização no cofre: reative o terminal", null);
+            return;
+        }
+
+        _sync = new SyncStatusViewModel();
+        var database = new PdvDatabase(path);
+        var transport = new HttpSyncTransport(profile.CloudBaseUrl, System.Text.Encoding.UTF8.GetString(token));
+        var worker = new SyncWorker(
+            new SyncEngine(database, transport, profile, log: line => CrashLog.Write($"sincronização: {line}", null)),
+            line => CrashLog.Write($"sincronização: {line}", null));
+        var ui = _window!.DispatcherQueue;
+        worker.ConnectionChanged += (_, online) => ui.TryEnqueue(() => _sync.Update(online: online));
+        worker.QueueChanged += (_, queue) => ui.TryEnqueue(() => _sync.Update(pending: queue.Pending, quarantined: queue.Quarantined));
+
+        _syncStop = new CancellationTokenSource();
+        var stop = _syncStop.Token;
+        var loop = Task.Run(() => worker.RunAsync(stop), stop);
+        _window.Closed += (_, _) =>
+        {
+            _syncStop.Cancel();
+            // Um ciclo em andamento termina a transação dele antes de o banco fechar.
+            loop.Wait(TimeSpan.FromSeconds(5));
+            transport.Dispose();
+            database.Dispose();
+        };
     }
 
     private void ShowLogin(string path, PdvDatabase database)
@@ -153,7 +210,8 @@ public partial class App : Application
                 new Checkout(database, terminal, ledger, tef),
                 identity,
                 token => tef.RecoverPendingAsync(
-                    entry => SaleRepository.WasRecorded(database.Connection, entry.TransactionId), token)));
+                    entry => SaleRepository.WasRecorded(database.Connection, entry.TransactionId), token)),
+                _sync);
         }
         catch (Exception error) when (error is SecretVaultException or PdvDatabaseException)
         {

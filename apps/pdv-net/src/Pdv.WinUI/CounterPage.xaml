@@ -18,8 +18,16 @@
 
         <!-- Quem está no caixa, e o que a abertura resolveu no TEF. -->
         <StackPanel Grid.ColumnSpan="2" Spacing="8">
-            <TextBlock AutomationProperties.AutomationId="Greeting" Text="{x:Bind ViewModel.Greeting}"
-                       Style="{StaticResource SubtitleTextBlockStyle}" />
+            <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock AutomationProperties.AutomationId="Greeting" Text="{x:Bind ViewModel.Greeting}"
+                           Style="{StaticResource SubtitleTextBlockStyle}" />
+                <TextBlock Grid.Column="1" AutomationProperties.AutomationId="SyncStatus" VerticalAlignment="Center"
+                           Text="{x:Bind Sync.Text, Mode=OneWay}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            </Grid>
             <ItemsControl AutomationProperties.AutomationId="Recoveries" ItemsSource="{x:Bind ViewModel.Recoveries}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="x:String">

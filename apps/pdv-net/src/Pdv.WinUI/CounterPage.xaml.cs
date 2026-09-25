@@ -10,9 +10,10 @@ namespace Pdv.WinUI;
 /// <summary>Só apresentação: o que a venda faz está no <see cref="SaleViewModel"/>, testado sem janela.</summary>
 public sealed partial class CounterPage : UserControl
 {
-    public CounterPage(SaleViewModel viewModel)
+    public CounterPage(SaleViewModel viewModel, SyncStatusViewModel sync)
     {
         ViewModel = viewModel;
+        Sync = sync;
         InitializeComponent();
         PayDebit.CommandParameter = TefCardType.Debit;
         PayCredit.CommandParameter = TefCardType.Credit;
@@ -26,6 +27,8 @@ public sealed partial class CounterPage : UserControl
     }
 
     public SaleViewModel ViewModel { get; }
+
+    public SyncStatusViewModel Sync { get; }
 
     public bool Has(string? text) => !string.IsNullOrEmpty(text);
 
