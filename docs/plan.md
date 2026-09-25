@@ -800,6 +800,17 @@ o `vNF` cai.
       devolução de CBS/IBS a famílias de baixa renda). É do governo, não da
       loja, e não passa por aqui.
 
+#### Pagamento de fiado recebido no balcão fora da gaveta
+
+- [ ] **Corrigir antes de uma loja usar fiado com fechamento cego.** O
+      recebimento do fiado (`PayCredit` no C#, `pay` no Python) só grava o
+      ledger. O dinheiro entra na gaveta, mas não entra no esperado do
+      fechamento cego (que soma `payments` em dinheiro), e o caixa acusa
+      sobra. A correção é registrar o recebimento com a forma de pagamento
+      (dinheiro, cartão pelo TEF ou PIX) e o esperado passar a somá-lo. Vale
+      nos dois PDVs, e o C# manteve o comportamento do Python para não
+      divergir durante a transição.
+
 #### Novas formas de pagamento pelo painel web
 
 Hoje as formas são fixas no código, em três lugares que precisam concordar:

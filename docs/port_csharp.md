@@ -326,6 +326,33 @@ A arquitetura existe para que a tela seja testável:
 
     O `ui-smoke.ps1` abre com R$ 100,00, vende e fecha às cegas com o PIN
     do gerente.
+- [x] **C6b. Cashback, pré-pago, fiado e níveis de desconto**
+      (`Pdv.Data.Customers`, mesmas tabelas; nenhum saldo é atualizado,
+      todo saldo é soma de ledger).
+  - **Cliente pelo telefone**, cadastrado na hora.
+  - **Cashback.** Crédito `ROUND_HALF_UP` com teto e validade, idempotente
+    por pedido e creditado na transação da venda. O resgate FIFO por lote
+    existe como serviço e, como no Python, **não está ligado ao caixa**: a
+    decisão desconto × pagamento vem antes (`docs/plan.md`).
+  - **Pré-pago.** A carga pede o PIN de quem autoriza; o consumo é feito na
+    transação da venda.
+  - **Fiado.** Limite, vencimento, aging, cobrança na transação da venda e
+    pagamento das cobranças mais antigas primeiro.
+  - **Níveis.** "Funcionário" e "Dono" são protegidos: só proprietário
+    atribui e o cliente não sai mais do nível. "Dono" sempre pede senha. O
+    nível não acumula (prevalece o maior desconto), entra no pagamento e
+    tem o papel conferido na transação.
+  - **Regra a mais que o Python.** Pré-pago ou fiado sem cliente é recusado
+    antes de qualquer cartão ser lido; lá, a recusa vinha com o cartão já
+    aprovado.
+  - **Tela.** "Cliente" (Ctrl+K), "Pré-pago" e "Fiado" no pagamento, F5
+    fiado, F7 cashback, F11 carga e Ctrl+F6 níveis, como no Python. O
+    `ui-smoke.ps1` identifica o cliente, faz a carga com PIN e vende no
+    pré-pago.
+  - 417 testes; 16 regras verificadas por mutação.
+  - **Lacuna herdada do Python, não corrigida em silêncio.** O pagamento do
+    fiado recebido no balcão não entra no esperado da gaveta: o fechamento
+    cego acusa sobra do valor recebido em dinheiro. Anotado no `plan.md`.
 - [ ] **C6. O resto da paridade.**
       - Periféricos: balança serial e impressora ESC/POS.
       - NFC-e.
@@ -362,7 +389,7 @@ Na ordem em que dá para trocar:
 | ~~1~~ | ~~C3c~~ | ~~`hardware/scale/`, `services/pricing.py`, parte de `authorization.py`~~ | **Feito** (item por peso, cancelamento e desconto com autorização) |
 | ~~2~~ | ~~C5b-3~~ | ~~`remote/`~~ | **Feito** (comandos do painel com as sete travas e o aceite no caixa) |
 | ~~3~~ | ~~C6a~~ | ~~`services/cash_session.py`~~ | **Feito** (abertura com fundo de troco e fechamento cego) |
-| 4 | C6b | `services/cashback.py`, `prepaid.py`, `credit_account.py`, `discount_tiers.py` (~700) | Cashback, pré-pago, fiado e níveis de desconto (a decisão cashback × desconto está no `plan.md`) |
+| ~~4~~ | ~~C6b~~ | ~~`cashback.py`, `prepaid.py`, `credit_account.py`, `discount_tiers.py`~~ | **Feito** (o resgate de cashback segue desligado até a decisão do contador) |
 | 5 | C6c | `hardware/printer/` (~620), `fiscal/danfe.py` (~440) | Impressora ESC/POS, cupom e DANFE NFC-e 80 mm |
 | 6 | C6d | `fiscal/cloud.py`, `fiscal/service.py`, `fiscal/gateway.py` (~500) | NFC-e pedida pelo caixa à nuvem, e a **contingência offline** com série própria e QR Code v3 assinado com o A1 (o DFe.NET já gera) |
 | 7 | C6e | `edge/` (~4.000) + `edge/webapp` | Servidor do salão para os celulares dos garçons, KDS, mesas, contas e descoberta na rede, em ASP.NET Core dentro do PDV. O app web do garçom é reaproveitado como está |

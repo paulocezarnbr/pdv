@@ -23,6 +23,7 @@ public sealed partial class CounterPage : UserControl
         ViewModel.AskText = AskTextAsync;
         ViewModel.AskAuthorizer = AskAuthorizerAsync;
         ViewModel.AskRemoteDecision = AskRemoteDecisionAsync;
+        ViewModel.AskOption = AskOptionAsync;
         Loaded += async (_, _) =>
         {
             QueryBox.Focus(FocusState.Programmatic);
@@ -214,6 +215,23 @@ public sealed partial class CounterPage : UserControl
         await dialog.ShowAsync();
         if (decided is not null) throw decided;
         return outcome;
+    }
+
+    /// <summary>Uma escolha numa lista curta (operação, nível). Fechar é <c>null</c>.</summary>
+    private async Task<int?> AskOptionAsync(string title, IReadOnlyList<string> options)
+    {
+        var list = new ListView { ItemsSource = options, SelectionMode = ListViewSelectionMode.Single, SelectedIndex = 0 };
+        AutomationProperties.SetAutomationId(list, "DialogOptions");
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = title,
+            Content = list,
+            PrimaryButtonText = "Escolher",
+            CloseButtonText = "Cancelar",
+            DefaultButton = ContentDialogButton.Primary,
+        };
+        return await dialog.ShowAsync() == ContentDialogResult.Primary && list.SelectedIndex >= 0 ? list.SelectedIndex : null;
     }
 
     private void OnResultClick(object sender, ItemClickEventArgs e)

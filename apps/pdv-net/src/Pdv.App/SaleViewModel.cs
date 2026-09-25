@@ -7,6 +7,7 @@ using Pdv.Core.Stock;
 using Pdv.Core.Tef;
 using Pdv.Data;
 using Pdv.Data.Auth;
+using Pdv.Data.Customers;
 using Pdv.Data.Remote;
 using Pdv.Data.Sales;
 
@@ -87,6 +88,8 @@ public sealed partial class SaleViewModel : ObservableObject, ITefInteraction
     private readonly Func<ScaleReading?>? _stableWeight;
     private readonly RemoteCommandService? _remote;
     private readonly CashSessionService? _cash;
+    private readonly CustomerLedgers? _customers;
+    private readonly DiscountTierService? _tiers;
 
     /// <param name="recoverPending">
     /// Resolve as pendências do TEF (confirma a venda gravada, desfaz a que se
@@ -100,7 +103,7 @@ public sealed partial class SaleViewModel : ObservableObject, ITefInteraction
         Func<CancellationToken, Task<IReadOnlyList<TefRecovery>>>? recoverPending = null,
         SaleAdjustments? adjustments = null, StaffAuthentication? authorization = null,
         Func<ScaleReading?>? stableWeight = null, RemoteCommandService? remote = null,
-        CashSessionService? cashSessions = null)
+        CashSessionService? cashSessions = null, CustomerLedgers? customers = null, DiscountTierService? tiers = null)
     {
         _items = items;
         _catalog = catalog;
@@ -112,6 +115,8 @@ public sealed partial class SaleViewModel : ObservableObject, ITefInteraction
         _stableWeight = stableWeight;
         _remote = remote;
         _cash = cashSessions;
+        _customers = customers;
+        _tiers = tiers;
         if (remote is not null) remote.OrderChanged += ReloadIfOpen;
         Greeting = $"Olá, {operatorIdentity.FirstName}";
     }
@@ -150,7 +155,8 @@ public sealed partial class SaleViewModel : ObservableObject, ITefInteraction
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Total))]
-    [NotifyCanExecuteChangedFor(nameof(PayCashCommand), nameof(PayCardCommand), nameof(DiscountCommand))]
+    [NotifyCanExecuteChangedFor(nameof(PayCashCommand), nameof(PayCardCommand), nameof(DiscountCommand),
+        nameof(PayPrepaidCommand), nameof(PayCreditAccountCommand))]
     public partial long TotalCents { get; set; }
 
     public string Total => Money.Format(TotalCents);
@@ -219,7 +225,9 @@ public sealed partial class SaleViewModel : ObservableObject, ITefInteraction
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(PayCashCommand), nameof(PayCardCommand), nameof(CancelItemCommand), nameof(DiscountCommand),
-        nameof(CloseCashCommand), nameof(ReviewRemoteCommand))]
+        nameof(CloseCashCommand), nameof(ReviewRemoteCommand), nameof(PayPrepaidCommand), nameof(PayCreditAccountCommand),
+        nameof(IdentifyCustomerCommand), nameof(ConfigureCashbackCommand), nameof(DepositPrepaidCommand),
+        nameof(ManageCreditAccountCommand), nameof(ManageTiersCommand))]
     public partial bool IsPaying { get; set; }
 
     // -- itens ---------------------------------------------------------------
@@ -284,6 +292,259 @@ public sealed partial class SaleViewModel : ObservableObject, ITefInteraction
         }
         catch (Exception error) when (error is InvalidQuantityException or InsufficientStockException
                                           or UnstableWeightException or RecipeNotFoundException)
+        {
+            Error = error.Message;
+        }
+    }
+
+    // -- cliente -------------------------------------------------------------
+
+    /// <summary>O cliente desta venda: cashback, pré-pago, fiado e nível de desconto.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CustomerSummary))]
+    [NotifyCanExecuteChangedFor(nameof(PayPrepaidCommand), nameof(PayCreditAccountCommand))]
+    public partial Customer? Customer { get; set; }
+
+    /// <summary>"Lia — cashback R$ 1,45 · pré-pago R$ 20,00 · fiado disponível R$ 50,00".</summary>
+    public string? CustomerSummary
+    {
+        get
+        {
+            if (Customer is null || _customers is null) return null;
+            var parts = new List<string> { $"cashback {Money.Format(_customers.CashbackBalance(Customer.Id))}" };
+            var prepaid = _customers.PrepaidBalance(Customer.Id);
+            if (prepaid > 0) parts.Add($"pré-pago {Money.Format(prepaid)}");
+            var credit = _customers.CreditPositionOf(Customer.Id);
+            if (credit.LimitCents > 0) parts.Add($"fiado disponível {Money.Format(credit.AvailableCents)}");
+            return $"{Customer.Name} — {string.Join(" · ", parts)}";
+        }
+    }
+
+    /// <summary>Uma escolha numa lista (operação, nível). A casca liga a um diálogo; <c>null</c> é cancelar.</summary>
+    public Func<string, IReadOnlyList<string>, Task<int?>> AskOption { get; set; } = (_, _) => Task.FromResult<int?>(null);
+
+    /// <summary>Pelo telefone: acha o cliente ou cadastra na hora. <c>null</c> se o operador desistiu.</summary>
+    private async Task<Customer?> FindOrCreateCustomerAsync()
+    {
+        var phone = await AskText("Telefone do cliente:");
+        if (string.IsNullOrWhiteSpace(phone)) return null;
+        if (_customers!.FindByPhone(phone) is { } found) return found;
+
+        var name = await AskText("Cliente novo. Nome:");
+        if (string.IsNullOrWhiteSpace(name)) return null;
+        try
+        {
+            var id = _customers.CreateCustomer(name, phone);
+            return new Customer(id, name.Trim(), new string(phone.Where(char.IsAsciiDigit).ToArray()));
+        }
+        catch (CustomerException error)
+        {
+            Error = error.Message;
+            return null;
+        }
+    }
+
+    private bool HasCustomers() => _customers is not null && !IsPaying;
+
+    /// <summary>Identifica o cliente da venda pelo telefone.</summary>
+    [RelayCommand(CanExecute = nameof(HasCustomers))]
+    private async Task IdentifyCustomerAsync()
+    {
+        Error = null;
+        if (await FindOrCreateCustomerAsync() is { } customer)
+        {
+            Customer = customer;
+            Notice = "Cliente: " + CustomerSummary;
+        }
+    }
+
+    /// <summary>O nível do cliente sobre a venda, com o PIN que ele exigir. Falso se o operador desistiu.</summary>
+    private async Task<bool> ApplyCustomerTierAsync()
+    {
+        if (Customer is null || _tiers is null || OrderId is null) return true;
+        if (_tiers.ForCustomer(Customer.Id) is not { } tier) return true;
+
+        string? authorizerId = null;
+        if (tier.RequiredRoles is { } roles)
+        {
+            var authorizer = await AskAuthorizer(new AuthorizationRequest(
+                $"Autorizar nível {tier.Name} para {Customer.Name}.",
+                _authorization!.ListAuthorizers(roles),
+                (login, pin) => _authorization.AuthorizeRole(login, pin, roles)));
+            if (authorizer is null) return false;
+            authorizerId = authorizer.Id;
+        }
+        try
+        {
+            _tiers.ApplyToOrder(OrderId, tier, _operator.Id, authorizerId);
+            ApplyTotals(SaleRepository.LoadOpenOrder(_adjustments!.Connection, OrderId));
+            return true;
+        }
+        catch (CustomerException error)
+        {
+            Error = error.Message;
+            return false;
+        }
+    }
+
+    /// <summary>F7: a regra de cashback da loja, com o PIN de quem autoriza.</summary>
+    [RelayCommand(CanExecute = nameof(HasCustomers))]
+    private async Task ConfigureCashbackAsync()
+    {
+        Error = null;
+        var authorizer = await AskAuthorizer(new AuthorizationRequest(
+            "Configurar a regra de cashback desta loja.", _authorization!.ListAuthorizers(), _authorization.Authorize));
+        if (authorizer is null) return;
+        if (Money.ParsePercent(await AskText("Cashback: percentual sobre a venda")) is not { } percent) return;
+        if (await AskText("Teto por venda (R$; zero = sem teto)") is not { } capText) return;
+        if (await AskText("Validade do crédito em dias") is not { } daysText) return;
+        var cap = string.IsNullOrWhiteSpace(capText) ? 0 : Money.Parse(capText);
+        if (cap is null || !int.TryParse(daysText.Trim(), out var days))
+        {
+            Error = "Teto e validade do cashback são inválidos.";
+            return;
+        }
+        try
+        {
+            _customers!.ConfigureCashback(percent, cap.Value, days, authorizer.Id);
+            Notice = $"Cashback de {percent.ToString("0.##", CultureInfo.GetCultureInfo("pt-BR"))}% configurado por {authorizer.Name}";
+        }
+        catch (CustomerException error)
+        {
+            Error = error.Message;
+        }
+    }
+
+    /// <summary>F11: carga de crédito pré-pago, com o PIN de quem autoriza.</summary>
+    [RelayCommand(CanExecute = nameof(HasCustomers))]
+    private async Task DepositPrepaidAsync()
+    {
+        Error = null;
+        var customer = Customer ?? await FindOrCreateCustomerAsync();
+        if (customer is null) return;
+        if (Money.Parse(await AskText($"Carga pré-paga para {customer.Name} (R$)")) is not { } cents || cents <= 0)
+        {
+            Error = "A carga precisa ser maior que zero.";
+            return;
+        }
+        var authorizer = await AskAuthorizer(new AuthorizationRequest(
+            $"Autorizar carga pré-paga de {Money.Format(cents)} para {customer.Name}.",
+            _authorization!.ListAuthorizers(), _authorization.Authorize));
+        if (authorizer is null) return;
+        try
+        {
+            var balance = _customers!.Deposit(customer.Id, cents, _operator.Id, authorizer.Id);
+            Notice = $"Carga concluída. Saldo de {customer.Name}: {Money.Format(balance)}";
+            OnPropertyChanged(nameof(CustomerSummary));
+        }
+        catch (CustomerException error)
+        {
+            Error = error.Message;
+        }
+    }
+
+    /// <summary>F5: fiado do cliente — configurar o limite (com PIN) ou receber pagamento.</summary>
+    [RelayCommand(CanExecute = nameof(HasCustomers))]
+    private async Task ManageCreditAccountAsync()
+    {
+        Error = null;
+        var customer = Customer ?? await FindOrCreateCustomerAsync();
+        if (customer is null) return;
+        var action = await AskOption($"Fiado de {customer.Name}", ["Configurar limite", "Receber pagamento"]);
+        try
+        {
+            CreditPosition position;
+            if (action == 0)
+            {
+                var authorizer = await AskAuthorizer(new AuthorizationRequest(
+                    $"Configurar limite de fiado para {customer.Name}.", _authorization!.ListAuthorizers(), _authorization.Authorize));
+                if (authorizer is null) return;
+                var limit = Money.Parse(await AskText("Limite de crédito (R$)"));
+                var daysText = await AskText("Prazo para pagamento (dias)");
+                if (limit is null || !int.TryParse(daysText?.Trim(), out var days))
+                {
+                    Error = "Limite ou prazo do fiado é inválido.";
+                    return;
+                }
+                position = _customers!.ConfigureCreditAccount(customer.Id, limit.Value, days, _operator.Id, authorizer.Id);
+            }
+            else if (action == 1)
+            {
+                var before = _customers!.CreditPositionOf(customer.Id);
+                if (Money.Parse(await AskText($"Dívida atual {Money.Format(before.OutstandingCents)}. Receber (R$)")) is not { } paid || paid <= 0)
+                {
+                    return;
+                }
+                position = _customers.PayCredit(customer.Id, paid, _operator.Id);
+            }
+            else
+            {
+                return;
+            }
+            Notice = $"Em aberto: {Money.Format(position.OutstandingCents)} · disponível: {Money.Format(position.AvailableCents)} · " +
+                     $"vencido: {Money.Format(position.OverdueCents)}";
+            OnPropertyChanged(nameof(CustomerSummary));
+        }
+        catch (CustomerException error)
+        {
+            Error = error.Message;
+        }
+    }
+
+    private static readonly (string Label, string Code)[] TierLabels =
+        [("Bronze", "bronze"), ("Prata", "silver"), ("Ouro", "gold"), ("Diamante", "diamond"), ("Funcionário", "employee"), ("Dono", "owner")];
+
+    /// <summary>Ctrl+F6: configurar um nível (com PIN) ou atribuir um nível ao cliente.</summary>
+    [RelayCommand(CanExecute = nameof(HasCustomers))]
+    private async Task ManageTiersAsync()
+    {
+        Error = null;
+        if (_tiers is null) return;
+        var action = await AskOption("Níveis de desconto", ["Configurar nível", "Atribuir nível ao cliente"]);
+        try
+        {
+            if (action == 0)
+            {
+                var authorizer = await AskAuthorizer(new AuthorizationRequest(
+                    "Configurar níveis automáticos de desconto.", _authorization!.ListAuthorizers(), _authorization.Authorize));
+                if (authorizer is null) return;
+                if (await AskOption("Nível", TierLabels.Select(tier => tier.Label).ToList()) is not { } index) return;
+                if (Money.ParsePercent(await AskText("Percentual do nível")) is not { } percent) return;
+                var (label, code) = TierLabels[index];
+                // "Dono" sempre exige a senha do proprietário; o serviço garante.
+                var requires = code == "owner" || await AskOption("Exigir gerente a cada aplicação?", ["Sim", "Não"]) == 0;
+                _tiers.Configure(code, label, percent, 0, requires, authorizer.Id);
+                Notice = $"Nível {label} configurado";
+            }
+            else if (action == 1)
+            {
+                var customer = Customer ?? await FindOrCreateCustomerAsync();
+                if (customer is null) return;
+                var tiers = _tiers.ListActive();
+                if (tiers.Count == 0)
+                {
+                    Error = "Configure um nível primeiro.";
+                    return;
+                }
+                if (await AskOption("Nível do cliente",
+                        tiers.Select(tier => $"{tier.Name} — {(tier.PercentBasisPoints / 100m).ToString("0.00", CultureInfo.GetCultureInfo("pt-BR"))}%").ToList())
+                    is not { } chosen)
+                {
+                    return;
+                }
+                var tier = tiers[chosen];
+                var isProtected = DiscountTierService.ProtectedCodes.Contains(tier.Code);
+                var roles = isProtected ? Roles.OwnerOnly : null;
+                var authorizer = await AskAuthorizer(new AuthorizationRequest(
+                    $"Atribuir o nível {tier.Name} a {customer.Name}." + (isProtected ? " Esta classificação é permanente." : ""),
+                    _authorization!.ListAuthorizers(roles),
+                    (login, pin) => roles is null ? _authorization.Authorize(login, pin) : _authorization.AuthorizeRole(login, pin, roles)));
+                if (authorizer is null) return;
+                _tiers.Assign(customer.Id, tier.Id, authorizer.Id);
+                Notice = $"{customer.Name}: nível {tier.Name}";
+            }
+        }
+        catch (CustomerException error)
         {
             Error = error.Message;
         }
@@ -534,6 +795,16 @@ public sealed partial class SaleViewModel : ObservableObject, ITefInteraction
     [RelayCommand(CanExecute = nameof(CanPay))]
     private Task PayCardAsync(TefCardType card) => PayAsync([PaymentIntent.Card(card, TotalCents)]);
 
+    private bool CanPayOnAccount() => CanPay() && Customer is not null && _customers is not null;
+
+    /// <summary>Paga com o crédito pré-pago do cliente identificado.</summary>
+    [RelayCommand(CanExecute = nameof(CanPayOnAccount))]
+    private Task PayPrepaidAsync() => PayAsync([PaymentIntent.Prepaid(TotalCents)]);
+
+    /// <summary>Lança a venda no fiado do cliente identificado.</summary>
+    [RelayCommand(CanExecute = nameof(CanPayOnAccount))]
+    private Task PayCreditAccountAsync() => PayAsync([PaymentIntent.CreditAccount(TotalCents)]);
+
     private async Task PayAsync(IReadOnlyList<PaymentIntent> intents)
     {
         IsPaying = true;
@@ -542,7 +813,14 @@ public sealed partial class SaleViewModel : ObservableObject, ITefInteraction
         TefMessages.Clear();
         try
         {
-            var result = await _checkout.CloseAsync(OrderId!, _operator.Id, intents, this);
+            // O nível do cliente entra antes de receber, sobre a venda inteira.
+            if (!await ApplyCustomerTierAsync()) return;
+            // O nível pode ter baixado o total: a forma única eletrônica cobra o novo total.
+            if (intents.Count == 1 && intents[0].Method != PaymentMethods.Cash)
+            {
+                intents = [intents[0] with { AmountCents = TotalCents }];
+            }
+            var result = await _checkout.CloseAsync(OrderId!, _operator.Id, intents, this, customerId: Customer?.Id);
             switch (result)
             {
                 case CheckoutResult.Closed closed:
@@ -554,6 +832,8 @@ public sealed partial class SaleViewModel : ObservableObject, ITefInteraction
                     {
                         Notice += " O cartão será confirmado quando o TEF voltar a responder.";
                     }
+                    if (closed.Cashback is { } earned) Notice += $" Cashback: {Money.Format(earned.AmountCents)}.";
+                    if (closed.PrepaidBalanceCents is { } left) Notice += $" Saldo pré-pago: {Money.Format(left)}.";
                     StartNewSale();
                     break;
                 case CheckoutResult.CardRefused refused:
@@ -573,6 +853,10 @@ public sealed partial class SaleViewModel : ObservableObject, ITefInteraction
         {
             Error = error.Message;
         }
+        catch (CustomerException error)
+        {
+            Error = error.Message;
+        }
         finally
         {
             IsPaying = false;
@@ -582,6 +866,7 @@ public sealed partial class SaleViewModel : ObservableObject, ITefInteraction
     private void StartNewSale()
     {
         OrderId = null;
+        Customer = null;
         Lines.Clear();
         SelectedLine = null;
         SubtotalCents = 0;

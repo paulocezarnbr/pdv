@@ -264,6 +264,25 @@ try {
     elseif ($tef -notmatch 'Transação aprovada') { $failures += "débito: a conversa do TEF não apareceu ('$tef')" }
     else { Write-Host 'ok  venda no débito, com a conversa do TEF na tela' }
 
+    # 4b. cliente pelo telefone (cadastro na hora), carga pré-paga com o PIN do
+    #     gerente e uma venda paga com o pré-pago
+    Click (Find $window 'IdentifyCustomer')
+    Answer '(21) 99999-0000'
+    Answer 'Lia Cliente'
+    $summary = Text (Find $window 'CustomerSummary')
+    Click (Find $window 'DepositPrepaid')
+    Answer '20,00'
+    Authorize 'bruno' '730514'
+    $query.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue('7890000000011')
+    Click (Find $window 'Scan')
+    Start-Sleep -Milliseconds 500
+    Click (Find $window 'PayPrepaid')
+    $deadline = (Get-Date).AddSeconds(10)
+    do { $message = NoticeText; Start-Sleep -Milliseconds 200 } while ($message -notmatch 'Saldo pré-pago' -and (Get-Date) -lt $deadline)
+    if ($summary -notmatch '^Lia Cliente') { $failures += "cliente: '$summary'" }
+    elseif ($message -notmatch 'Saldo pré-pago: R\$ 5,50') { $failures += "pré-pago: '$message'" }
+    else { Write-Host 'ok  cliente pelo telefone, carga com PIN e venda no pré-pago' }
+
     # 5. item pesado pela balança simulada (847 g), desconto de 10% com o PIN
     #    do gerente e cancelamento do item, pelos diálogos da tela.
     $deadline = (Get-Date).AddSeconds(15)
@@ -401,4 +420,4 @@ if ($failures.Count -gt 0) {
     }
     exit 1
 }
-Write-Host 'Caixa: ok (login, abertura, venda, TEF, balança, desconto, cancelamento, fechamento e ativação)'
+Write-Host 'Caixa: ok (login, abertura, venda, TEF, cliente, pré-pago, balança, desconto, cancelamento, fechamento e ativação)'

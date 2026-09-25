@@ -271,13 +271,14 @@ public partial class App : Application
 
             var journal = new SqliteTefJournal(path);
             var tef = new TefCoordinator(new TefSimulator(), journal);
+            var customers = new Data.Customers.CustomerLedgers(database, terminal, ledger);
             var scale = StartScale(database);
             // Conexão da tela: o aceite no caixa não disputa a do ciclo de sincronização.
             var remote = profile.Activated ? RemoteCommands(path, database, profile) : null;
             var sale = new SaleViewModel(
                 new ItemRegistration(database, terminal, ledger),
                 new Catalog(database.Connection, profile.TenantId),
-                new Checkout(database, terminal, ledger, tef),
+                new Checkout(database, terminal, ledger, tef, customers: customers),
                 identity,
                 token => tef.RecoverPendingAsync(
                     entry => SaleRepository.WasRecorded(database.Connection, entry.TransactionId), token),
@@ -285,7 +286,9 @@ public partial class App : Application
                 new StaffAuthentication(database, profile.TenantId),
                 () => scale.LastStable,
                 remote,
-                sessions);
+                sessions,
+                customers,
+                new Data.Customers.DiscountTierService(database, terminal, ledger));
             _sale = sale;
             sale.RefreshRemote();
 
