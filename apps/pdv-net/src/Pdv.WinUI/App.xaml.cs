@@ -25,6 +25,9 @@ public partial class App : Application
     private MainWindow? _window;
     private PdvDatabase? _database;
     private SyncStatusViewModel _sync = new() { Disabled = true };
+
+    /// <summary>A venda na tela, para o ciclo de sincronização avisar do que o painel mudou.</summary>
+    private SaleViewModel? _sale;
     private CancellationTokenSource? _syncStop;
 
     public App()
@@ -99,10 +102,18 @@ public partial class App : Application
         _sync = new SyncStatusViewModel();
         var database = new PdvDatabase(path);
         var transport = new HttpSyncTransport(profile.CloudBaseUrl, System.Text.Encoding.UTF8.GetString(token));
-        var worker = new SyncWorker(
-            new SyncEngine(database, transport, profile, log: line => CrashLog.Write($"sincronização: {line}", null)),
-            line => CrashLog.Write($"sincronização: {line}", null));
         var ui = _window!.DispatcherQueue;
+        var commands = RemoteCommands(path, database, profile);
+        if (commands is not null)
+        {
+            // O ciclo roda fora da tela; a venda aberta relê na thread dela.
+            commands.OrderChanged += orderId => ui.TryEnqueue(() => _sale?.ReloadIfOpen(orderId));
+        }
+        var worker = new SyncWorker(
+            new SyncEngine(database, transport, profile, log: line => CrashLog.Write($"sincronização: {line}", null),
+                commands: commands),
+            line => CrashLog.Write($"sincronização: {line}", null));
+        worker.CommandsChanged += (_, _) => ui.TryEnqueue(() => _sale?.RefreshRemote());
         worker.ConnectionChanged += (_, online) => ui.TryEnqueue(() => _sync.Update(online: online));
         worker.QueueChanged += (_, queue) => ui.TryEnqueue(() => _sync.Update(pending: queue.Pending, quarantined: queue.Quarantined));
 
@@ -117,6 +128,28 @@ public partial class App : Application
             transport.Dispose();
             database.Dispose();
         };
+    }
+
+    /// <summary>
+    /// O serviço de comandos do painel sobre uma conexão. Sem a chave do
+    /// terminal no cofre não há como conferir assinatura: sem serviço, o caixa
+    /// não obedece a nada — que é o lado seguro.
+    /// </summary>
+    private static Data.Remote.RemoteCommandService? RemoteCommands(string path, PdvDatabase database, TerminalProfile profile)
+    {
+        try
+        {
+            var secret = new SecretVault(Path.Combine(Path.GetDirectoryName(path)!, "secrets")).EnsureDeviceSecret();
+            var ledger = new AuditLedger(profile.TenantId, profile.StoreId, profile.DeviceId, secret);
+            return new Data.Remote.RemoteCommandService(
+                database, profile, secret, ledger, new StaffAuthentication(database, profile.TenantId),
+                log: line => CrashLog.Write($"painel: {line}", null));
+        }
+        catch (SecretVaultException error)
+        {
+            CrashLog.Write("comandos do painel", error);
+            return null;
+        }
     }
 
     private void ShowLogin(string path, PdvDatabase database)
@@ -227,6 +260,8 @@ public partial class App : Application
             var tef = new TefCoordinator(new TefSimulator(), journal);
             var terminal = profile.Identity;
             var scale = StartScale(database);
+            // Conexão da tela: o aceite no caixa não disputa a do ciclo de sincronização.
+            var remote = profile.Activated ? RemoteCommands(path, database, profile) : null;
             var sale = new SaleViewModel(
                 new ItemRegistration(database, terminal, ledger),
                 new Catalog(database.Connection, profile.TenantId),
@@ -236,7 +271,10 @@ public partial class App : Application
                     entry => SaleRepository.WasRecorded(database.Connection, entry.TransactionId), token),
                 new SaleAdjustments(database, terminal, ledger),
                 new StaffAuthentication(database, profile.TenantId),
-                () => scale.LastStable);
+                () => scale.LastStable,
+                remote);
+            _sale = sale;
+            sale.RefreshRemote();
 
             // Os eventos saem da thread da balança; a tela só é tocada pela dela.
             var ui = _window!.DispatcherQueue;

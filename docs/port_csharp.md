@@ -263,8 +263,47 @@ A arquitetura existe para que a tela seja testável:
   - 224 testes; duas regras verificadas por mutação.
 - [x] **Serviço fiscal em C#** (`apps/fiscal-net`, DFe.NET): substituiu o
       serviço em Python. Ver `docs/fiscal_architecture.md`.
-- [ ] **C5b-3. Comandos remotos** (desconto e cancelamento pelo painel,
+- [x] **C5b-3. Comandos remotos** (desconto e cancelamento pelo painel,
       assinados).
+  - **Contrato.** `Pdv.Core.Remote.CommandProtocol` é conferido byte a byte
+    contra `contracts/remote-commands.json`, gerado pelo Python
+    (`tests/test_remote_contract.py`). O Python é conferido contra a nuvem
+    (TypeScript) no teste de contrato que já existia, então C# = Python =
+    nuvem. O contrato fixa:
+    - o texto assinado: chaves por ponto de código, acento cru, `10` e
+      `10.0` distintos, array na ordem e separador `\x1f`;
+    - a janela de 12 h com 5 min de folga, a data sem fuso e a data
+      ilegível contada como vencida;
+    - o percentual lido como o `Decimal(str(valor))` e o `_plain` da
+      mensagem.
+  - **Fila e serviço** (`Pdv.Data.Remote`). `CommandInbox` usa a mesma tabela
+    `remote_commands`. O status sai de `pending` na transação do efeito, e o
+    relato é separado da decisão. `RemoteCommandService` tem as sete travas
+    do Python:
+    1. assinatura;
+    2. janela;
+    3. teto e papel lidos da réplica local;
+    4. só pedido aberto;
+    5. idempotência;
+    6. chave local `remote.commands_enabled`;
+    7. aceite presencial para o que a cozinha já tem, que não pode ser dado
+       por garçom.
+    Toda recusa vai ao ledger (assinatura, terminal e rede como
+    `critical`), e o cancelamento usa o mesmo miolo do F4
+    (`SaleAdjustments.CancelWithin`).
+  - **Sincronização.** O ciclo busca, grava, aplica e só então relata
+    (`SyncEngine.CommandCycleAsync`), em todo ciclo, depois do push. Só sai
+    da fila de relato o que a nuvem nomear. Comando malformado ou de tipo
+    desconhecido é descartado, não obedecido.
+  - **Tela.** O pedido aberto relê itens e totais quando o painel o muda. Um
+    aviso com "Ver pedidos" abre o diálogo de aceite ou recusa com login e
+    PIN de quem está no caixa; a recusa exige motivo, que volta ao painel.
+    O aceite usa a conexão da tela, e o ciclo, a dele.
+  - 379 testes. As 15 travas foram verificadas por mutação, incluindo a
+    trava final contra aplicação dupla (`status = 'pending'` no fechamento)
+    e o relato que só marca o que a nuvem nomeou.
+  - **Falta:** o ponta a ponta com o painel emitindo de verdade (exige
+    sessão com senha e Turnstile). Entra no `tools/CloudE2E` na C7e.
 - [ ] **C6. O resto da paridade.**
       - Periféricos: balança serial e impressora ESC/POS.
       - NFC-e.
@@ -288,7 +327,7 @@ no contêiner:
 - **PDV — fundação:** auditoria, venda com TEF (simulado), item por unidade
   e por peso (balança serial) com baixa por ficha técnica, cancelamento e
   desconto com autorização de gerente, login por PIN com freio, cofre,
-  ativação e sincronização (push, pull e heartbeat).
+  ativação, sincronização (push, pull e heartbeat) e comandos do painel.
 - **PDV — tela:** WinUI de login, venda (com balança, F4 e F6) e ativação.
 - **Serviço fiscal inteiro** (`apps/fiscal-net`). O serviço em Python foi
   removido.
@@ -299,7 +338,7 @@ Na ordem em que dá para trocar:
 | # | Fase | Python de hoje | O que é |
 |---|---|---|---|
 | ~~1~~ | ~~C3c~~ | ~~`hardware/scale/`, `services/pricing.py`, parte de `authorization.py`~~ | **Feito** (item por peso, cancelamento e desconto com autorização) |
-| 2 | C5b-3 | `remote/` (~1.300) | Comandos remotos do painel: desconto e cancelamento assinados, inbox idempotente, aceite no caixa. Usa o `SaleAdjustments` da C3c |
+| ~~2~~ | ~~C5b-3~~ | ~~`remote/`~~ | **Feito** (comandos do painel com as sete travas e o aceite no caixa) |
 | 3 | C6a | `services/cash_session.py` | Abertura e fechamento cego do caixa |
 | 4 | C6b | `services/cashback.py`, `prepaid.py`, `credit_account.py`, `discount_tiers.py` (~700) | Cashback, pré-pago, fiado e níveis de desconto (a decisão cashback × desconto está no `plan.md`) |
 | 5 | C6c | `hardware/printer/` (~620), `fiscal/danfe.py` (~440) | Impressora ESC/POS, cupom e DANFE NFC-e 80 mm |

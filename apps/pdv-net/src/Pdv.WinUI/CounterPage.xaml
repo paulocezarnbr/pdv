@@ -28,6 +28,15 @@
                            Text="{x:Bind Sync.Text, Mode=OneWay}"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             </Grid>
+            <!-- Pedido do painel que espera alguém no caixa (cancelar o que a cozinha já tem). -->
+            <InfoBar AutomationProperties.AutomationId="RemoteNotice" Severity="Informational" IsClosable="False"
+                     Title="Painel" Message="{x:Bind ViewModel.RemoteNotice, Mode=OneWay}"
+                     IsOpen="{x:Bind Has(ViewModel.RemoteNotice), Mode=OneWay}">
+                <InfoBar.ActionButton>
+                    <Button AutomationProperties.AutomationId="ReviewRemote" Content="Ver pedidos"
+                            Command="{x:Bind ViewModel.ReviewRemoteCommand}" />
+                </InfoBar.ActionButton>
+            </InfoBar>
             <ItemsControl AutomationProperties.AutomationId="Recoveries" ItemsSource="{x:Bind ViewModel.Recoveries}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="x:String">

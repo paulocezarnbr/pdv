@@ -23,7 +23,7 @@ namespace Pdv.Data.Sync;
 /// — tratá-lo como definitivo perderia a venda.
 /// </para>
 /// </remarks>
-public sealed class HttpSyncTransport : ISyncTransport, IDisposable
+public sealed class HttpSyncTransport : ISyncTransport, ICommandTransport, IDisposable
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(20);
 
@@ -120,6 +120,110 @@ public sealed class HttpSyncTransport : ISyncTransport, IDisposable
         };
         var body = await SendAsync(request, cancellation);
         return body.TryGetProperty("clock_drift_ms", out var drift) ? ToLong(drift) ?? 0 : 0;
+    }
+
+    // -- comandos do painel --------------------------------------------------
+
+    /// <summary>
+    /// <c>GET /commands/pending</c>. Um comando malformado — ou de um tipo que
+    /// este caixa não conhece — é descartado, não fatal: não pode impedir os
+    /// outros de chegar, e ordem que não se entende não se obedece.
+    /// </summary>
+    public async Task<IReadOnlyList<Pdv.Core.Remote.RemoteCommand>> FetchCommandsAsync(
+        string tenantId, string storeId, string deviceId, int limit, CancellationToken cancellation)
+    {
+        var query = $"tenant_id={Uri.EscapeDataString(tenantId)}&store_id={Uri.EscapeDataString(storeId)}" +
+                    $"&device_id={Uri.EscapeDataString(deviceId)}&limit={limit}";
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"{_root}/commands/pending?{query}");
+        var body = await SendAsync(request, cancellation);
+        var commands = new List<Pdv.Core.Remote.RemoteCommand>();
+        if (!body.TryGetProperty("commands", out var list) || list.ValueKind != JsonValueKind.Array) return commands;
+        foreach (var entry in list.EnumerateArray())
+        {
+            if (ParseCommand(entry) is { } command) commands.Add(command);
+        }
+        return commands;
+    }
+
+    /// <summary>
+    /// Só a forma: quem confere assinatura, validade e teto é o
+    /// <c>RemoteCommandService</c>. Decidir segurança na camada de rede espalharia
+    /// a decisão por duas camadas.
+    /// </summary>
+    internal static Pdv.Core.Remote.RemoteCommand? ParseCommand(JsonElement entry)
+    {
+        if (entry.ValueKind != JsonValueKind.Object) return null;
+        string? Field(string name) =>
+            entry.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+
+        var kind = Field("kind");
+        if (kind is null || !Pdv.Core.Remote.CommandProtocol.Kinds.Contains(kind)) return null;
+
+        JsonElement payload;
+        if (!entry.TryGetProperty("payload", out var raw) || raw.ValueKind == JsonValueKind.Null)
+        {
+            payload = JsonDocument.Parse("{}").RootElement.Clone();
+        }
+        else if (raw.ValueKind == JsonValueKind.Object)
+        {
+            payload = raw.Clone();
+        }
+        else
+        {
+            return null;
+        }
+
+        var uuid = Field("command_uuid");
+        var tenant = Field("tenant_id");
+        var store = Field("store_id");
+        var device = Field("device_id");
+        var issuedBy = Field("issued_by_user_id");
+        var issuedAt = Field("issued_at");
+        var signature = Field("signature");
+        if (uuid is null || tenant is null || store is null || device is null || issuedBy is null ||
+            issuedAt is null || signature is null)
+        {
+            return null;
+        }
+        return new Pdv.Core.Remote.RemoteCommand(
+            uuid, tenant, store, device, kind, payload, issuedBy, Field("issued_by_name") ?? "", issuedAt, signature);
+    }
+
+    /// <summary><c>POST /commands/results</c>. A espera viaja em campo à parte: uma nuvem antiga a ignora sem recusar os resultados.</summary>
+    public async Task<IReadOnlyList<string>> ReportCommandsAsync(
+        string tenantId, string storeId, string deviceId,
+        IReadOnlyList<Remote.CommandResult> results, IReadOnlyList<Remote.AwaitingNotice> awaiting,
+        CancellationToken cancellation)
+    {
+        var payload = new JsonObject
+        {
+            ["tenant_id"] = tenantId,
+            ["store_id"] = storeId,
+            ["device_id"] = deviceId,
+            ["results"] = new JsonArray(results.Select(result => (JsonNode)new JsonObject
+            {
+                ["command_uuid"] = result.CommandUuid,
+                ["status"] = result.Status,
+                ["message"] = result.Message,
+                ["settled_at"] = result.SettledAt,
+            }).ToArray()),
+            ["awaiting"] = new JsonArray(awaiting.Select(notice => (JsonNode)new JsonObject
+            {
+                ["command_uuid"] = notice.CommandUuid,
+                ["message"] = notice.Message,
+                ["requested_at"] = notice.RequestedAt,
+            }).ToArray()),
+        };
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"{_root}/commands/results")
+        {
+            Content = new StringContent(payload.ToJsonString(), Encoding.UTF8, "application/json"),
+        };
+        var body = await SendAsync(request, cancellation);
+        // Só o que a nuvem nomear sai da fila de relato; vazio é "não confirmei nada".
+        return body.TryGetProperty("accepted", out var accepted) && accepted.ValueKind == JsonValueKind.Array
+            ? accepted.EnumerateArray().Where(value => value.ValueKind == JsonValueKind.String)
+                .Select(value => value.GetString()!).ToList()
+            : [];
     }
 
     /// <summary>Os códigos de erro tratados igual em toda rota.</summary>

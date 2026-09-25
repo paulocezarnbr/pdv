@@ -7,6 +7,7 @@ using Pdv.Core.Stock;
 using Pdv.Core.Tef;
 using Pdv.Data;
 using Pdv.Data.Auth;
+using Pdv.Data.Remote;
 using Pdv.Data.Sales;
 
 namespace Pdv.App;
@@ -22,6 +23,18 @@ public sealed record SaleLine(string ItemId, string Name, string Quantity, long 
 /// com a mensagem para mostrar; o diálogo continua aberto para outra tentativa.
 /// </param>
 public sealed record AuthorizationRequest(string Operation, IReadOnlyList<string> Logins, Func<string, string, Identity> Authorize);
+
+/// <summary>Um pedido do painel parado no caixa: o que ele pede, quem pode decidir, e as duas decisões.</summary>
+/// <param name="Accept">Login e PIN → a mensagem do que foi feito.</param>
+/// <param name="Decline">Login, PIN e motivo. O motivo volta ao painel.</param>
+/// <remarks>
+/// Erro de credencial ou papel (<see cref="AuthenticationException"/>,
+/// <see cref="ConfirmationException"/>) não decide nada: o diálogo mostra e
+/// continua aberto. Uma trava que recusa (<see cref="CommandRefusedException"/>)
+/// decide, e o diálogo fecha.
+/// </remarks>
+public sealed record RemoteDecisionRequest(
+    string Note, IReadOnlyList<string> Logins, Func<string, string, string> Accept, Action<string, string, string> Decline);
 
 public static class Money
 {
@@ -72,6 +85,7 @@ public sealed partial class SaleViewModel : ObservableObject, ITefInteraction
     private readonly SaleAdjustments? _adjustments;
     private readonly StaffAuthentication? _authorization;
     private readonly Func<ScaleReading?>? _stableWeight;
+    private readonly RemoteCommandService? _remote;
 
     /// <param name="recoverPending">
     /// Resolve as pendências do TEF (confirma a venda gravada, desfaz a que se
@@ -84,7 +98,7 @@ public sealed partial class SaleViewModel : ObservableObject, ITefInteraction
         ItemRegistration items, Catalog catalog, Checkout checkout, Identity operatorIdentity,
         Func<CancellationToken, Task<IReadOnlyList<TefRecovery>>>? recoverPending = null,
         SaleAdjustments? adjustments = null, StaffAuthentication? authorization = null,
-        Func<ScaleReading?>? stableWeight = null)
+        Func<ScaleReading?>? stableWeight = null, RemoteCommandService? remote = null)
     {
         _items = items;
         _catalog = catalog;
@@ -94,6 +108,8 @@ public sealed partial class SaleViewModel : ObservableObject, ITefInteraction
         _adjustments = adjustments;
         _authorization = authorization;
         _stableWeight = stableWeight;
+        _remote = remote;
+        if (remote is not null) remote.OrderChanged += ReloadIfOpen;
         Greeting = $"Olá, {operatorIdentity.FirstName}";
     }
 
@@ -267,6 +283,81 @@ public sealed partial class SaleViewModel : ObservableObject, ITefInteraction
         {
             Error = error.Message;
         }
+    }
+
+    // -- pedidos do painel ---------------------------------------------------
+
+    /// <summary>Pedidos do painel esperando alguém no caixa decidir.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(RemoteNotice))]
+    [NotifyCanExecuteChangedFor(nameof(ReviewRemoteCommand))]
+    public partial long RemoteAwaiting { get; set; }
+
+    public string? RemoteNotice => RemoteAwaiting switch
+    {
+        0 => null,
+        1 => "1 pedido do painel espera o seu aceite.",
+        _ => $"{RemoteAwaiting} pedidos do painel esperam o seu aceite.",
+    };
+
+    /// <summary>O diálogo de aceite. Devolve a mensagem do que foi decidido, ou <c>null</c> se fechou sem decidir.</summary>
+    public Func<RemoteDecisionRequest, Task<string?>> AskRemoteDecision { get; set; } = _ => Task.FromResult<string?>(null);
+
+    /// <summary>Relê a fila de pedidos do painel. A casca chama depois de cada ciclo de sincronização.</summary>
+    public void RefreshRemote() => RemoteAwaiting = _remote?.Inbox.AwaitingCount() ?? 0;
+
+    /// <summary>
+    /// Um comando do painel mudou este pedido (por este caixa ou pelo ciclo de
+    /// sincronização): relê itens e totais do banco. Sem isso a tela mostraria o
+    /// total antigo ao cliente — o fechamento já cobra o do banco.
+    /// </summary>
+    public void ReloadIfOpen(string orderId)
+    {
+        if (orderId != OrderId || _adjustments is null) return;
+        var order = SaleRepository.LoadOpenOrder(_adjustments.Connection, orderId);
+        var live = _adjustments.LiveItems(orderId);
+        var selected = SelectedLine?.ItemId;
+        Lines.Clear();
+        foreach (var item in live)
+        {
+            Lines.Add(new SaleLine(
+                item.Id, item.ProductName,
+                item.IsWeighed ? WeightPricing.Kilos(item.NetWeightGrams) : Quantity(item.Quantity), item.TotalCents));
+        }
+        SelectedLine = Lines.FirstOrDefault(line => line.ItemId == selected);
+        ApplyTotals(order);
+        Notice = "O painel alterou esta venda.";
+    }
+
+    private bool CanReviewRemote() => RemoteAwaiting > 0 && _remote is not null && !IsPaying;
+
+    /// <summary>Cada pedido parado, um de cada vez, com o PIN de quem está no caixa.</summary>
+    [RelayCommand(CanExecute = nameof(CanReviewRemote))]
+    private async Task ReviewRemoteAsync()
+    {
+        Error = null;
+        foreach (var waiting in _remote!.Awaiting())
+        {
+            var uuid = waiting.Command.CommandUuid;
+            string? outcome;
+            try
+            {
+                outcome = await AskRemoteDecision(new RemoteDecisionRequest(
+                    waiting.Note,
+                    _remote.ConfirmerLogins(),
+                    (login, pin) => _remote.Confirm(uuid, login, pin),
+                    (login, pin, reason) => _remote.Decline(uuid, login, pin, reason)));
+            }
+            catch (CommandRefusedException refused)
+            {
+                // Uma trava recusou na hora do aceite (a janela venceu, o pedido fechou).
+                Error = "O painel pediu, mas não foi possível: " + refused.Message;
+                continue;
+            }
+            if (outcome is null) break;
+            Notice = outcome;
+        }
+        RefreshRemote();
     }
 
     private void ApplyTotals(OpenOrder order)

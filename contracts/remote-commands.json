@@ -1,0 +1,323 @@
+{
+  "comment": "Gerado por apps/desktop-pdv/tests/test_remote_contract.py. Não edite à mão.",
+  "secret_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "max_age_seconds": 43200,
+  "skew_seconds": 300,
+  "now": "2026-09-25T12:00:00+00:00",
+  "signatures": [
+    {
+      "command_uuid": "cmd-0",
+      "device_id": "33333333-3333-3333-3333-333333333333",
+      "kind": "apply_discount",
+      "payload": {},
+      "issued_at": "2026-09-19T12:00:00+00:00",
+      "canonical_payload": "{}",
+      "material": "cmd-0\u001f33333333-3333-3333-3333-333333333333\u001fapply_discount\u001f{}\u001f2026-09-19T12:00:00+00:00",
+      "signature": "57e08994f0ad848e846f163d85301ded7de1f32732e1cd2991e1e759ad9a8672"
+    },
+    {
+      "command_uuid": "cmd-1",
+      "device_id": "33333333-3333-3333-3333-333333333333",
+      "kind": "apply_discount",
+      "payload": {
+        "order_id": "abc",
+        "percent": "12.5",
+        "reason": "Atraso na cozinha"
+      },
+      "issued_at": "2026-09-19T12:00:00+00:00",
+      "canonical_payload": "{\"order_id\":\"abc\",\"percent\":\"12.5\",\"reason\":\"Atraso na cozinha\"}",
+      "material": "cmd-1\u001f33333333-3333-3333-3333-333333333333\u001fapply_discount\u001f{\"order_id\":\"abc\",\"percent\":\"12.5\",\"reason\":\"Atraso na cozinha\"}\u001f2026-09-19T12:00:00+00:00",
+      "signature": "812c62c44fdd7a96c66f0860bda927a9ec811a6410c086d1aca85536e11007fd"
+    },
+    {
+      "command_uuid": "cmd-2",
+      "device_id": "33333333-3333-3333-3333-333333333333",
+      "kind": "apply_discount",
+      "payload": {
+        "order_id": "abc",
+        "percent": 10,
+        "reason": "Cliente fiel"
+      },
+      "issued_at": "2026-09-19T12:00:00+00:00",
+      "canonical_payload": "{\"order_id\":\"abc\",\"percent\":10,\"reason\":\"Cliente fiel\"}",
+      "material": "cmd-2\u001f33333333-3333-3333-3333-333333333333\u001fapply_discount\u001f{\"order_id\":\"abc\",\"percent\":10,\"reason\":\"Cliente fiel\"}\u001f2026-09-19T12:00:00+00:00",
+      "signature": "0ecaf63908ff7b01550ac6dba763c9bdcdcb1879b73b4f3cf7bc0335f8dc97bd"
+    },
+    {
+      "command_uuid": "cmd-3",
+      "device_id": "33333333-3333-3333-3333-333333333333",
+      "kind": "apply_discount",
+      "payload": {
+        "percent": 10.0
+      },
+      "issued_at": "2026-09-19T12:00:00+00:00",
+      "canonical_payload": "{\"percent\":10.0}",
+      "material": "cmd-3\u001f33333333-3333-3333-3333-333333333333\u001fapply_discount\u001f{\"percent\":10.0}\u001f2026-09-19T12:00:00+00:00",
+      "signature": "aab0dcd8563098ffc644760ddd8809cfd0e2941776f3fd53f9e2d8376e737476"
+    },
+    {
+      "command_uuid": "cmd-4",
+      "device_id": "33333333-3333-3333-3333-333333333333",
+      "kind": "apply_discount",
+      "payload": {
+        "percent": 12.5,
+        "z": null,
+        "t": true,
+        "f": false
+      },
+      "issued_at": "2026-09-19T12:00:00+00:00",
+      "canonical_payload": "{\"f\":false,\"percent\":12.5,\"t\":true,\"z\":null}",
+      "material": "cmd-4\u001f33333333-3333-3333-3333-333333333333\u001fapply_discount\u001f{\"f\":false,\"percent\":12.5,\"t\":true,\"z\":null}\u001f2026-09-19T12:00:00+00:00",
+      "signature": "6f39d72a988d5f950e3ae335a2de338f5a4a008b7533af3474efa8be6d9732bb"
+    },
+    {
+      "command_uuid": "cmd-5",
+      "device_id": "33333333-3333-3333-3333-333333333333",
+      "kind": "apply_discount",
+      "payload": {
+        "z": 1,
+        "a": 2,
+        "m": "ç ã é",
+        "vazio": ""
+      },
+      "issued_at": "2026-09-19T12:00:00+00:00",
+      "canonical_payload": "{\"a\":2,\"m\":\"ç ã é\",\"vazio\":\"\",\"z\":1}",
+      "material": "cmd-5\u001f33333333-3333-3333-3333-333333333333\u001fapply_discount\u001f{\"a\":2,\"m\":\"ç ã é\",\"vazio\":\"\",\"z\":1}\u001f2026-09-19T12:00:00+00:00",
+      "signature": "1bc8d101625caf2788324648be32bbfc130d8bc791b017a273ea0f1ece20618b"
+    },
+    {
+      "command_uuid": "cmd-6",
+      "device_id": "33333333-3333-3333-3333-333333333333",
+      "kind": "apply_discount",
+      "payload": {
+        "aninhado": {
+          "b": 2,
+          "a": [
+            3,
+            1,
+            2
+          ]
+        }
+      },
+      "issued_at": "2026-09-19T12:00:00+00:00",
+      "canonical_payload": "{\"aninhado\":{\"a\":[3,1,2],\"b\":2}}",
+      "material": "cmd-6\u001f33333333-3333-3333-3333-333333333333\u001fapply_discount\u001f{\"aninhado\":{\"a\":[3,1,2],\"b\":2}}\u001f2026-09-19T12:00:00+00:00",
+      "signature": "47daf6b5d29ca03258d8d029350a2054b6c5af07ea9897e49bc914fdc947db66"
+    },
+    {
+      "command_uuid": "cmd-7",
+      "device_id": "33333333-3333-3333-3333-333333333333",
+      "kind": "apply_discount",
+      "payload": {
+        "B": 1,
+        "a": 2,
+        "_": 3,
+        "Ç": 4
+      },
+      "issued_at": "2026-09-19T12:00:00+00:00",
+      "canonical_payload": "{\"B\":1,\"_\":3,\"a\":2,\"Ç\":4}",
+      "material": "cmd-7\u001f33333333-3333-3333-3333-333333333333\u001fapply_discount\u001f{\"B\":1,\"_\":3,\"a\":2,\"Ç\":4}\u001f2026-09-19T12:00:00+00:00",
+      "signature": "ba120f5fefe560010d49673ad0435d80300ecab6f7a65d0887718b68d610be21"
+    },
+    {
+      "command_uuid": "cmd-8",
+      "device_id": "33333333-3333-3333-3333-333333333333",
+      "kind": "apply_discount",
+      "payload": {
+        "emoji": "bolo 🎂",
+        "aspas": "a\"b\\c",
+        "linha": "x\ny\tz"
+      },
+      "issued_at": "2026-09-19T12:00:00+00:00",
+      "canonical_payload": "{\"aspas\":\"a\\\"b\\\\c\",\"emoji\":\"bolo 🎂\",\"linha\":\"x\\ny\\tz\"}",
+      "material": "cmd-8\u001f33333333-3333-3333-3333-333333333333\u001fapply_discount\u001f{\"aspas\":\"a\\\"b\\\\c\",\"emoji\":\"bolo 🎂\",\"linha\":\"x\\ny\\tz\"}\u001f2026-09-19T12:00:00+00:00",
+      "signature": "d07b37e2709171c24c36d40a6816adf5c480deb59b5651bc08e592a082f44e13"
+    },
+    {
+      "command_uuid": "cmd-9",
+      "device_id": "33333333-3333-3333-3333-333333333333",
+      "kind": "cancel_item",
+      "payload": {
+        "order_item_id": "i-1",
+        "order_id": "o-1",
+        "reason": "Pedido trocado"
+      },
+      "issued_at": "2026-09-19T12:00:00+00:00",
+      "canonical_payload": "{\"order_id\":\"o-1\",\"order_item_id\":\"i-1\",\"reason\":\"Pedido trocado\"}",
+      "material": "cmd-9\u001f33333333-3333-3333-3333-333333333333\u001fcancel_item\u001f{\"order_id\":\"o-1\",\"order_item_id\":\"i-1\",\"reason\":\"Pedido trocado\"}\u001f2026-09-19T12:00:00+00:00",
+      "signature": "19110d1ada9c8c440e6247d7e02f8c3bd0165939088b42aae90ed6667bebd19f"
+    }
+  ],
+  "freshness": [
+    {
+      "issued_at": "2026-09-25T12:00:00+00:00",
+      "fresh": true
+    },
+    {
+      "issued_at": "2026-09-25T12:00:00.000Z",
+      "fresh": true
+    },
+    {
+      "issued_at": "2026-09-25T00:00:00+00:00",
+      "fresh": true
+    },
+    {
+      "issued_at": "2026-09-24T23:59:59+00:00",
+      "fresh": false
+    },
+    {
+      "issued_at": "2026-09-25T12:05:00+00:00",
+      "fresh": true
+    },
+    {
+      "issued_at": "2026-09-25T12:05:01+00:00",
+      "fresh": false
+    },
+    {
+      "issued_at": "2026-09-25T09:00:00-03:00",
+      "fresh": true
+    },
+    {
+      "issued_at": "2026-09-24T20:59:59-03:00",
+      "fresh": false
+    },
+    {
+      "issued_at": "2026-09-25T11:00:00",
+      "fresh": true
+    },
+    {
+      "issued_at": "2026-09-25 11:00:00+00:00",
+      "fresh": true
+    },
+    {
+      "issued_at": "2026-09-25T11:00:00.123456+00:00",
+      "fresh": true
+    },
+    {
+      "issued_at": "2026-09-25",
+      "fresh": true
+    },
+    {
+      "issued_at": "2026-09-26",
+      "fresh": false
+    },
+    {
+      "issued_at": "ontem",
+      "fresh": false
+    },
+    {
+      "issued_at": "",
+      "fresh": false
+    },
+    {
+      "issued_at": "2026-13-01T00:00:00+00:00",
+      "fresh": false
+    }
+  ],
+  "percents": [
+    {
+      "value": "12.5",
+      "plain": "12.5"
+    },
+    {
+      "value": 12.5,
+      "plain": "12.5"
+    },
+    {
+      "value": 10,
+      "plain": "10"
+    },
+    {
+      "value": 10.0,
+      "plain": "10"
+    },
+    {
+      "value": "10.50",
+      "plain": "10.5"
+    },
+    {
+      "value": "1e1",
+      "plain": "10"
+    },
+    {
+      "value": " 7 ",
+      "plain": "7"
+    },
+    {
+      "value": "+5",
+      "plain": "5"
+    },
+    {
+      "value": "0.01",
+      "plain": "0.01"
+    },
+    {
+      "value": "100",
+      "plain": "100"
+    },
+    {
+      "value": 100,
+      "plain": "100"
+    },
+    {
+      "value": "100.0",
+      "plain": "100"
+    },
+    {
+      "value": 0,
+      "error": true
+    },
+    {
+      "value": "0",
+      "error": true
+    },
+    {
+      "value": -1,
+      "error": true
+    },
+    {
+      "value": 100.01,
+      "error": true
+    },
+    {
+      "value": "101",
+      "error": true
+    },
+    {
+      "value": "abc",
+      "error": true
+    },
+    {
+      "value": "12,5",
+      "error": true
+    },
+    {
+      "value": "NaN",
+      "error": true
+    },
+    {
+      "value": "Infinity",
+      "error": true
+    },
+    {
+      "value": "-Infinity",
+      "error": true
+    },
+    {
+      "value": true,
+      "error": true
+    },
+    {
+      "value": null,
+      "error": true
+    },
+    {
+      "value": [],
+      "error": true
+    },
+    {
+      "value": {},
+      "error": true
+    }
+  ]
+}

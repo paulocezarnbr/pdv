@@ -105,6 +105,30 @@ public sealed record SyncReport(int Sent = 0, int Settled = 0, int Rejected = 0,
     public bool MadeProgress => Settled > 0;
 }
 
+public sealed record CommandCycleReport(
+    int Fetched = 0, int Accepted = 0, int Applied = 0, int Refused = 0, int Reported = 0, int Awaiting = 0,
+    string? Error = null);
+
+/// <summary>
+/// O canal de comandos do painel. Opcional: uma nuvem que não o fala não é
+/// falha, e o caixa só deixa de receber comando.
+/// </summary>
+public interface ICommandTransport
+{
+    /// <summary>
+    /// Os comandos endereçados a este terminal, <b>não verificados</b>. A
+    /// entrega não consome o comando na nuvem: ele volta até ser relatado.
+    /// </summary>
+    Task<IReadOnlyList<Pdv.Core.Remote.RemoteCommand>> FetchCommandsAsync(
+        string tenantId, string storeId, string deviceId, int limit, CancellationToken cancellation);
+
+    /// <summary>Relata resultados e esperas. Devolve os <c>command_uuid</c> que a nuvem aceitou.</summary>
+    Task<IReadOnlyList<string>> ReportCommandsAsync(
+        string tenantId, string storeId, string deviceId,
+        IReadOnlyList<Remote.CommandResult> results, IReadOnlyList<Remote.AwaitingNotice> awaiting,
+        CancellationToken cancellation);
+}
+
 /// <summary>Canal até a nuvem. HTTP em produção, falso nos testes de falha.</summary>
 public interface ISyncTransport
 {

@@ -22,6 +22,7 @@ public sealed partial class CounterPage : UserControl
         PayPix.CommandParameter = TefCardType.Pix;
         ViewModel.AskText = AskTextAsync;
         ViewModel.AskAuthorizer = AskAuthorizerAsync;
+        ViewModel.AskRemoteDecision = AskRemoteDecisionAsync;
         Loaded += async (_, _) =>
         {
             QueryBox.Focus(FocusState.Programmatic);
@@ -137,6 +138,82 @@ public sealed partial class CounterPage : UserControl
         };
         await dialog.ShowAsync();
         return authorized;
+    }
+
+    /// <summary>
+    /// Aceitar ou recusar um pedido do painel. Credencial ou papel errados
+    /// mostram o motivo e mantêm o diálogo; uma trava que recusa fecha e decide.
+    /// </summary>
+    private async Task<string?> AskRemoteDecisionAsync(RemoteDecisionRequest request)
+    {
+        var login = new ComboBox
+        {
+            ItemsSource = request.Logins,
+            IsEditable = true,
+            Header = "Login de quem está no caixa",
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+        var pin = new PasswordBox { Header = "PIN", MaxLength = 12 };
+        var reason = new TextBox { Header = "Motivo (só para recusar — volta ao painel)" };
+        var error = new TextBlock
+        {
+            Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["SystemFillColorCriticalBrush"],
+            TextWrapping = TextWrapping.Wrap,
+        };
+        AutomationProperties.SetAutomationId(login, "RemoteLogin");
+        AutomationProperties.SetAutomationId(pin, "RemotePin");
+        AutomationProperties.SetAutomationId(reason, "RemoteReason");
+
+        string? outcome = null;
+        Exception? decided = null;
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = "Pedido do painel",
+            Content = new StackPanel
+            {
+                Spacing = 12,
+                MinWidth = 380,
+                Children = { new TextBlock { Text = request.Note, TextWrapping = TextWrapping.Wrap }, login, pin, reason, error },
+            },
+            PrimaryButtonText = "Aceitar",
+            SecondaryButtonText = "Recusar",
+            CloseButtonText = "Depois",
+            DefaultButton = ContentDialogButton.Close,
+        };
+
+        void Decide(ContentDialogButtonClickEventArgs args, bool accept)
+        {
+            var typed = (login.SelectedItem as string ?? login.Text ?? "").Trim();
+            try
+            {
+                if (accept)
+                {
+                    outcome = request.Accept(typed, pin.Password);
+                }
+                else
+                {
+                    request.Decline(typed, pin.Password, reason.Text);
+                    outcome = "Pedido do painel recusado. O motivo volta ao painel.";
+                }
+            }
+            catch (Exception failure) when (failure is AuthenticationException or Data.Remote.ConfirmationException)
+            {
+                error.Text = failure.Message;
+                pin.Password = "";
+                args.Cancel = true;
+            }
+            catch (Data.Remote.CommandRefusedException refused)
+            {
+                decided = refused;
+            }
+        }
+
+        dialog.PrimaryButtonClick += (_, args) => Decide(args, accept: true);
+        dialog.SecondaryButtonClick += (_, args) => Decide(args, accept: false);
+        await dialog.ShowAsync();
+        if (decided is not null) throw decided;
+        return outcome;
     }
 
     private void OnResultClick(object sender, ItemClickEventArgs e)

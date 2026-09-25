@@ -19,7 +19,8 @@ public sealed class SyncEngine(
     TerminalProfile terminal,
     TimeProvider? clock = null,
     int batchSize = 200,
-    Action<string>? log = null)
+    Action<string>? log = null,
+    Remote.RemoteCommandService? commands = null)
 {
     /// <summary>Desvio de relógio que vira aviso (o painel usa o mesmo).</summary>
     public const long ClockSkewWarningMs = 120_000;
@@ -204,6 +205,74 @@ public sealed class SyncEngine(
         }
         return drift;
     }
+
+    /// <summary>Há canal de comando <b>e</b> alguém para aplicá-los?</summary>
+    public bool SpeaksCommands => commands is not null && transport is ICommandTransport;
+
+    /// <summary>Busca, aplica e relata os comandos do painel — nesta ordem, que não se inverte.</summary>
+    /// <remarks>
+    /// <list type="number">
+    /// <item>Buscar: falha de rede aborta sem efeito nenhum.</item>
+    /// <item>Gravar na fila: <c>command_uuid</c> repetido é a reentrega, não erro.</item>
+    /// <item>Aplicar: cada um na sua transação, com o status junto do efeito.</item>
+    /// <item>Relatar: só depois. Relatar primeiro deixaria o painel dizendo
+    /// "aplicado" para um desconto que o caixa ainda pode recusar.</item>
+    /// </list>
+    /// </remarks>
+    public async Task<CommandCycleReport> CommandCycleAsync(int limit = 50, CancellationToken cancellation = default)
+    {
+        if (commands is null || transport is not ICommandTransport channel) return new CommandCycleReport();
+
+        IReadOnlyList<Pdv.Core.Remote.RemoteCommand> delivered;
+        try
+        {
+            delivered = await channel.FetchCommandsAsync(terminal.TenantId, terminal.StoreId, terminal.DeviceId, limit, cancellation);
+        }
+        catch (SyncException error)
+        {
+            _log($"Busca de comandos falhou: {error.Message}");
+            return new CommandCycleReport(Error: error.Message);
+        }
+
+        var accepted = delivered.Count(command => commands.Inbox.Accept(command));
+        var applied = commands.ApplyPending(limit);
+        var (reported, reportError) = await ReportCommandsAsync(channel, limit, cancellation);
+        return new CommandCycleReport(
+            delivered.Count, accepted, applied.Applied, applied.Refused, reported, applied.Awaiting, reportError);
+    }
+
+    /// <summary>Avisa a nuvem do que foi decidido. Falhar aqui não desfaz nem repete nada.</summary>
+    private async Task<(int Reported, string? Error)> ReportCommandsAsync(
+        ICommandTransport channel, int limit, CancellationToken cancellation)
+    {
+        var inbox = commands!.Inbox;
+        var results = inbox.Unreported(limit);
+        var awaiting = inbox.UnreportedAwaiting(limit);
+        if (results.Count == 0 && awaiting.Count == 0) return (0, null);
+
+        IReadOnlyList<string> named;
+        try
+        {
+            named = await channel.ReportCommandsAsync(
+                terminal.TenantId, terminal.StoreId, terminal.DeviceId, results, awaiting, cancellation);
+        }
+        catch (SyncException error)
+        {
+            _log($"Relato de comandos falhou: {error.Message}");
+            return (0, error.Message);
+        }
+
+        // Só o que a nuvem nomeou, e cada marca no seu lugar: uma nuvem que
+        // inventa uuids ou confirma pela metade não esvazia a fila de relato.
+        var known = results.Select(result => result.CommandUuid).ToHashSet(StringComparer.Ordinal);
+        var confirmed = named.Where(known.Contains).Distinct().ToList();
+        inbox.MarkReported(confirmed);
+        var waiting = awaiting.Select(notice => notice.CommandUuid).ToHashSet(StringComparer.Ordinal);
+        inbox.MarkAwaitingReported(named.Where(waiting.Contains).Distinct());
+        return (confirmed.Count, null);
+    }
+
+    public long PendingCommands() => commands?.Inbox.PendingCount() ?? 0;
 
     public long PendingCount() => _reader.PendingCount();
 

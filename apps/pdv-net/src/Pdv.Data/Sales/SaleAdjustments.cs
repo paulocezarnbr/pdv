@@ -30,6 +30,9 @@ public sealed class SaleAdjustments(
     private readonly TimeProvider _clock = clock ?? TimeProvider.System;
     private readonly Outbox _outbox = new(clock);
 
+    /// <summary>A conexão desta tela, para reler o pedido que o painel alterou.</summary>
+    public SqliteConnection Connection => database.Connection;
+
     /// <summary>Cancela um item vivo da venda aberta. Só gerente libera.</summary>
     /// <exception cref="AuthorizationRequiredException">Quem autorizou não é gerente ativo com poder de autorizar.</exception>
     /// <exception cref="InvalidQuantityException">Item inexistente, de outra venda ou já cancelado; motivo vazio.</exception>
@@ -44,32 +47,8 @@ public sealed class SaleAdjustments(
             RequireAuthorizer(transaction, authorizer.Id, Roles.ItemCancel,
                 "Cancelamento de item exige autorização de gerente.");
 
-            var item = LoadLiveItem(transaction, orderId, itemId)
+            var item = CancelWithin(transaction, orderId, itemId, authorizer.Id, reason)
                        ?? throw new InvalidQuantityException("Item inexistente na venda atual");
-
-            var canceledAt = Iso.Now(_clock);
-            using (var update = transaction.Command(
-                       "UPDATE order_items SET canceled_at = $at, canceled_by_user_id = $by, cancel_reason = $reason " +
-                       "WHERE id = $id AND canceled_at IS NULL",
-                       ("$at", canceledAt), ("$by", authorizer.Id), ("$reason", reason), ("$id", itemId)))
-            {
-                update.ExecuteNonQuery();
-            }
-            // client_uuid novo: é uma mudança, não o item de novo. Com o do item,
-            // a nuvem leria como reenvio e descartaria — e o item cancelado
-            // seguiria vivo no "mais vendidos" do painel.
-            _outbox.Enqueue(transaction, "order_items", itemId, Iso.NewId(), "update", new Dictionary<string, object?>
-            {
-                ["id"] = itemId,
-                ["canceled_at"] = canceledAt,
-                ["canceled_by_user_id"] = authorizer.Id,
-                ["cancel_reason"] = reason,
-            });
-
-            foreach (var (inventoryItemId, consumedMg) in item.Consumptions)
-            {
-                Reverse(transaction, inventoryItemId, consumedMg, itemId);
-            }
 
             ledger.Append(transaction, "item_canceled", operatorId, new Dictionary<string, object?>
             {
@@ -83,6 +62,45 @@ public sealed class SaleAdjustments(
 
             return SaleRepository.RecomputeTotals(transaction, orderId, _clock);
         });
+    }
+
+    /// <summary>
+    /// O miolo do cancelamento, na transação de quem chama: marca o item, avisa
+    /// a nuvem e estorna o estoque. O balcão (F4) e o comando do painel usam o
+    /// mesmo — três caminhos de cancelamento com três cópias já deixaram, no
+    /// Python, item cancelado vivo no painel.
+    /// </summary>
+    /// <returns>O item como estava, ou <c>null</c> se ele não existe vivo nesta venda.</returns>
+    internal CanceledItem? CancelWithin(
+        SqliteTransaction transaction, string orderId, string itemId, string canceledByUserId, string storedReason)
+    {
+        var item = LoadLiveItem(transaction, orderId, itemId);
+        if (item is null) return null;
+
+        var canceledAt = Iso.Now(_clock);
+        using (var update = transaction.Command(
+                   "UPDATE order_items SET canceled_at = $at, canceled_by_user_id = $by, cancel_reason = $reason " +
+                   "WHERE id = $id AND canceled_at IS NULL",
+                   ("$at", canceledAt), ("$by", canceledByUserId), ("$reason", storedReason), ("$id", itemId)))
+        {
+            update.ExecuteNonQuery();
+        }
+        // client_uuid novo: é uma mudança, não o item de novo. Com o do item,
+        // a nuvem leria como reenvio e descartaria — e o item cancelado
+        // seguiria vivo no "mais vendidos" do painel.
+        _outbox.Enqueue(transaction, "order_items", itemId, Iso.NewId(), "update", new Dictionary<string, object?>
+        {
+            ["id"] = itemId,
+            ["canceled_at"] = canceledAt,
+            ["canceled_by_user_id"] = canceledByUserId,
+            ["cancel_reason"] = storedReason,
+        });
+
+        foreach (var (inventoryItemId, consumedMg) in item.Consumptions)
+        {
+            Reverse(transaction, inventoryItemId, consumedMg, itemId);
+        }
+        return item;
     }
 
     /// <summary>Desconto percentual sobre o subtotal. Substitui o anterior; não acumula.</summary>
@@ -244,7 +262,7 @@ public sealed class SaleAdjustments(
         });
     }
 
-    private sealed record CanceledItem(
+    internal sealed record CanceledItem(
         string ProductName, long NetWeightGrams, long TotalCents, IReadOnlyList<(string InventoryItemId, long ConsumedMg)> Consumptions);
 }
 

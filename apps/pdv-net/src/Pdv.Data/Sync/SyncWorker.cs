@@ -29,6 +29,9 @@ public sealed class SyncWorker(SyncEngine engine, Action<string>? log = null)
     public event EventHandler<(long Pending, long Quarantined)>? QueueChanged;
     public event EventHandler<bool>? ConnectionChanged;
 
+    /// <summary>Quantos comandos do painel seguem pendentes (inclui os que esperam aceite).</summary>
+    public event EventHandler<long>? CommandsChanged;
+
     /// <summary>Roda até o cancelamento. Nenhuma exceção de um ciclo mata o laço.</summary>
     public async Task RunAsync(CancellationToken cancellation)
     {
@@ -86,6 +89,26 @@ public sealed class SyncWorker(SyncEngine engine, Action<string>? log = null)
         var quarantined = engine.QuarantinedCount();
         QueueChanged?.Invoke(this, (pending - quarantined, quarantined));
         if (report.Error is not null) return ErrorInterval;
+
+        // Comando depois do push (o painel decide sobre o estado que acabou de
+        // subir) e em todo ciclo: o cliente parado no balcão esperando o
+        // desconto não espera o pull de cadastro.
+        if (engine.SpeaksCommands)
+        {
+            try
+            {
+                var commands = await engine.CommandCycleAsync(cancellation: cancellation);
+                if (commands.Applied > 0 || commands.Refused > 0)
+                {
+                    _log($"Comandos do painel: {commands.Applied} aplicado(s), {commands.Refused} recusado(s)");
+                }
+                CommandsChanged?.Invoke(this, engine.PendingCommands());
+            }
+            catch (Exception error) when (error is not OperationCanceledException)
+            {
+                _log($"Erro inesperado no ciclo de comandos: {error.Message}");
+            }
+        }
 
         if (_cycle % PullEveryNCycles == 0)
         {
