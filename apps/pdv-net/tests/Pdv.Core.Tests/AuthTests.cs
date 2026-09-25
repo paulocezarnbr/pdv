@@ -242,4 +242,39 @@ public sealed class AuthTests : IDisposable
         var manager = auth.Authorize("bruno", Pin);
         Assert.Equal(30m, manager.MaxDiscountPercent);
     }
+
+    // -- papel e teto (C3c) --------------------------------------------------
+
+    [Fact]
+    public void An_owners_pin_does_not_release_a_managers_cancel_and_counts()
+    {
+        AddUser("u-dona", "Carla Dona", "carla", "owner", PythonHash, canAuthorize: true, discount: "100");
+        var auth = Auth();
+
+        Assert.Equal("u-gerente", auth.AuthorizeRole("bruno", Pin, Roles.ItemCancel).Id);
+        var error = Assert.Throws<AuthenticationException>(() => auth.AuthorizeRole("CARLA", Pin, Roles.ItemCancel));
+        Assert.Equal("Esta operação exige a credencial de um gerente.", error.Message);
+        Assert.Equal(1L, _database.Scalar("SELECT failures FROM auth_throttle WHERE scope = 'login:carla'"));
+
+        var ownerOnly = Assert.Throws<AuthenticationException>(() => auth.AuthorizeRole("bruno", Pin, Roles.OwnerOnly));
+        Assert.Equal("Esta operação exige a credencial de um proprietário.", ownerOnly.Message);
+    }
+
+    [Fact]
+    public void The_discount_ceiling_is_the_authorizers_profile()
+    {
+        var auth = Auth();
+        Assert.Equal("u-gerente", auth.AuthorizeDiscount("bruno", Pin, 30m).Id);
+        var error = Assert.Throws<AuthenticationException>(() => auth.AuthorizeDiscount("bruno", Pin, 30.5m));
+        Assert.Equal("Bruno Gerente pode conceder até 30% — o pedido é de 30.5%.", error.Message);
+        Assert.Throws<AuthenticationException>(() => auth.AuthorizeDiscount("ana", Pin, 1m));
+    }
+
+    [Fact]
+    public void The_dialog_lists_only_who_can_authorize()
+    {
+        AddUser("u-dona", "Carla Dona", "carla", "owner", PythonHash, canAuthorize: true);
+        Assert.Equal(["bruno", "carla"], Auth().ListAuthorizers());
+        Assert.Equal(["bruno"], Auth().ListAuthorizers(Roles.ItemCancel));
+    }
 }

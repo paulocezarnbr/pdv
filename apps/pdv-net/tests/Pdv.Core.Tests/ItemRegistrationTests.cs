@@ -127,7 +127,7 @@ public sealed class ItemRegistrationTests : IDisposable
     {
         Assert.Equal(["Fatia de torta"], Catalog().Search("torta").Select(p => p.Name));
         Assert.Equal(["Refrigerante lata"], Catalog().Search("7890000000028").Select(p => p.Name));
-        Assert.Equal(3, Catalog().Search("").Count);
+        Assert.Equal(4, Catalog().Search("").Count);
     }
 
     [Fact]

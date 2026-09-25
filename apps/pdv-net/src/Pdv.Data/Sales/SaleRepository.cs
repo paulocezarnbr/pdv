@@ -86,6 +86,51 @@ public sealed class SaleRepository(TerminalIdentity terminal, TimeProvider? cloc
             reader.GetInt64(3), reader.GetInt64(4), reader.GetInt64(5));
     }
 
+    /// <summary>Totais a partir dos itens vivos no banco — a fonte da verdade, não a memória da tela.</summary>
+    /// <remarks>
+    /// <para>
+    /// O desconto é guardado em centavos e segue valendo quando entra ou sai um
+    /// item, como no Python.
+    /// </para>
+    /// <para>
+    /// Regra a mais que o Python: o desconto nunca passa do subtotal. Lá, um
+    /// cancelamento depois do desconto deixava <c>discount_cents</c> maior que
+    /// o subtotal (com o total travado em zero). A nota fiscal rateia o desconto
+    /// pelos itens e não fecha com isso.
+    /// </para>
+    /// </remarks>
+    public static OpenOrder RecomputeTotals(SqliteTransaction transaction, string orderId, TimeProvider? clock = null)
+    {
+        long subtotal, discount;
+        using (var sums = transaction.Command(
+                   "SELECT COALESCE(SUM(total_cents), 0), (SELECT discount_cents FROM orders WHERE id = $order) " +
+                   "FROM order_items WHERE order_id = $order AND canceled_at IS NULL",
+                   ("$order", orderId)))
+        using (var reader = sums.ExecuteReader())
+        {
+            reader.Read();
+            subtotal = reader.GetInt64(0);
+            discount = reader.IsDBNull(1) ? 0 : reader.GetInt64(1);
+        }
+        return StoreTotals(transaction, orderId, subtotal, Math.Min(discount, subtotal), clock);
+    }
+
+    /// <summary>Grava subtotal, desconto e total (<c>update_totals</c>) e devolve o pedido como ficou.</summary>
+    public static OpenOrder StoreTotals(
+        SqliteTransaction transaction, string orderId, long subtotal, long discount, TimeProvider? clock = null)
+    {
+        var total = Math.Max(0, subtotal - discount);
+        using (var update = transaction.Command(
+                   "UPDATE orders SET subtotal_cents = $sub, discount_cents = $disc, total_cents = $total, " +
+                   "updated_at = $now WHERE id = $id",
+                   ("$sub", subtotal), ("$disc", discount), ("$total", total), ("$now", Iso.Now(clock)),
+                   ("$id", orderId)))
+        {
+            update.ExecuteNonQuery();
+        }
+        return LoadOpenOrder(transaction, orderId);
+    }
+
     /// <summary>Fecha o pedido e o anuncia à nuvem com a ficha inteira.</summary>
     public void CloseOrder(SqliteTransaction transaction, OpenOrder order)
     {

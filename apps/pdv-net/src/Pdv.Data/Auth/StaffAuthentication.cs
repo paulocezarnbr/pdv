@@ -11,6 +11,17 @@ public sealed record Identity(string Id, string Name, string Login, string Role,
 
 public sealed class AuthenticationException(string message) : Exception(message);
 
+/// <summary>Os papéis que liberam cada operação, como no Python.</summary>
+public static class Roles
+{
+    /// <summary>Cancelamento de item no balcão: só gerente (<c>allowed_roles={"manager"}</c> no Python).</summary>
+    public static readonly IReadOnlySet<string> ItemCancel = new HashSet<string>(StringComparer.Ordinal) { "manager" };
+
+    public static readonly IReadOnlySet<string> OwnerOnly = new HashSet<string>(StringComparer.Ordinal) { "owner" };
+
+    public static readonly IReadOnlySet<string> Manager = new HashSet<string>(StringComparer.Ordinal) { "manager", "owner" };
+}
+
 /// <summary>
 /// Login por PIN contra a réplica local, sem internet — o <c>AuthorizationService</c> do Python.
 /// </summary>
@@ -55,6 +66,57 @@ public sealed class StaffAuthentication(PdvDatabase database, string tenantId, T
 
     /// <summary>Confere a credencial de quem pode autorizar (cancelamento, desconto).</summary>
     public Identity Authorize(string login, string pin) => Check(login, pin, requireAuthorizer: true);
+
+    /// <summary>Autoriza só quando a credencial é do papel exigido — o <c>authorize_role</c> do Python.</summary>
+    /// <remarks>
+    /// <c>can_authorize</c> responde se a pessoa tem algum poder; o papel
+    /// responde <b>qual</b>. Sem esta segunda conferência, o PIN de um gerente
+    /// valeria como o de um proprietário só porque os dois têm o primeiro bit
+    /// ligado. Papel errado conta como falha no freio.
+    /// </remarks>
+    public Identity AuthorizeRole(string login, string pin, IReadOnlySet<string> allowedRoles)
+    {
+        var identity = Check(login, pin, requireAuthorizer: true);
+        if (allowedRoles.Contains(identity.Role)) return identity;
+
+        RegisterFailure(identity.Login.Trim().ToLowerInvariant());
+        var expected = allowedRoles.SetEquals(Roles.OwnerOnly) ? "proprietário" : "gerente";
+        throw new AuthenticationException($"Esta operação exige a credencial de um {expected}.");
+    }
+
+    /// <summary>Autoriza um desconto dentro do teto do perfil de quem autoriza — o <c>authorize_discount</c>.</summary>
+    /// <remarks>
+    /// O teto é do <b>perfil</b>: um gerente com limite de 30% não concede 50%
+    /// nem com o PIN certo, senão o limite seria decorativo.
+    /// </remarks>
+    public Identity AuthorizeDiscount(string login, string pin, decimal percent, IReadOnlySet<string>? allowedRoles = null)
+    {
+        var identity = allowedRoles is null ? Authorize(login, pin) : AuthorizeRole(login, pin, allowedRoles);
+        if (percent > identity.MaxDiscountPercent)
+        {
+            throw new AuthenticationException(
+                $"{identity.Name} pode conceder até {Percent(identity.MaxDiscountPercent)}% — o pedido é de {Percent(percent)}%.");
+        }
+        return identity;
+    }
+
+    /// <summary>Logins que podem autorizar, para preencher o diálogo.</summary>
+    public IReadOnlyList<string> ListAuthorizers(IReadOnlySet<string>? allowedRoles = null)
+    {
+        using var command = Sql.Command(
+            database.Connection, null,
+            "SELECT login, role FROM users WHERE tenant_id = $tenant AND is_active = 1 AND can_authorize = 1 ORDER BY name",
+            ("$tenant", tenantId));
+        using var reader = command.ExecuteReader();
+        var logins = new List<string>();
+        while (reader.Read())
+        {
+            if (allowedRoles is null || allowedRoles.Contains(reader.GetString(1))) logins.Add(reader.GetString(0));
+        }
+        return logins;
+    }
+
+    private static string Percent(decimal value) => value.ToString(CultureInfo.InvariantCulture);
 
     /// <summary>Segundos restantes de bloqueio para este login. Zero se liberado.</summary>
     public int LockStatus(string login)
