@@ -252,8 +252,8 @@ Na ordem em que dá para trocar:
 
 | # | Fase | Python de hoje | O que é |
 |---|---|---|---|
-| 1 | C5b-3 | `remote/` (~1.300) | Comandos remotos do painel: desconto e cancelamento assinados, inbox idempotente, aceite no caixa |
-| 2 | C3c | `hardware/scale/` (~700), `services/pricing.py`, parte de `authorization.py` | Item por peso com a balança serial, cancelamento de item e desconto com autorização de gerente |
+| 1 | C3c | `hardware/scale/` (~700), `services/pricing.py`, parte de `authorization.py` | Item por peso com a balança serial, cancelamento de item e desconto com autorização de gerente |
+| 2 | C5b-3 | `remote/` (~1.300) | Comandos remotos do painel: desconto e cancelamento assinados, inbox idempotente, aceite no caixa. Depende da C3c: o comando aplica o mesmo desconto e o mesmo cancelamento |
 | 3 | C6a | `services/cash_session.py` | Abertura e fechamento cego do caixa |
 | 4 | C6b | `services/cashback.py`, `prepaid.py`, `credit_account.py`, `discount_tiers.py` (~700) | Cashback, pré-pago, fiado e níveis de desconto (a decisão cashback × desconto está no `plan.md`) |
 | 5 | C6c | `hardware/printer/` (~620), `fiscal/danfe.py` (~440) | Impressora ESC/POS, cupom e DANFE NFC-e 80 mm |
