@@ -61,15 +61,28 @@ vendendo até a paridade, e daqui em diante só recebe correções. **Toda fase 
   - **Ordem da venda com cartão.** Autorizar, depois abrir a transação e
     gravar, depois confirmar. No WAL só um escreve por vez.
   - 43 testes.
-- [ ] **C2b. Repositórios da venda.** Pedido, item e pagamento; o payload do
-      outbox igual ao `push-day.json`.
-- [ ] **C3. Venda com TEF.** Fechamento de venda:
-      - autorizar → gravar venda e pagamento (NSU e `transaction_id`) na mesma
-        transação → confirmar;
-      - erro ao gravar → desfazer;
-      - recuperação na abertura, com a mensagem ao operador;
-      - teste de ponta a ponta com o simulador, incluindo queda entre as
-        etapas.
+- [x] **C3. Venda com TEF.** `Pdv.Data.Sales`.
+  - **Ordem do fechamento.** Validar a quitação (antes de qualquer cartão),
+    ler os cartões, gravar pedido, pagamentos e auditoria numa transação e
+    confirmar.
+  - **Desfazimento.** Cartão negado, cancelado ou com falha de comunicação,
+    ou erro ao gravar, desfaz os cartões já aprovados daquela venda. Dá para
+    pagar uma venda com dois cartões: a trava de pendência vale só para outra
+    venda.
+  - **Ligação com o TEF.** O `client_uuid` do pagamento no cartão é o
+    `TransactionId` do TEF. É assim que a recuperação pergunta ao banco se a
+    venda existe (`SaleRepository.WasRecorded`).
+  - **Payloads.** `orders` sobe com as mesmas chaves do `push-day.json`, e
+    `payments` com as mesmas chaves mais o `nsu`, que a nuvem já aceita e
+    serve para conciliar com a adquirente.
+  - **Regra a mais que o Python.** O troco nunca passa do que entrou em
+    dinheiro. No Python, R$ 15 no cartão + R$ 5 em dinheiro numa venda de
+    R$ 10 devolviam R$ 10 em espécie.
+  - **Testes.** 13 de ponta a ponta sobre o banco real, incluindo queda antes
+    e depois de gravar. As quatro regras foram verificadas por mutação.
+- [ ] **C3b. Itens da venda.** Item por unidade e por peso (com o quadro cru
+      da balança), baixa de estoque por ficha técnica, cancelamento de item e
+      desconto com autorização. Payloads conferidos contra o `push-day.json`.
 - [ ] **C4. Interface (WPF).** Login por PIN, com Argon2id compatível com os
       hashes do Python (contrato). Também a tela de venda, o pagamento com a
       conversa do TEF e o diálogo de pendências na abertura.

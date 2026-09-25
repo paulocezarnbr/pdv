@@ -49,7 +49,9 @@ public sealed class TefCoordinator(ITefProvider provider, ITefJournal journal, T
         {
             throw new ArgumentOutOfRangeException(nameof(amountCents), "Valor do TEF precisa ser positivo.");
         }
-        if (HasPending)
+        // Pendência de OUTRA venda trava; da mesma venda não — venda em dois
+        // cartões tem o primeiro aprovado e pendente enquanto o segundo é lido.
+        if (journal.Pending().Any(entry => entry.OrderId != orderId))
         {
             throw new TefPendingException(
                 "Há uma transação de cartão pendente de uma venda anterior. " +
