@@ -61,6 +61,12 @@ serviço próprio no backend e, quando aplicável, pacote próprio no desktop/mo
 
 Cada fase termina com **critério de aceite verificável**. Não avance sem ele.
 
+> **PDV em C# (desde 25/09/2026).** O PDV de balcão está sendo portado para
+> .NET 10, por etapas, por causa do TEF. Toda fase nova do PDV é em C#
+> (`apps/pdv-net`). O PDV em Python só recebe correção até a troca. O plano
+> do porte, as regras da transição e as fases C1–C7 estão em
+> [`port_csharp.md`](./port_csharp.md).
+
 ### Fase 0 — Fundação (Sprint 1–2)
 - [ ] Monorepo, CI, lint/format/type-check nas três linguagens.
 - [ ] Modelo de dados M01 + RLS no PostgreSQL (`tenant_id` obrigatório).

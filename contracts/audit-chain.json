@@ -1,0 +1,106 @@
+{
+  "comment": "Gerado por apps/desktop-pdv/tests/test_audit_contract.py. Não edite à mão.",
+  "genesis_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+  "secret_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "created_at": "2026-09-25T03:49:25.134+00:00",
+  "event_type": "sale_closed",
+  "cases": [
+    {
+      "name": "simples",
+      "payload": {
+        "total_cents": 1250,
+        "order_id": "01a0d6ae-a60e-77ed-a0da-26abac491cec",
+        "items": 3
+      },
+      "canonical": "{\"items\":3,\"order_id\":\"01a0d6ae-a60e-77ed-a0da-26abac491cec\",\"total_cents\":1250}",
+      "hash": "bf0dac4e239e7973e231cac263ff9d1e4ff103d6ff89188fbf085b9bea26341b"
+    },
+    {
+      "name": "acentos_e_escapes",
+      "payload": {
+        "produto": "Pão de Queijo — edição ção",
+        "obs": "linha1\nlinha2\t\"aspas\" \\ barra / fim\r",
+        "controle": "\u0001\u001f\b\f",
+        "emoji": "🍰 bolo"
+      },
+      "canonical": "{\"controle\":\"\\u0001\\u001f\\b\\f\",\"emoji\":\"🍰 bolo\",\"obs\":\"linha1\\nlinha2\\t\\\"aspas\\\" \\\\ barra / fim\\r\",\"produto\":\"Pão de Queijo — edição ção\"}",
+      "hash": "07a5131dcc027e7fb7ebb96a5df310de23c893745e4192a06f891cc58da58493"
+    },
+    {
+      "name": "aninhado_e_ordem",
+      "payload": {
+        "b": {
+          "z": 1,
+          "a": [
+            3,
+            2,
+            {
+              "y": null,
+              "x": true
+            }
+          ]
+        },
+        "a": false,
+        "A": 0,
+        "_": "",
+        "aa": [],
+        "ab": {}
+      },
+      "canonical": "{\"A\":0,\"_\":\"\",\"a\":false,\"aa\":[],\"ab\":{},\"b\":{\"a\":[3,2,{\"x\":true,\"y\":null}],\"z\":1}}",
+      "hash": "50e19d59e2ba356d1d22a106d1befab1ce3d545877256841539e60da5fbaa4ea"
+    },
+    {
+      "name": "numeros",
+      "payload": {
+        "negativo": -5,
+        "grande": 9007199254740993,
+        "zero": 0,
+        "meio": 1.5,
+        "decimo": 0.1,
+        "pequeno": 1e-05,
+        "limite_fixo": 0.0001,
+        "grande_float": 1e+16,
+        "quase_limite": 1000000000000000.0,
+        "inteiro_float": 2.0,
+        "fracao": 123456.789,
+        "negativo_float": -0.0001,
+        "precisao": 1.2345678901234567e+19,
+        "zero_negativo": -0.0
+      },
+      "canonical": "{\"decimo\":0.1,\"fracao\":123456.789,\"grande\":9007199254740993,\"grande_float\":1e+16,\"inteiro_float\":2.0,\"limite_fixo\":0.0001,\"meio\":1.5,\"negativo\":-5,\"negativo_float\":-0.0001,\"pequeno\":1e-05,\"precisao\":1.2345678901234567e+19,\"quase_limite\":1000000000000000.0,\"zero\":0,\"zero_negativo\":-0.0}",
+      "hash": "37fb0f55d4d0123b326dd3ad504c1ff685b68c08c8b9e25939484c40e95f9a43"
+    },
+    {
+      "name": "vazio",
+      "payload": {},
+      "canonical": "{}",
+      "hash": "7ad1100b328feb0a5b4e97fbae86ca03915f8e9ea289db8db7621a44d9a26ee5"
+    }
+  ],
+  "chain": [
+    {
+      "seq": 1,
+      "event_type": "item_registered",
+      "payload_json": "{\"price_cents\":450,\"product_id\":\"p1\",\"qty\":2}",
+      "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "hash": "e6a8bc60ef3754c275a9a5237124e9d30002b47e77937ff20ce70cfc5bb38f1c",
+      "created_at": "2026-09-25T03:49:25.134+00:00"
+    },
+    {
+      "seq": 2,
+      "event_type": "discount_applied",
+      "payload_json": "{\"percent\":10,\"reason\":\"Cliente fidelidade\"}",
+      "prev_hash": "e6a8bc60ef3754c275a9a5237124e9d30002b47e77937ff20ce70cfc5bb38f1c",
+      "hash": "d41ade337c74a4f8cc0560fc60ea4a991085920777b68b0ac2f0308b3973150e",
+      "created_at": "2026-09-25T03:49:25.134+00:00"
+    },
+    {
+      "seq": 3,
+      "event_type": "sale_closed",
+      "payload_json": "{\"payments\":[{\"method\":\"debit\",\"nsu\":\"000123\"}],\"total_cents\":810}",
+      "prev_hash": "d41ade337c74a4f8cc0560fc60ea4a991085920777b68b0ac2f0308b3973150e",
+      "hash": "0d2ffd63a58469c1b801e453542304c35a3be315ec1e5e0ca96e7b2bed162214",
+      "created_at": "2026-09-25T03:49:25.134+00:00"
+    }
+  ]
+}

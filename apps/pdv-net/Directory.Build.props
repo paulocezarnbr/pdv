@@ -1,0 +1,13 @@
+<Project>
+  <!-- Valem para todos os projetos do PDV em C#. Aviso vira erro: no PDV em
+       Python, cada bug de campo foi algo que "só avisava". -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+</Project>

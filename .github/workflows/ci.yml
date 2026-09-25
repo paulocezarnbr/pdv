@@ -74,6 +74,35 @@ jobs:
               sys.exit("Teste pulado não prova nada. Ver o motivo com pytest -rs.")
 
   # ---------------------------------------------------------------------------
+  desktop-net:
+    name: PDV em C# (Windows, .NET 10)
+    # O porte para C# acontece por etapas (docs/port_csharp.md). Durante a
+    # transição os dois PDVs gravam o mesmo ledger: os testes leem
+    # contracts/audit-chain.json, gerado pelo Python, e exigem igualdade byte a
+    # byte. Teste pulado reprova, como no job do Python.
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: apps/pdv-net
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Build e testes
+        run: dotnet test --logger "trx;LogFileName=report.trx" --results-directory TestResults
+
+      - name: Nenhum teste pode ter pulado
+        shell: pwsh
+        run: |
+          [xml] $report = Get-Content (Get-ChildItem TestResults -Recurse -Filter report.trx | Select-Object -First 1).FullName
+          $counters = $report.TestRun.ResultSummary.Counters
+          Write-Host "$($counters.total) testes, $($counters.notExecuted) pulados"
+          if ([int] $counters.notExecuted -gt 0) { throw 'Teste pulado nao prova nada.' }
+
+  # ---------------------------------------------------------------------------
   cloud:
     name: Retaguarda (Next.js + Postgres real)
     runs-on: ubuntu-latest

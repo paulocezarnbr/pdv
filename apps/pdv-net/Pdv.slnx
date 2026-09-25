@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Pdv.Core/Pdv.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Pdv.Core.Tests/Pdv.Core.Tests.csproj" />
+  </Folder>
+</Solution>
