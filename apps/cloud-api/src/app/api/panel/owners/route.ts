@@ -60,7 +60,7 @@ export const POST = handler(async (request) => {
       INSERT INTO panel_admin_events
         (tenant_id,actor_user_id,event_type,subject_user_id,payload_json,ip)
       VALUES (${actor.tenantId},${actor.id},'owner_created',${owner.id},
-              ${JSON.stringify({ name: owner.name, login: owner.login })}::jsonb,
+              ${tx.json({ name: owner.name, login: owner.login } as never)},
               ${clientIp(request)})
     `;
     return owner;

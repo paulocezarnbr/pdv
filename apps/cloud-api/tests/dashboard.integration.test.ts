@@ -137,11 +137,19 @@ describeDb("painel contra PostgreSQL real", () => {
     expect(stored!.role).toBe("owner");
     expect(stored!.pin_hash).toMatch(/^\$argon2id\$/);
     expect(Number(stored!.max_discount_percent)).toBe(100);
-    const [event] = await admin<{ event_type: string; ip: string }[]>`
-      SELECT event_type, ip FROM panel_admin_events
+    const [event] = await admin<{ event_type: string; ip: string; kind: string; name: string | null; login: string | null }[]>`
+      SELECT event_type, ip, jsonb_typeof(payload_json) AS kind,
+             payload_json->>'name' AS name, payload_json->>'login' AS login
+        FROM panel_admin_events
        WHERE tenant_id=${tenant} AND subject_user_id=${body.owner.id}
     `;
-    expect(event).toEqual({ event_type: "owner_created", ip: "198.51.100.8" });
+    // Objeto, e não texto com JSON dentro: com `${JSON.stringify(...)}::jsonb`
+    // o postgres.js serializava de novo, a coluna guardava uma string e
+    // `payload_json->>'login'` voltava NULL para qualquer consulta de auditoria.
+    expect(event).toEqual({
+      event_type: "owner_created", ip: "198.51.100.8",
+      kind: "object", name: "Segunda Proprietária", login: "segunda.dona",
+    });
   });
 
   it("lista todos os donos do tenant sem expor hashes", async () => {
