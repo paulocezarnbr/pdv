@@ -250,15 +250,27 @@ public partial class App : Application
     /// TEF pelo simulador até o provedor ser escolhido (docs/port_csharp.md):
     /// o ciclo de pendência, confirmação e desfazimento já é o de produção.
     /// </remarks>
-    private void OpenCounter(string path, PdvDatabase database, TerminalProfile profile, Identity identity)
+    private async void OpenCounter(string path, PdvDatabase database, TerminalProfile profile, Identity identity)
     {
         try
         {
             var vault = new SecretVault(Path.Combine(Path.GetDirectoryName(path)!, "secrets"));
             var ledger = new AuditLedger(profile.TenantId, profile.StoreId, profile.DeviceId, vault.EnsureDeviceSecret());
+            var terminal = profile.Identity;
+
+            // A gaveta antes da venda: fundo de troco na abertura, e a de outro
+            // operador não é tomada.
+            var sessions = new CashSessionService(database, terminal, ledger);
+            var (outcome, message) = await new CashOpening(sessions).EnsureOpenAsync(identity, AskTextAsync);
+            if (outcome != CashOpening.Outcome.Ready)
+            {
+                if (message is not null) await InformAsync("Caixa em uso", message);
+                ShowLogin(path, database);
+                return;
+            }
+
             var journal = new SqliteTefJournal(path);
             var tef = new TefCoordinator(new TefSimulator(), journal);
-            var terminal = profile.Identity;
             var scale = StartScale(database);
             // Conexão da tela: o aceite no caixa não disputa a do ciclo de sincronização.
             var remote = profile.Activated ? RemoteCommands(path, database, profile) : null;
@@ -272,7 +284,8 @@ public partial class App : Application
                 new SaleAdjustments(database, terminal, ledger),
                 new StaffAuthentication(database, profile.TenantId),
                 () => scale.LastStable,
-                remote);
+                remote,
+                sessions);
             _sale = sale;
             sale.RefreshRemote();
 
@@ -287,7 +300,26 @@ public partial class App : Application
                 ui.TryEnqueue(() => sale.ShowScaleError(message));
             };
             scale.Start();
-            _window.Closed += (_, _) => scale.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(2));
+            var released = false;
+            async Task ReleaseAsync()
+            {
+                if (released) return;
+                released = true;
+                // A porta da balança precisa estar livre para o próximo login abri-la.
+                await scale.DisposeAsync();
+                journal.Dispose();
+            }
+            _window.Closed += (_, _) => ReleaseAsync().Wait(TimeSpan.FromSeconds(2));
+
+            // Caixa fechado: resultado na tela e de volta ao login. Sessão
+            // encerrada não recebe mais venda.
+            sale.CashClosed += async (_, result) =>
+            {
+                _sale = null;
+                await ReleaseAsync();
+                await InformAsync("Caixa fechado", SaleViewModel.Describe(result));
+                ShowLogin(path, database);
+            };
 
             _window.ShowCounter(sale, _sync);
         }
@@ -296,5 +328,34 @@ public partial class App : Application
             CrashLog.Write("abertura do caixa", error);
             _window!.ShowFatal(error.Message);
         }
+    }
+
+    /// <summary>Uma pergunta de texto fora da tela de venda (abertura do caixa).</summary>
+    private async Task<string?> AskTextAsync(string prompt)
+    {
+        var box = new TextBox();
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(box, "DialogText");
+        var dialog = new ContentDialog
+        {
+            XamlRoot = _window!.Content.XamlRoot,
+            Title = prompt,
+            Content = box,
+            PrimaryButtonText = "Confirmar",
+            CloseButtonText = "Cancelar",
+            DefaultButton = ContentDialogButton.Primary,
+        };
+        return await dialog.ShowAsync() == ContentDialogResult.Primary ? box.Text : null;
+    }
+
+    private async Task InformAsync(string title, string message)
+    {
+        var dialog = new ContentDialog
+        {
+            XamlRoot = _window!.Content.XamlRoot,
+            Title = title,
+            Content = message,
+            CloseButtonText = "OK",
+        };
+        await dialog.ShowAsync();
     }
 }

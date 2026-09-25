@@ -139,6 +139,12 @@
                         </Button.KeyboardAccelerators>
                     </Button>
                 </Grid>
+                <Button AutomationProperties.AutomationId="CloseCash" Content="F12  Fechar o caixa"
+                        HorizontalAlignment="Stretch" Command="{x:Bind ViewModel.CloseCashCommand}">
+                    <Button.KeyboardAccelerators>
+                        <KeyboardAccelerator Key="F12" />
+                    </Button.KeyboardAccelerators>
+                </Button>
 
                 <TextBox AutomationProperties.AutomationId="CashReceived" Header="Recebido em dinheiro"
                          PlaceholderText="valor exato"

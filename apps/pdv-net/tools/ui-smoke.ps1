@@ -166,6 +166,48 @@ function WaitWindow($proc) {
     return $found
 }
 
+# Diálogos da tela (ContentDialog): texto, autorização por PIN e avisos.
+function Named($name, [int] $seconds = 10) {
+    $condition = New-Object System.Windows.Automation.PropertyCondition($A::NameProperty, $name)
+    $deadline = (Get-Date).AddSeconds($seconds)
+    do {
+        # O ContentDialog abre numa camada própria da janela.
+        $found = $window.FindFirst($Tree::Descendants, $condition)
+        if (-not $found) { Start-Sleep -Milliseconds 200 }
+    } while (-not $found -and (Get-Date) -lt $deadline)
+    if (-not $found) { throw "Botão '$name' não apareceu em $seconds s." }
+    return $found
+}
+function SetText($element, [string] $text, [string] $what) {
+    $deadline = (Get-Date).AddSeconds(5)
+    while ($true) {
+        try { $element.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue($text); return }
+        catch {
+            if ((Get-Date) -gt $deadline) { throw "$what recusou o texto: $($_.Exception.Message)" }
+            Start-Sleep -Milliseconds 250
+        }
+    }
+}
+function Answer([string] $text) {
+    SetText (Find $window 'DialogText') $text 'a caixa de texto do diálogo'
+    Click (Named 'Confirmar')
+    Start-Sleep -Milliseconds 400
+}
+function Authorize([string] $login, [string] $pin) {
+    # A caixa de seleção editável guarda o texto num campo interno.
+    $combo = Find $window 'AuthorizerLogin'
+    $edit = $combo.FindFirst($Tree::Descendants,
+        (New-Object System.Windows.Automation.PropertyCondition($A::ControlTypeProperty, [System.Windows.Automation.ControlType]::Edit)))
+    SetText $(if ($edit) { $edit } else { $combo }) $login 'o login do diálogo de autorização'
+    SetText (Find $window 'AuthorizerPin') $pin 'o PIN do diálogo de autorização'
+    Click (Named 'Autorizar')
+    Start-Sleep -Milliseconds 600
+}
+function NoticeText {
+    ((Find $window 'Notice').FindAll($Tree::Descendants, [System.Windows.Automation.Condition]::TrueCondition) |
+        ForEach-Object { $_.Current.Name }) -join ' '
+}
+
 $stub = $null
 try {
     $window = WaitWindow $process
@@ -191,9 +233,10 @@ try {
     if ($message -notmatch 'Login ou PIN inválido') { $failures += "PIN errado: mensagem '$message'" }
     else { Write-Host 'ok  PIN errado mostra o motivo' }
 
-    # 3. PIN certo, pelo teclado da tela
+    # 3. PIN certo, pelo teclado da tela, e o fundo de troco da abertura do caixa
     TypePin $window '480362'
     Click (Find $window 'SignIn')
+    Answer '100,00'
     $greeting = Text (Find $window 'Greeting' 20)
     if ($greeting -ne 'Olá, Ana') { $failures += "entrada: esperado 'Olá, Ana', veio '$greeting'" }
     else { Write-Host 'ok  PIN certo entra no caixa' }
@@ -238,47 +281,6 @@ try {
     if ($total -notmatch '42,27') { $failures += "peso: esperado R$ 42,27 por 847 g, veio '$total'" }
     else { Write-Host 'ok  item pesado cobra o peso estável' }
 
-    function Named($name, [int] $seconds = 10) {
-        $condition = New-Object System.Windows.Automation.PropertyCondition($A::NameProperty, $name)
-        $deadline = (Get-Date).AddSeconds($seconds)
-        do {
-            # O ContentDialog abre numa camada própria da janela.
-            $found = $window.FindFirst($Tree::Descendants, $condition)
-            if (-not $found) { Start-Sleep -Milliseconds 200 }
-        } while (-not $found -and (Get-Date) -lt $deadline)
-        if (-not $found) { throw "Botão '$name' não apareceu em $seconds s." }
-        return $found
-    }
-    function SetText($element, [string] $text, [string] $what) {
-        $deadline = (Get-Date).AddSeconds(5)
-        while ($true) {
-            try { $element.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue($text); return }
-            catch {
-                if ((Get-Date) -gt $deadline) { throw "$what recusou o texto: $($_.Exception.Message)" }
-                Start-Sleep -Milliseconds 250
-            }
-        }
-    }
-    function Answer([string] $text) {
-        SetText (Find $window 'DialogText') $text 'a caixa de texto do diálogo'
-        Click (Named 'Confirmar')
-        Start-Sleep -Milliseconds 400
-    }
-    function Authorize([string] $login, [string] $pin) {
-        # A caixa de seleção editável guarda o texto num campo interno.
-        $combo = Find $window 'AuthorizerLogin'
-        $edit = $combo.FindFirst($Tree::Descendants,
-            (New-Object System.Windows.Automation.PropertyCondition($A::ControlTypeProperty, [System.Windows.Automation.ControlType]::Edit)))
-        SetText $(if ($edit) { $edit } else { $combo }) $login 'o login do diálogo de autorização'
-        SetText (Find $window 'AuthorizerPin') $pin 'o PIN do diálogo de autorização'
-        Click (Named 'Autorizar')
-        Start-Sleep -Milliseconds 600
-    }
-    function NoticeText {
-        ((Find $window 'Notice').FindAll($Tree::Descendants, [System.Windows.Automation.Condition]::TrueCondition) |
-            ForEach-Object { $_.Current.Name }) -join ' '
-    }
-
     Click (Find $window 'Discount6')
     Answer '10'
     Authorize 'bruno' '730514'
@@ -302,7 +304,20 @@ try {
     if ($total -notmatch '0,00' -or $message -notmatch 'Item cancelado') { $failures += "cancelamento: total '$total', aviso '$message'" }
     else { Write-Host 'ok  cancelamento do item com o PIN do gerente' }
 
-    # 6. ativação pela tela, contra uma retaguarda de mentira em localhost: o
+    # 6. fechamento cego pelo F12: conta, PIN do gerente, resultado e volta ao login
+    Click (Find $window 'CloseCash')
+    Answer '100,00'
+    Authorize 'bruno' '730514'
+    $result = Named 'OK' 10
+    $closed = ($window.FindAll($Tree::Descendants, [System.Windows.Automation.Condition]::TrueCondition) |
+        ForEach-Object { $_.Current.Name }) -join ' '
+    Click $result
+    $store = Text (Find $window 'StoreName' 15)
+    if ($closed -notmatch 'Esperado: R\$ 100,00' -or $closed -notmatch 'Divergência: R\$ 0,00') { $failures += "fechamento: '$closed'" }
+    elseif ($store -ne 'Dolce Affetto') { $failures += "fechamento: não voltou ao login ('$store')" }
+    else { Write-Host 'ok  fechamento cego com o PIN do gerente e volta ao login' }
+
+    # 7. ativação pela tela, contra uma retaguarda de mentira em localhost: o
     #    caixa grava no banco novo, reinicia sozinho e volta com a loja.
     Stop-Process -Id $process.Id -Force
     $process.WaitForExit(10000) | Out-Null
@@ -386,4 +401,4 @@ if ($failures.Count -gt 0) {
     }
     exit 1
 }
-Write-Host 'Caixa: ok (login, venda, TEF, balança, desconto, cancelamento e ativação)'
+Write-Host 'Caixa: ok (login, abertura, venda, TEF, balança, desconto, cancelamento, fechamento e ativação)'

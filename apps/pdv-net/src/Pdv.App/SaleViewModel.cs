@@ -86,6 +86,7 @@ public sealed partial class SaleViewModel : ObservableObject, ITefInteraction
     private readonly StaffAuthentication? _authorization;
     private readonly Func<ScaleReading?>? _stableWeight;
     private readonly RemoteCommandService? _remote;
+    private readonly CashSessionService? _cash;
 
     /// <param name="recoverPending">
     /// Resolve as pendências do TEF (confirma a venda gravada, desfaz a que se
@@ -98,7 +99,8 @@ public sealed partial class SaleViewModel : ObservableObject, ITefInteraction
         ItemRegistration items, Catalog catalog, Checkout checkout, Identity operatorIdentity,
         Func<CancellationToken, Task<IReadOnlyList<TefRecovery>>>? recoverPending = null,
         SaleAdjustments? adjustments = null, StaffAuthentication? authorization = null,
-        Func<ScaleReading?>? stableWeight = null, RemoteCommandService? remote = null)
+        Func<ScaleReading?>? stableWeight = null, RemoteCommandService? remote = null,
+        CashSessionService? cashSessions = null)
     {
         _items = items;
         _catalog = catalog;
@@ -109,6 +111,7 @@ public sealed partial class SaleViewModel : ObservableObject, ITefInteraction
         _authorization = authorization;
         _stableWeight = stableWeight;
         _remote = remote;
+        _cash = cashSessions;
         if (remote is not null) remote.OrderChanged += ReloadIfOpen;
         Greeting = $"Olá, {operatorIdentity.FirstName}";
     }
@@ -215,7 +218,8 @@ public sealed partial class SaleViewModel : ObservableObject, ITefInteraction
     public partial string? Error { get; set; }
 
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(PayCashCommand), nameof(PayCardCommand), nameof(CancelItemCommand), nameof(DiscountCommand))]
+    [NotifyCanExecuteChangedFor(nameof(PayCashCommand), nameof(PayCardCommand), nameof(CancelItemCommand), nameof(DiscountCommand),
+        nameof(CloseCashCommand), nameof(ReviewRemoteCommand))]
     public partial bool IsPaying { get; set; }
 
     // -- itens ---------------------------------------------------------------
@@ -283,6 +287,72 @@ public sealed partial class SaleViewModel : ObservableObject, ITefInteraction
         {
             Error = error.Message;
         }
+    }
+
+    // -- fechamento do caixa -------------------------------------------------
+
+    /// <summary>
+    /// O caixa foi fechado. A casca mostra o resultado e volta ao login: uma
+    /// sessão encerrada não recebe mais venda.
+    /// </summary>
+    public event EventHandler<CashReconciliation>? CashClosed;
+
+    private bool CanCloseCash() => !IsPaying && _cash is not null && _authorization is not null;
+
+    /// <summary>
+    /// F12: fechamento cego. Primeiro a contagem, depois o PIN de quem libera,
+    /// e só então o esperado aparece — ninguém conta "até chegar lá".
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanCloseCash))]
+    private async Task CloseCashAsync()
+    {
+        Error = null;
+        Notice = null;
+        if (Lines.Count > 0)
+        {
+            // Regra a mais que o Python: a venda aberta ficaria órfã na sessão seguinte.
+            Error = "Finalize ou cancele a venda aberta antes de fechar o caixa.";
+            return;
+        }
+        if (_cash!.Current() is null)
+        {
+            Error = "Não há caixa aberto.";
+            return;
+        }
+
+        var typed = await AskText("Fechamento cego: conte o dinheiro da gaveta e informe o total (R$)");
+        if (typed is null) return;
+        var declared = string.IsNullOrWhiteSpace(typed) ? 0 : Money.Parse(typed);
+        if (declared is null)
+        {
+            Error = $"\"{typed.Trim()}\" não é um valor.";
+            return;
+        }
+
+        var authorizer = await AskAuthorizer(new AuthorizationRequest(
+            "Autorizar o fechamento cego desta sessão de caixa.",
+            _authorization!.ListAuthorizers(),
+            _authorization.Authorize));
+        if (authorizer is null) return;
+
+        try
+        {
+            var result = _cash.Close(declared.Value, _operator.Id, authorizer.Id);
+            CashClosed?.Invoke(this, result);
+        }
+        catch (CashSessionException error)
+        {
+            Error = error.Message;
+        }
+    }
+
+    /// <summary>O que a tela mostra no fechamento: declarado, esperado e a divergência com sinal.</summary>
+    public static string Describe(CashReconciliation result)
+    {
+        var sign = result.DifferenceCents > 0 ? "+" : result.DifferenceCents < 0 ? "−" : "";
+        return $"Declarado: {Money.Format(result.DeclaredCents)}\n" +
+               $"Esperado: {Money.Format(result.ExpectedCents)}\n" +
+               $"Divergência: {sign}{Money.Format(Math.Abs(result.DifferenceCents))}";
     }
 
     // -- pedidos do painel ---------------------------------------------------

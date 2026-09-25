@@ -304,6 +304,28 @@ A arquitetura existe para que a tela seja testável:
     e o relato que só marca o que a nuvem nomeou.
   - **Falta:** o ponta a ponta com o painel emitindo de verdade (exige
     sessão com senha e Turnstile). Entra no `tools/CloudE2E` na C7e.
+- [x] **C6a. Sessão de caixa** (`Pdv.Data.Sales.CashSessionService`, mesma
+      tabela `cash_sessions`).
+  - **Abertura.** Entre o login e a venda pede o fundo de troco; em branco
+    vale "sem fundo". Com a gaveta aberta por outro operador, não entra.
+  - **Fechamento cego (F12).** A ordem é: a contagem, depois o PIN de quem
+    libera, e só então esperado e divergência aparecem. O esperado é o fundo
+    mais o dinheiro menos o troco, só de vendas pagas deste terminal desde a
+    abertura. Declarado, esperado, auditoria (`warning` quando diverge) e
+    outbox, com as chaves do `push-day.json`, entram numa transação só.
+    Depois, volta ao login; a porta da balança é solta antes.
+  - **Regras a mais que o Python.**
+    - Quem autorizou é conferido de novo no fechamento.
+    - Não fecha com venda na tela, que ficaria órfã na sessão seguinte.
+  - 392 testes. Nove regras foram verificadas por mutação:
+    - só dinheiro, só vendas pagas, desde a abertura e troco descontado;
+    - gaveta de outro operador, na abertura e no serviço;
+    - aviso de divergência;
+    - autorizador reconferido;
+    - venda na tela.
+
+    O `ui-smoke.ps1` abre com R$ 100,00, vende e fecha às cegas com o PIN
+    do gerente.
 - [ ] **C6. O resto da paridade.**
       - Periféricos: balança serial e impressora ESC/POS.
       - NFC-e.
@@ -339,7 +361,7 @@ Na ordem em que dá para trocar:
 |---|---|---|---|
 | ~~1~~ | ~~C3c~~ | ~~`hardware/scale/`, `services/pricing.py`, parte de `authorization.py`~~ | **Feito** (item por peso, cancelamento e desconto com autorização) |
 | ~~2~~ | ~~C5b-3~~ | ~~`remote/`~~ | **Feito** (comandos do painel com as sete travas e o aceite no caixa) |
-| 3 | C6a | `services/cash_session.py` | Abertura e fechamento cego do caixa |
+| ~~3~~ | ~~C6a~~ | ~~`services/cash_session.py`~~ | **Feito** (abertura com fundo de troco e fechamento cego) |
 | 4 | C6b | `services/cashback.py`, `prepaid.py`, `credit_account.py`, `discount_tiers.py` (~700) | Cashback, pré-pago, fiado e níveis de desconto (a decisão cashback × desconto está no `plan.md`) |
 | 5 | C6c | `hardware/printer/` (~620), `fiscal/danfe.py` (~440) | Impressora ESC/POS, cupom e DANFE NFC-e 80 mm |
 | 6 | C6d | `fiscal/cloud.py`, `fiscal/service.py`, `fiscal/gateway.py` (~500) | NFC-e pedida pelo caixa à nuvem, e a **contingência offline** com série própria e QR Code v3 assinado com o A1 (o DFe.NET já gera) |
