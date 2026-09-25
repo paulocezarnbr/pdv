@@ -10,6 +10,12 @@ public static class PaymentMethods
     public const string Credit = "credit";
     public const string Pix = "pix";
 
+    /// <summary>Crédito pré-pago do cliente (carga feita antes).</summary>
+    public const string Prepaid = "prepaid";
+
+    /// <summary>Fiado: a venda vai para a conta do cliente, com vencimento.</summary>
+    public const string CreditAccount = "credit_account";
+
     public static string ForCard(TefCardType card) => card switch
     {
         TefCardType.Debit => Debit,
@@ -29,7 +35,14 @@ public sealed record PaymentIntent(string Method, long AmountCents, TefCardType?
     public static PaymentIntent Card(TefCardType card, long amountCents, int installments = 1) =>
         new(PaymentMethods.ForCard(card), amountCents, card, installments);
 
+    public static PaymentIntent Prepaid(long amountCents) => new(PaymentMethods.Prepaid, amountCents);
+
+    public static PaymentIntent CreditAccount(long amountCents) => new(PaymentMethods.CreditAccount, amountCents);
+
     public bool IsCard => CardType is not null;
+
+    /// <summary>Pré-pago e fiado só existem com cliente identificado.</summary>
+    public bool NeedsCustomer => Method is PaymentMethods.Prepaid or PaymentMethods.CreditAccount;
 }
 
 /// <summary>Uma linha de <c>payments</c>.</summary>

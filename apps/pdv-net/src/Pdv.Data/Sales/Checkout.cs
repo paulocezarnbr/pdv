@@ -8,7 +8,14 @@ public abstract record CheckoutResult
 
     /// <summary>Venda gravada. <paramref name="AllConfirmed"/> falso: a confirmação ficou para a recuperação.</summary>
     public sealed record Closed(IReadOnlyList<Payment> Payments, IReadOnlyList<TefApproval> Approvals, bool AllConfirmed)
-        : CheckoutResult;
+        : CheckoutResult
+    {
+        /// <summary>O cashback que esta venda gerou, para o cupom.</summary>
+        public Customers.CashbackCredit? Cashback { get; init; }
+
+        /// <summary>O saldo pré-pago depois da venda, quando ele foi usado.</summary>
+        public long? PrepaidBalanceCents { get; init; }
+    }
 
     /// <summary>Um cartão foi negado ou cancelado; os já aprovados desta venda foram desfeitos.</summary>
     public sealed record CardRefused(string Reason) : CheckoutResult;
@@ -31,16 +38,29 @@ public abstract record CheckoutResult
 /// </para>
 /// </remarks>
 public sealed class Checkout(
-    PdvDatabase database, TerminalIdentity terminal, AuditLedger ledger, TefCoordinator tef, TimeProvider? clock = null)
+    PdvDatabase database, TerminalIdentity terminal, AuditLedger ledger, TefCoordinator tef, TimeProvider? clock = null,
+    Customers.CustomerLedgers? customers = null)
 {
     private readonly SaleRepository _sales = new(terminal, clock);
 
+    /// <param name="customerId">
+    /// O cliente identificado (telefone). Com ele a venda gera cashback, e pode
+    /// ser paga com pré-pago ou fiado — os dois consumidos na transação da venda.
+    /// </param>
     public async Task<CheckoutResult> CloseAsync(
         string orderId, string operatorId, IReadOnlyList<PaymentIntent> intents, ITefInteraction ui,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default, string? customerId = null)
     {
         var order = SaleRepository.LoadOpenOrder(database.Connection, orderId);
         var change = PaymentSettlement.Change(intents, order.TotalCents);
+        // Antes de qualquer cartão: no Python a falta de cliente só aparecia
+        // dentro da transação, com o cartão já aprovado e por desfazer.
+        if (intents.FirstOrDefault(intent => intent.NeedsCustomer) is { } needs && (customerId is null || customers is null))
+        {
+            throw new InsufficientPaymentException(order.TotalCents, 0, needs.Method == PaymentMethods.Prepaid
+                ? "Crédito pré-pago exige cliente identificado."
+                : "Fiado exige cliente identificado.");
+        }
 
         var approvals = new List<TefApproval>();
         foreach (var intent in intents.Where(intent => intent.IsCard))
@@ -73,12 +93,44 @@ public sealed class Checkout(
         }
 
         var payments = BuildPayments(intents, approvals, change);
+        Customers.CashbackCredit? cashback = null;
+        long? prepaidBalance = null;
         try
         {
             database.InTransaction(transaction =>
             {
                 _sales.CloseOrder(transaction, order);
+
+                // Na mesma transação que fecha o pedido: sem saldo ou sem
+                // limite, nada da venda fica gravado (e os cartões são desfeitos).
+                var prepaid = intents.Where(intent => intent.Method == PaymentMethods.Prepaid).Sum(intent => intent.AmountCents);
+                if (prepaid > 0)
+                {
+                    prepaidBalance = customers!.RedeemPrepaidWithin(transaction, customerId!, orderId, prepaid, operatorId);
+                }
+                var credit = intents.Where(intent => intent.Method == PaymentMethods.CreditAccount).Sum(intent => intent.AmountCents);
+                if (credit > 0)
+                {
+                    customers!.ChargeWithin(transaction, customerId!, orderId, credit, operatorId);
+                }
+
                 _sales.RecordPayments(transaction, orderId, payments);
+
+                if (customerId is not null && customers is not null)
+                {
+                    cashback = customers.EarnWithin(transaction, customerId, orderId, order.TotalCents, operatorId);
+                    if (cashback is not null)
+                    {
+                        ledger.Append(transaction, "cashback_credited", operatorId, new Dictionary<string, object?>
+                        {
+                            ["order_id"] = orderId,
+                            ["customer_id"] = customerId,
+                            ["amount_cents"] = cashback.AmountCents,
+                            ["expires_at"] = cashback.ExpiresAt,
+                        });
+                    }
+                }
+
                 ledger.Append(transaction, "sale_closed", operatorId, new Dictionary<string, object?>
                 {
                     ["order_id"] = orderId,
@@ -111,7 +163,11 @@ public sealed class Checkout(
         {
             allConfirmed &= await tef.ConfirmAsync(approval, cancellationToken);
         }
-        return new CheckoutResult.Closed(payments, approvals, allConfirmed);
+        return new CheckoutResult.Closed(payments, approvals, allConfirmed)
+        {
+            Cashback = cashback,
+            PrepaidBalanceCents = prepaidBalance,
+        };
     }
 
     private static List<Payment> BuildPayments(
