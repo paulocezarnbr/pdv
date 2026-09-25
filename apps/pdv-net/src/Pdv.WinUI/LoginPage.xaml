@@ -18,6 +18,9 @@
             <InfoBar AutomationProperties.AutomationId="DemoNotice"
                      IsOpen="{x:Bind ViewModel.IsDemo}" IsClosable="False" Severity="Warning"
                      Title="Modo demonstração" Message="{x:Bind ViewModel.DemoNotice}" />
+            <Button AutomationProperties.AutomationId="Activate" Content="Ativar terminal…"
+                    Visibility="{x:Bind ViewModel.IsDemo}" Height="40"
+                    Command="{x:Bind ViewModel.RequestActivationCommand}" />
         </StackPanel>
 
         <!-- Login e PIN. Teclado na tela: balcão com touch e sem teclado físico. -->

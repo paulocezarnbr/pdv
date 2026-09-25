@@ -61,11 +61,22 @@ public sealed class SecretVault(string directory)
     /// <summary>Grava pelo arquivo temporário: uma queda no meio não deixa um segredo pela metade.</summary>
     public void Store(string name, byte[] value)
     {
-        System.IO.Directory.CreateDirectory(Directory);
         var blob = ProtectedData.Protect(value, Entropy, DataProtectionScope.LocalMachine);
         var temp = PathOf(name) + ".tmp";
-        File.WriteAllBytes(temp, blob);
-        File.Move(temp, PathOf(name), overwrite: true);
+        try
+        {
+            System.IO.Directory.CreateDirectory(Directory);
+            File.WriteAllBytes(temp, blob);
+            File.Move(temp, PathOf(name), overwrite: true);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            // Quase sempre permissão da pasta de dados: o balcão precisa do
+            // caminho, não do nome da exceção.
+            throw new SecretVaultException(
+                $"Não foi possível gravar o segredo '{name}' em {Directory}: {error.Message} " +
+                "Confira as permissões da pasta de dados do PDV (reinstale pelo instalador, opção Reparar).");
+        }
     }
 
     /// <summary>

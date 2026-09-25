@@ -18,6 +18,8 @@ public sealed partial class MainWindow : Window
 
     public void ShowCounter(SaleViewModel sale) => Host.Content = new CounterPage(sale);
 
+    public void ShowActivation(ActivationViewModel activation) => Host.Content = new ActivationPage(activation);
+
     public void ShowFatal(string message) =>
         Host.Content = new InfoBar
         {

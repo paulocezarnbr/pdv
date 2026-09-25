@@ -40,10 +40,19 @@ public sealed partial class LoginViewModel(
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(SignInCommand))]
+    [NotifyCanExecuteChangedFor(nameof(RequestActivationCommand))]
     public partial bool IsBusy { get; set; }
 
     /// <summary>Quem entrou. A casca troca a tela ao receber.</summary>
     public event EventHandler<Identity>? SignedIn;
+
+    /// <summary>O lojista pediu para ativar o terminal (só em demonstração).</summary>
+    public event EventHandler? ActivationRequested;
+
+    private bool CanRequestActivation() => IsDemo && !IsBusy;
+
+    [RelayCommand(CanExecute = nameof(CanRequestActivation))]
+    private void RequestActivation() => ActivationRequested?.Invoke(this, EventArgs.Empty);
 
     [RelayCommand]
     private void AppendDigit(string digit)

@@ -170,9 +170,31 @@ A arquitetura existe para que a tela seja testável:
   - DPAPI prende o blob à máquina, então a conferência é no CI e nos dois
     sentidos: o Python grava e o C# lê, o C# grava e o Python lê.
   - `Pdv.Data`, `Pdv.App` e os testes passam a `net10.0-windows`. 146 testes.
-- [ ] **C5b. Sincronização e ativação.** Cliente HTTP da nuvem (push do
-      outbox e pull do catálogo, com o mesmo contrato), ativação, heartbeat e
-      comandos remotos.
+- [x] **C5b-1. Ativação** (`Pdv.Data.Provisioning`, `ActivationViewModel`,
+      `ActivationPage`).
+  - **A causa de "não consigo ativar".** O painel não tinha onde gerar o
+    código: só os testes o inseriam no banco. Agora o dono ou o gerente gera
+    em "Ativar um caixa" (`POST /api/panel/devices/activation-codes`). O
+    código vale 15 minutos e é de uso único, e o banco guarda só o hash.
+  - **Endereço e código** com as regras do Python, caso a caso contra
+    `contracts/activation.json`. Exemplos: só ASCII no código (`Á` cai),
+    HTTPS fora de localhost, porta e caminho preservados. O `Uri` do .NET
+    não serve, porque reescreve o endereço.
+  - **O que é gravado.** O token vai ao cofre *antes* de `device_settings`:
+    um cofre que falha não deixa o terminal "ativado" sem credencial. A
+    troca de loja com a fila cheia é bloqueada.
+  - **Demonstração arquivada.** A ativação grava em `pdv_local.ativacao.db`,
+    que é o schema do banco aberto, vazio. A próxima abertura arquiva a
+    demonstração em `pdv_demo-AAAAMMDD-HHMMSS.db` e promove o banco novo. Os
+    arquivos e a troca são os mesmos do Python, então um PDV termina o que o
+    outro começou.
+  - **Prova no binário.** O `ui-smoke.ps1` ativa o `PDV.exe` pela tela contra
+    uma retaguarda simulada. O caixa reinicia sozinho e volta com a loja, e a
+    demonstração fica arquivada. A volta do contrato vem pelo
+    `crosscheck.py`: o Python abre o terminal que o C# ativou e lê o token no
+    cofre. 197 testes, e duas regras verificadas por mutação.
+- [ ] **C5b-2. Sincronização.** Cliente HTTP da nuvem (push do outbox e pull
+      do catálogo, com o mesmo contrato), heartbeat e comandos remotos.
 - [ ] **C6. O resto da paridade.**
       - Periféricos: balança serial e impressora ESC/POS.
       - NFC-e.

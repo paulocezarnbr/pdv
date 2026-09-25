@@ -1,0 +1,167 @@
+{
+  "comment": "Gerado por apps/desktop-pdv/tests/test_activation_contract.py. Não edite à mão.",
+  "codes": [
+    {
+      "raw": "ABCD-EFGH-JKMN",
+      "ok": true,
+      "code": "ABCDEFGHJKMN"
+    },
+    {
+      "raw": "abcd efgh jkmn",
+      "ok": true,
+      "code": "ABCDEFGHJKMN"
+    },
+    {
+      "raw": "  a1b2-c3d4 ",
+      "ok": true,
+      "code": "A1B2C3D4"
+    },
+    {
+      "raw": "A1B2C",
+      "ok": false,
+      "message": "Código de ativação inválido: esperados entre 6 e 32 caracteres, recebidos 5."
+    },
+    {
+      "raw": "A1B2C3",
+      "ok": true,
+      "code": "A1B2C3"
+    },
+    {
+      "raw": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "ok": true,
+      "code": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    },
+    {
+      "raw": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "ok": false,
+      "message": "Código de ativação inválido: esperados entre 6 e 32 caracteres, recebidos 33."
+    },
+    {
+      "raw": "----",
+      "ok": false,
+      "message": "Código de ativação inválido: esperados entre 6 e 32 caracteres, recebidos 0."
+    },
+    {
+      "raw": "",
+      "ok": false,
+      "message": "Código de ativação inválido: esperados entre 6 e 32 caracteres, recebidos 0."
+    },
+    {
+      "raw": "ÁBCD-EFGH",
+      "ok": true,
+      "code": "BCDEFGH"
+    },
+    {
+      "raw": "ab.cd/ef_gh",
+      "ok": true,
+      "code": "ABCDEFGH"
+    }
+  ],
+  "servers": [
+    {
+      "raw": "teste.rsrassessoria.com.br",
+      "ok": true,
+      "api_url": "https://teste.rsrassessoria.com.br/api",
+      "display": "https://teste.rsrassessoria.com.br"
+    },
+    {
+      "raw": "https://teste.rsrassessoria.com.br/",
+      "ok": true,
+      "api_url": "https://teste.rsrassessoria.com.br/api",
+      "display": "https://teste.rsrassessoria.com.br"
+    },
+    {
+      "raw": "HTTPS://Painel.Loja.com.br/api",
+      "ok": true,
+      "api_url": "https://painel.loja.com.br/api",
+      "display": "https://painel.loja.com.br"
+    },
+    {
+      "raw": "painel.loja.com.br/api/",
+      "ok": true,
+      "api_url": "https://painel.loja.com.br/api",
+      "display": "https://painel.loja.com.br"
+    },
+    {
+      "raw": "painel.loja.com.br/erp",
+      "ok": true,
+      "api_url": "https://painel.loja.com.br/erp/api",
+      "display": "https://painel.loja.com.br/erp"
+    },
+    {
+      "raw": "http://localhost:3000",
+      "ok": true,
+      "api_url": "http://localhost:3000/api",
+      "display": "http://localhost:3000"
+    },
+    {
+      "raw": "http://127.0.0.1:3000/",
+      "ok": true,
+      "api_url": "http://127.0.0.1:3000/api",
+      "display": "http://127.0.0.1:3000"
+    },
+    {
+      "raw": "http://painel.loja.com.br",
+      "ok": false,
+      "message": "Use https:// — por este endereço vão passar o token do terminal e as vendas. http:// só é aceito para localhost."
+    },
+    {
+      "raw": "https://user:senha@painel.loja.com.br",
+      "ok": false,
+      "message": "O endereço não pode conter usuário ou senha."
+    },
+    {
+      "raw": "ftp://painel.loja.com.br",
+      "ok": false,
+      "message": "Endereço inválido: 'ftp://painel.loja.com.br'."
+    },
+    {
+      "raw": "",
+      "ok": false,
+      "message": "Informe o endereço da retaguarda."
+    },
+    {
+      "raw": "   ",
+      "ok": false,
+      "message": "Informe o endereço da retaguarda."
+    },
+    {
+      "raw": "painel loja.com.br",
+      "ok": false,
+      "message": "Endereço inválido: 'painel loja.com.br'."
+    },
+    {
+      "raw": "https://",
+      "ok": false,
+      "message": "Endereço inválido: 'https://'."
+    },
+    {
+      "raw": "https://painel.loja.com.br:8443",
+      "ok": true,
+      "api_url": "https://painel.loja.com.br:8443/api",
+      "display": "https://painel.loja.com.br:8443"
+    }
+  ],
+  "api_roots": [
+    {
+      "base": "https://painel.loja.com.br",
+      "root": "https://painel.loja.com.br/api"
+    },
+    {
+      "base": "https://painel.loja.com.br/",
+      "root": "https://painel.loja.com.br/api"
+    },
+    {
+      "base": "https://painel.loja.com.br/api",
+      "root": "https://painel.loja.com.br/api"
+    },
+    {
+      "base": "https://painel.loja.com.br/api/",
+      "root": "https://painel.loja.com.br/api"
+    }
+  ],
+  "display_placeholder": "",
+  "sync_token_name": "sync_token",
+  "staged_name": "pdv_local.ativacao.db",
+  "archive_name": "pdv_demo-20260925-180703.db"
+}

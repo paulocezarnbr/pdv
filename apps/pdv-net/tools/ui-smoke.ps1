@@ -140,14 +140,20 @@ function Diagnose {
     return $lines
 }
 
-try {
-    $windowCondition = New-Object System.Windows.Automation.PropertyCondition($A::ProcessIdProperty, $process.Id)
+function WaitWindow($proc) {
+    $windowCondition = New-Object System.Windows.Automation.PropertyCondition($A::ProcessIdProperty, $proc.Id)
     $deadline = (Get-Date).AddSeconds(30)
     do {
-        $window = $A::RootElement.FindFirst($Tree::Children, $windowCondition)
+        $found = $A::RootElement.FindFirst($Tree::Children, $windowCondition)
         Start-Sleep -Milliseconds 300
-    } while (-not $window -and (Get-Date) -lt $deadline)
-    if (-not $window) { throw 'A janela do PDV não abriu em 30 s.' }
+    } while (-not $found -and (Get-Date) -lt $deadline)
+    if (-not $found) { throw 'A janela do PDV não abriu em 30 s.' }
+    return $found
+}
+
+$stub = $null
+try {
+    $window = WaitWindow $process
 
     # 1. abre no login, com a loja
     $store = Text (Find $window 'StoreName')
@@ -199,13 +205,80 @@ try {
     if ($message -notmatch 'Venda finalizada') { $failures += "débito: aviso '$message'; TEF: '$tef'" }
     elseif ($tef -notmatch 'Transação aprovada') { $failures += "débito: a conversa do TEF não apareceu ('$tef')" }
     else { Write-Host 'ok  venda no débito, com a conversa do TEF na tela' }
+
+    # 5. ativação pela tela, contra uma retaguarda de mentira em localhost: o
+    #    caixa grava no banco novo, reinicia sozinho e volta com a loja.
+    Stop-Process -Id $process.Id -Force
+    $process.WaitForExit(10000) | Out-Null
+    $port = Get-Random -Minimum 20000 -Maximum 40000
+    $requestFile = Join-Path $work 'activation-request.txt'
+    $stub = Start-Job -ArgumentList $port, $requestFile -ScriptBlock {
+        param($port, $requestFile)
+        $listener = New-Object System.Net.HttpListener
+        $listener.Prefixes.Add("http://localhost:$port/")
+        $listener.Start()
+        try {
+            $context = $listener.GetContext()
+            $reader = New-Object System.IO.StreamReader($context.Request.InputStream, [System.Text.Encoding]::UTF8)
+            [System.IO.File]::WriteAllText($requestFile, $context.Request.HttpMethod + ' ' + $context.Request.Url.AbsolutePath + "`n" + $reader.ReadToEnd())
+            $json = '{"tenant_id":"aaaaaaaa-0000-0000-0000-000000000001","store_id":"bbbbbbbb-0000-0000-0000-000000000002",' +
+                    '"device_id":"cccccccc-0000-0000-0000-000000000003","sync_token":"token-do-smoke",' +
+                    '"store_name":"Pool Bar","cloud_base_url":"http://localhost:' + $port + '/api"}'
+            $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
+            $context.Response.ContentType = 'application/json'
+            $context.Response.OutputStream.Write($bytes, 0, $bytes.Length)
+            $context.Response.Close()
+            # Parar o listener na hora aborta a resposta ainda no buffer do
+            # http.sys, e o PDV veria "conexão cancelada pelo host remoto".
+            Start-Sleep -Seconds 3
+        } finally { $listener.Stop() }
+    }
+    $deadline = (Get-Date).AddSeconds(15)
+    do {
+        $up = $false
+        try { $probe = New-Object System.Net.Sockets.TcpClient('127.0.0.1', $port); $probe.Close(); $up = $true } catch { Start-Sleep -Milliseconds 200 }
+    } while (-not $up -and (Get-Date) -lt $deadline)
+    if (-not $up) { throw "A retaguarda de mentira não subiu na porta ${port}: $((Receive-Job $stub 2>&1) -join ' ')" }
+
+    $process = Start-Process -FilePath $Exe -PassThru
+    $window = WaitWindow $process
+    Click (Find $window 'Activate')
+    (Find $window 'Server').GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue("http://localhost:$port")
+    (Find $window 'Code').GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue('abcd-efgh-jkmn')
+    Click (Find $window 'ActivateNow')
+    $nameCondition = New-Object System.Windows.Automation.PropertyCondition($A::NameProperty, 'Reiniciar')
+    $deadline = (Get-Date).AddSeconds(25)
+    do { $restart = $window.FindFirst($Tree::Descendants, $nameCondition); Start-Sleep -Milliseconds 200 } while (-not $restart -and (Get-Date) -lt $deadline)
+    if (-not $restart) {
+        $why = ((Find $window 'ActivationError' 2).FindAll($Tree::Descendants, [System.Windows.Automation.Condition]::TrueCondition) | ForEach-Object { $_.Current.Name }) -join ' '
+        throw "A ativação não concluiu: '$why'"
+    }
+    $old = $process.Id
+    Click $restart
+    $deadline = (Get-Date).AddSeconds(30)
+    do {
+        $next = Get-Process -Name PDV -ErrorAction SilentlyContinue | Where-Object { $_.Id -ne $old -and $_.Path -eq (Resolve-Path $Exe).Path } | Select-Object -First 1
+        Start-Sleep -Milliseconds 300
+    } while (-not $next -and (Get-Date) -lt $deadline)
+    if (-not $next) { throw 'O PDV não reiniciou depois da ativação.' }
+    $process = $next
+    $window = WaitWindow $process
+    $store = Text (Find $window 'StoreName' 20)
+    $request = if (Test-Path $requestFile) { Get-Content $requestFile -Raw -Encoding UTF8 } else { '' }
+    $archived = @(Get-ChildItem $work -Filter 'pdv_demo-*.db')
+    if ($store -ne 'Pool Bar') { $failures += "ativação: a loja depois do reinício é '$store'" }
+    elseif ($request -notmatch '^POST /api/devices/activate' -or $request -notmatch '"activation_code":"ABCDEFGHJKMN"') { $failures += "ativação: pedido inesperado '$request'" }
+    elseif ($archived.Count -ne 1) { $failures += "ativação: esperado 1 banco de demonstração arquivado, há $($archived.Count)" }
+    elseif ($window.FindFirst($Tree::Descendants, (New-Object System.Windows.Automation.PropertyCondition($A::AutomationIdProperty, 'Activate')))) { $failures += 'ativação: o caixa ativado ainda oferece ativar' }
+    else { Write-Host 'ok  ativação pela tela, reinício e demonstração arquivada' }
 }
 catch {
     $failures += $_.Exception.Message
     $failures += Diagnose
 }
 finally {
-    if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force }
+    Get-Process -Name PDV -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq (Resolve-Path $Exe).Path } | Stop-Process -Force
+    if ($stub) { Stop-Job $stub -ErrorAction SilentlyContinue; Remove-Job $stub -Force -ErrorAction SilentlyContinue }
     Start-Sleep -Milliseconds 500
     Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue
 }
@@ -217,4 +290,4 @@ if ($failures.Count -gt 0) {
     }
     exit 1
 }
-Write-Host 'Caixa: ok (login, venda e TEF)'
+Write-Host 'Caixa: ok (login, venda, TEF e ativação)'

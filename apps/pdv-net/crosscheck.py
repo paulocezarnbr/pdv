@@ -80,10 +80,62 @@ def read_vault(folder: str) -> int:
     return 0
 
 
+def read_activation(folder: Path) -> int:
+    """Abre, pelo PDV em Python, o terminal que o C# ativou (ActivationTests)."""
+    from pdv.data.database import Database
+    from pdv.data.settings import SettingsStore
+    from pdv.provisioning.activation import SYNC_TOKEN_NAME, load_sync_token
+    from pdv.provisioning.secrets import SecretVault
+    from pdv.provisioning.staging import promote_staged_activation
+
+    path = folder / "pdv_local.db"
+    if not path.exists():
+        print(f"FALHOU: o C# não gravou o terminal ativado em {folder}")
+        return 1
+    if promote_staged_activation(path) is not None:
+        print("FALHOU: o C# deixou uma ativação pendente em vez de promovê-la")
+        return 1
+    database = Database(path)
+    try:
+        database.migrate()  # na versão certa, não faz nada; noutra, falharia aqui
+        settings = SettingsStore(database).load()
+        row = database.connection.execute("SELECT COUNT(*) FROM products").fetchone()[0]
+    finally:
+        database.close()
+    vault = SecretVault(folder / "secrets")
+    expected = {
+        "activated": True,
+        "tenant": "aaaaaaaa-0000-0000-0000-000000000001",
+        "store": "bbbbbbbb-0000-0000-0000-000000000002",
+        "device": "cccccccc-0000-0000-0000-000000000003",
+        "token": "token-de-sincronizacao-de-teste",
+        "products": 0,
+    }
+    actual = {
+        "activated": settings.activated,
+        "tenant": settings.tenant_id,
+        "store": settings.store_id,
+        "device": settings.device_id,
+        "token": load_sync_token(vault),
+        "products": row,
+    }
+    if actual != expected:
+        wrong = sorted(key for key in expected if expected[key] != actual[key])
+        print(f"FALHOU: terminal ativado pelo C# lido errado pelo Python em: {', '.join(wrong)}")
+        return 1
+    if not vault.exists(SYNC_TOKEN_NAME):
+        print("FALHOU: o token não está no cofre")
+        return 1
+    print("ok: terminal ativado pelo C# (banco promovido, identidade e token) aberto pelo PDV em Python")
+    return 0
+
+
 if __name__ == "__main__":
     if sys.argv[1] == "write-vault":
         sys.exit(write_vault(sys.argv[2]))
     status = main(sys.argv[1])
     if status == 0 and len(sys.argv) > 2:
         status = read_vault(sys.argv[2])
+    if status == 0:
+        status = read_activation(Path(sys.argv[1]).parent / "activation")
     sys.exit(status)

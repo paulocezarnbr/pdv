@@ -1,0 +1,57 @@
+<UserControl
+    x:Class="Pdv.WinUI.ActivationPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+        <Border Width="560" Padding="32" CornerRadius="8" VerticalAlignment="Center" HorizontalAlignment="Center"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+            <StackPanel Spacing="16">
+                <TextBlock Text="Ativar este terminal" Style="{StaticResource TitleTextBlockStyle}" />
+                <TextBlock TextWrapping="WrapWholeWords" Foreground="{ThemeResource TextFillColorSecondaryBrush}">
+                    <Run Text="1. No painel da retaguarda, em" />
+                    <Run Text="Ativar um caixa" FontWeight="SemiBold" />
+                    <Run Text=", gere um código de ativação." />
+                    <LineBreak />
+                    <Run Text="2. Digite abaixo o endereço do painel e o código. O código vale 15 minutos e serve uma única vez." />
+                </TextBlock>
+
+                <InfoBar IsOpen="True" IsClosable="False" Severity="Warning"
+                         Message="{x:Bind Warning}" />
+
+                <TextBox x:Name="ServerBox" AutomationProperties.AutomationId="Server" Header="Endereço do painel"
+                         PlaceholderText="painel.minhaloja.com.br" IsSpellCheckEnabled="False"
+                         Text="{x:Bind ViewModel.Server, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                <TextBox x:Name="CodeBox" AutomationProperties.AutomationId="Code" Header="Código de ativação"
+                         PlaceholderText="ABCD-EFGH-JKMN" MaxLength="40" IsSpellCheckEnabled="False"
+                         FontFamily="Consolas" FontSize="22" CharacterSpacing="120" KeyDown="OnCodeKeyDown"
+                         Text="{x:Bind ViewModel.Code, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                <InfoBar AutomationProperties.AutomationId="ActivationError"
+                         IsOpen="{x:Bind Has(ViewModel.Error), Mode=OneWay}" IsClosable="False"
+                         Severity="Error" Message="{x:Bind ViewModel.Error, Mode=OneWay}" />
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <ProgressRing IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}" Width="20" Height="20" />
+                    <TextBlock AutomationProperties.AutomationId="ActivationStatus" VerticalAlignment="Center"
+                               Text="{x:Bind ViewModel.Status, Mode=OneWay}" />
+                </StackPanel>
+
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Button AutomationProperties.AutomationId="Later" Content="Ativar depois" Height="42"
+                            Command="{x:Bind ViewModel.LaterCommand}" />
+                    <Button Grid.Column="2" AutomationProperties.AutomationId="ActivateNow" Content="Ativar"
+                            Style="{StaticResource AccentButtonStyle}" Height="42" MinWidth="140"
+                            Command="{x:Bind ViewModel.ActivateCommand}" />
+                </Grid>
+                <TextBlock Text="Sem ativar, o PDV funciona em modo demonstração e não sincroniza."
+                           Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="WrapWholeWords"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>
