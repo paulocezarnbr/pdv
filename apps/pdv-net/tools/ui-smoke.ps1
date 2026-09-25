@@ -17,10 +17,11 @@
     Argon2 roda fora da thread da tela e que o executável self-contained abre.
 
 .EXAMPLE
+    .\tools\ui-smoke.ps1
     .\tools\ui-smoke.ps1 -Exe .\src\Pdv.WinUI\bin\x64\Debug\net10.0-windows10.0.19041.0\win-x64\PDV.exe
 #>
 [CmdletBinding()]
-param([Parameter(Mandatory = $true)] [string] $Exe)
+param([string] $Exe)
 
 $ErrorActionPreference = 'Stop'
 
@@ -42,6 +43,23 @@ trap {
 }
 
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+
+# Sem -Exe, o PDV.exe mais novo da saída do build. Procurar aqui, e não no
+# workflow com Resolve-Path, é o que faz um caminho errado virar uma anotação
+# com a lista do que existe — e não um "exit code 1" antes da primeira linha.
+if (-not $Exe) {
+    $bin = Join-Path $PSScriptRoot '..\src\Pdv.WinUI\bin'
+    $found = Get-ChildItem $bin -Recurse -Filter PDV.exe -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if (-not $found) {
+        $tree = Get-ChildItem $bin -Recurse -Directory -ErrorAction SilentlyContinue |
+            Select-Object -First 8 | ForEach-Object { $_.FullName }
+        throw "PDV.exe não foi gerado em $bin. Pastas: $($tree -join ', ')"
+    }
+    $Exe = $found.FullName
+}
+if (-not (Test-Path $Exe)) { throw "PDV.exe não existe em '$Exe'." }
+Write-Host "executável: $Exe"
 
 $root = Resolve-Path (Join-Path $PSScriptRoot '..\..\..')
 $work = Join-Path ([IO.Path]::GetTempPath()) ("pdv-ui-" + [guid]::NewGuid().ToString('N').Substring(0, 8))

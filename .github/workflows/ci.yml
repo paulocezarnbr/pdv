@@ -124,7 +124,7 @@ jobs:
       # entra. Dirigido pela UI Automation, como um operador.
       - name: O caixa abre e o login funciona no binario
         shell: powershell
-        run: .\tools\ui-smoke.ps1 -Exe (Resolve-Path src\Pdv.WinUI\bin\x64\Debug\net10.0-windows10.0.19041.0\win-x64\PDV.exe)
+        run: .\tools\ui-smoke.ps1
 
       - name: Nenhum teste pode ter pulado
         shell: pwsh
