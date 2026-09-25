@@ -104,6 +104,9 @@ public sealed class DataTests : IDisposable
         if (!string.IsNullOrEmpty(target))
         {
             File.Copy(_file.Path, target, overwrite: true);
+            // O cofre, para o Python abrir: DPAPI de máquina com a mesma entropia.
+            new Pdv.Data.Secrets.SecretVault(Path.Combine(Path.GetDirectoryName(target)!, "csharp-vault"))
+                .Store("device_secret", SecretVaultTests.Known);
         }
     }
 

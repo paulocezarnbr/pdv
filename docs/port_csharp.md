@@ -142,11 +142,37 @@ A arquitetura existe para que a tela seja testável:
       Sobre um banco migrado pelo Python e com um PIN cadastrado pelo Python,
       confere que o caixa abre com o nome da loja, que o PIN errado mostra o
       motivo e que o PIN certo, digitado no teclado da tela, entra.
-  - [ ] **C4c.** Tela de venda e pagamento com a conversa do TEF.
-  - [ ] **C4d.** Diálogo de pendências do TEF na abertura.
-- [ ] **C5. Sincronização e ativação.** Cliente HTTP da nuvem, cofre de
-      segredos (DPAPI, mesmo formato: contrato), heartbeat e comandos
-      remotos.
+  - [x] **C4c. Tela de venda** (`SaleViewModel` e `CounterPage`).
+    - O código de barras exato entra direto; o texto busca por nome ou
+      código.
+    - A tela mostra os itens e o total, e o troco conforme o operador digita
+      o valor recebido.
+    - Paga em dinheiro, débito, crédito ou PIX. Pagamento insuficiente diz
+      quanto falta. Cartão negado mantém a venda para tentar outra forma.
+    - A conversa do TEF ("Insira o cartão", "Transação aprovada") aparece na
+      ordem em que chega.
+  - [x] **C4d. Pendências do TEF na abertura.**
+    - Ao entrar no caixa, a venda gravada é confirmada e a que se perdeu é
+      desfeita.
+    - O operador é avisado ("DESFEITA… retenha o comprovante"), e o primeiro
+      cartão do dia passa.
+  - **Prova no binário.** `tools/ui-smoke.ps1` faz login, bipa o código de
+    barras e vende no débito com o TEF simulado, pela UI Automation, no
+    `PDV.exe` real. Qualquer falha sai como anotação pública no GitHub, com a
+    linha e o motivo, e o app grava o erro não tratado em
+    `%LOCALAPPDATA%\ERPFood\PDV\pdv-winui.log`.
+- [x] **C5a. Cofre de segredos** (`Pdv.Data.Secrets`, antecipado porque a
+      venda precisa assinar a auditoria).
+  - Mesmo arquivo `secrets/<nome>.bin`: DPAPI de máquina com a entropia
+    `ERPFood.PDV.v1`, e o modo `PLAIN:` do Python lido.
+  - Um segredo que existe e não decifra nunca é recriado: recriar faria a
+    cadeia acusar adulteração.
+  - DPAPI prende o blob à máquina, então a conferência é no CI e nos dois
+    sentidos: o Python grava e o C# lê, o C# grava e o Python lê.
+  - `Pdv.Data`, `Pdv.App` e os testes passam a `net10.0-windows`. 146 testes.
+- [ ] **C5b. Sincronização e ativação.** Cliente HTTP da nuvem (push do
+      outbox e pull do catálogo, com o mesmo contrato), ativação, heartbeat e
+      comandos remotos.
 - [ ] **C6. O resto da paridade.**
       - Periféricos: balança serial e impressora ESC/POS.
       - NFC-e.

@@ -8,7 +8,9 @@
 
       1. o caixa abre na tela de login com o nome da loja;
       2. PIN errado mostra "Login ou PIN inválido." e limpa o campo;
-      3. o PIN certo, digitado no teclado da tela, entra no caixa.
+      3. o PIN certo, digitado no teclado da tela, entra no caixa;
+      4. o código de barras entra na venda, e o débito (TEF simulado) fecha
+         a venda com a conversa do TEF na tela.
 
     Os testes do Pdv.App já provam a lógica sem janela. Isto prova o que só o
     binário prova: que a tela liga os botões aos comandos certos, que o
@@ -21,6 +23,24 @@
 param([Parameter(Mandatory = $true)] [string] $Exe)
 
 $ErrorActionPreference = 'Stop'
+
+function Annotate([string] $message) {
+    # O log da execução no GitHub exige login; a anotação aparece no resumo
+    # público. Quebra de linha e % precisam de escape, senão a mensagem corta.
+    if ($env:GITHUB_ACTIONS) {
+        $escaped = $message -replace '%', '%25' -replace "`r", '%0D' -replace "`n", '%0A'
+        Write-Host "::error title=ui-smoke::$escaped"
+    }
+}
+
+# Qualquer erro fatal, em qualquer linha, sai com o motivo e o lugar — e não
+# com um "exit code 1" que obriga a adivinhar.
+trap {
+    Annotate ("linha $($_.InvocationInfo.ScriptLineNumber): $($_.Exception.Message)")
+    Write-Host "FALHOU  linha $($_.InvocationInfo.ScriptLineNumber): $($_.Exception.Message)"
+    exit 1
+}
+
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 
 $root = Resolve-Path (Join-Path $PSScriptRoot '..\..\..')
@@ -40,6 +60,9 @@ with db.transaction() as c:
               "VALUES ('u-1', '11111111-1111-1111-1111-111111111111', 'Ana Caixa', 'ana', 'cashier', ?, 0, 1, '2026-09-25T12:00:00.000+00:00')",
               (hash_pin('480362'),))
     c.execute("INSERT INTO device_settings (key, value, updated_at) VALUES ('store.name', 'Dolce Affetto', 'x')")
+    c.execute("INSERT INTO products (id, tenant_id, store_id, sku, barcode, name, pricing_mode, price_cents, is_active, updated_at) "
+              "VALUES ('p-1', '11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222222', "
+              "'F1', '7890000000011', 'Fatia de torta', 'unit', 1450, 1, 'x')")
 db.close()
 "@
 # Por arquivo, e não por -c: o PowerShell 5.1 come as aspas duplas ao passar
@@ -52,9 +75,7 @@ $seedOutput = & python $seedFile 2>&1 | ForEach-Object { "$_" }
 $seedCode = $LASTEXITCODE
 $ErrorActionPreference = $previous
 if ($seedCode -ne 0) {
-    $reason = "Falha ao criar o banco pelo PDV em Python: " + (($seedOutput | Select-Object -Last 3) -join ' | ')
-    if ($env:GITHUB_ACTIONS) { Write-Host "::error title=ui-smoke::$reason" }
-    throw $reason
+    throw ("Falha ao criar o banco pelo PDV em Python: " + (($seedOutput | Select-Object -Last 3) -join ' | '))
 }
 
 $A = [System.Windows.Automation.AutomationElement]
@@ -83,13 +104,21 @@ $process = Start-Process -FilePath $Exe -PassThru
 $failures = @()
 
 function Diagnose {
+    # Cada pedaço por conta própria: o diagnóstico não pode ser a próxima falha.
     $lines = @()
-    $process.Refresh()
-    $lines += if ($process.HasExited) { "o processo saiu com código $($process.ExitCode)" } else { 'o processo continua rodando' }
-    if (Test-Path $crashLog) { $lines += 'log do PDV: ' + ((Get-Content $crashLog -Raw -Encoding UTF8) -replace '\s+', ' ') }
-    $windows = $A::RootElement.FindAll($Tree::Children, [System.Windows.Automation.Condition]::TrueCondition) |
-        ForEach-Object { "'$($_.Current.Name)' (pid $($_.Current.ProcessId))" } | Select-Object -First 12
-    $lines += 'janelas na sessão: ' + ($windows -join ', ')
+    try {
+        $process.Refresh()
+        $lines += if ($process.HasExited) { "o processo saiu com código $($process.ExitCode)" } else { 'o processo continua rodando' }
+    } catch { $lines += "estado do processo: $($_.Exception.Message)" }
+    try {
+        if (Test-Path $crashLog) { $lines += 'log do PDV: ' + ((Get-Content $crashLog -Raw -Encoding UTF8) -replace '\s+', ' ') }
+        else { $lines += 'o PDV não gravou log de erro' }
+    } catch { $lines += "log do PDV: $($_.Exception.Message)" }
+    try {
+        $windows = $A::RootElement.FindAll($Tree::Children, [System.Windows.Automation.Condition]::TrueCondition) |
+            ForEach-Object { "'$($_.Current.Name)' (pid $($_.Current.ProcessId))" } | Select-Object -First 12
+        $lines += 'janelas na sessão: ' + ($windows -join ', ')
+    } catch { $lines += "janelas: $($_.Exception.Message)" }
     return $lines
 }
 
@@ -129,6 +158,29 @@ try {
     $greeting = Text (Find $window 'Greeting' 20)
     if ($greeting -ne 'Olá, Ana') { $failures += "entrada: esperado 'Olá, Ana', veio '$greeting'" }
     else { Write-Host 'ok  PIN certo entra no caixa' }
+
+    # 4. bipa o código de barras e vende no débito (TEF simulado)
+    $query = Find $window 'Query'
+    $query.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue('7890000000011')
+    Click (Find $window 'Scan')
+    $deadline = (Get-Date).AddSeconds(10)
+    do { $total = Text (Find $window 'Total'); Start-Sleep -Milliseconds 200 } while ($total -notmatch '14,50' -and (Get-Date) -lt $deadline)
+    if ($total -notmatch '14,50') { $failures += "total: esperado R$ 14,50, veio '$total'" }
+    else { Write-Host 'ok  código de barras entra na venda' }
+
+    Click (Find $window 'PayDebit')
+    $notice = Find $window 'Notice'
+    $deadline = (Get-Date).AddSeconds(15)
+    do {
+        $message = ($notice.FindAll($Tree::Descendants, [System.Windows.Automation.Condition]::TrueCondition) |
+            ForEach-Object { $_.Current.Name }) -join ' '
+        Start-Sleep -Milliseconds 200
+    } while ($message -notmatch 'Venda finalizada' -and (Get-Date) -lt $deadline)
+    $tef = ((Find $window 'TefMessages').FindAll($Tree::Descendants, [System.Windows.Automation.Condition]::TrueCondition) |
+        ForEach-Object { $_.Current.Name }) -join ' | '
+    if ($message -notmatch 'Venda finalizada') { $failures += "débito: aviso '$message'; TEF: '$tef'" }
+    elseif ($tef -notmatch 'Transação aprovada') { $failures += "débito: a conversa do TEF não apareceu ('$tef')" }
+    else { Write-Host 'ok  venda no débito, com a conversa do TEF na tela' }
 }
 catch {
     $failures += $_.Exception.Message
@@ -143,9 +195,8 @@ finally {
 if ($failures.Count -gt 0) {
     foreach ($failure in $failures) {
         Write-Host "FALHOU  $failure"
-        # O log da execução no GitHub exige login; a anotação aparece no resumo público.
-        if ($env:GITHUB_ACTIONS) { Write-Host "::error title=ui-smoke::$failure" }
+        Annotate $failure
     }
     exit 1
 }
-Write-Host 'Tela de login: ok'
+Write-Host 'Caixa: ok (login, venda e TEF)'

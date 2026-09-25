@@ -55,5 +55,35 @@ def main(path: str) -> int:
     return 0
 
 
+#: O mesmo valor de SecretVaultTests.Known (C#).
+KNOWN_SECRET = bytes(31 - i for i in range(32))
+
+
+def write_vault(folder: str) -> int:
+    """Grava um cofre pelo PDV em Python, para o C# ler (DPAPI desta máquina)."""
+    from pdv.provisioning.secrets import SecretVault
+
+    SecretVault(Path(folder)).store("device_secret", KNOWN_SECRET)
+    print(f"ok: cofre gravado pelo Python em {folder}")
+    return 0
+
+
+def read_vault(folder: str) -> int:
+    """Lê, pelo PDV em Python, o cofre que o C# gravou."""
+    from pdv.provisioning.secrets import SecretVault
+
+    value = SecretVault(Path(folder)).load("device_secret")
+    if value != KNOWN_SECRET:
+        print("FALHOU: o cofre gravado pelo C# não abre no Python (DPAPI, entropia ou escopo)")
+        return 1
+    print("ok: cofre gravado pelo C# lido pelo PDV em Python")
+    return 0
+
+
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1]))
+    if sys.argv[1] == "write-vault":
+        sys.exit(write_vault(sys.argv[2]))
+    status = main(sys.argv[1])
+    if status == 0 and len(sys.argv) > 2:
+        status = read_vault(sys.argv[2])
+    sys.exit(status)

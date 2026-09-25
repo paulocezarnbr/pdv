@@ -1,8 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Pdv.App;
-using Pdv.Data;
-using Pdv.Data.Auth;
 
 namespace Pdv.WinUI;
 
@@ -18,8 +16,7 @@ public sealed partial class MainWindow : Window
 
     public void ShowLogin(LoginViewModel viewModel) => Host.Content = new LoginPage(viewModel);
 
-    public void ShowCounter(Identity operatorIdentity, TerminalProfile profile) =>
-        Host.Content = new CounterPage(operatorIdentity, profile);
+    public void ShowCounter(SaleViewModel sale) => Host.Content = new CounterPage(sale);
 
     public void ShowFatal(string message) =>
         Host.Content = new InfoBar

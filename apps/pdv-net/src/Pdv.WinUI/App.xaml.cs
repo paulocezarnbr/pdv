@@ -1,7 +1,10 @@
 using Microsoft.UI.Xaml;
 using Pdv.App;
 using Pdv.Data;
+using Pdv.Core.Tef;
 using Pdv.Data.Auth;
+using Pdv.Data.Sales;
+using Pdv.Data.Secrets;
 
 namespace Pdv.WinUI;
 
@@ -30,11 +33,12 @@ public partial class App : Application
         _window = new MainWindow();
         try
         {
-            var database = new PdvDatabase(TerminalProfile.DefaultDatabasePath());
+            var path = TerminalProfile.DefaultDatabasePath();
+            var database = new PdvDatabase(path);
             var profile = TerminalProfile.Load(database);
             var auth = new StaffAuthentication(database, profile.TenantId);
             var login = new LoginViewModel(auth.Authenticate, profile.StoreName, profile.Activated);
-            login.SignedIn += (_, identity) => _window.ShowCounter(identity, profile);
+            login.SignedIn += (_, identity) => OpenCounter(path, database, profile, identity);
             _window.ShowLogin(login);
         }
         catch (PdvDatabaseException error)
@@ -50,5 +54,34 @@ public partial class App : Application
                 "Nenhuma venda foi perdida.");
         }
         _window.Activate();
+    }
+
+    /// <summary>O caixa depois do login: segredo do terminal, auditoria, TEF.</summary>
+    /// <remarks>
+    /// TEF pelo simulador até o provedor ser escolhido (docs/port_csharp.md):
+    /// o ciclo de pendência, confirmação e desfazimento já é o de produção.
+    /// </remarks>
+    private void OpenCounter(string path, PdvDatabase database, TerminalProfile profile, Identity identity)
+    {
+        try
+        {
+            var vault = new SecretVault(Path.Combine(Path.GetDirectoryName(path)!, "secrets"));
+            var ledger = new AuditLedger(profile.TenantId, profile.StoreId, profile.DeviceId, vault.EnsureDeviceSecret());
+            var journal = new SqliteTefJournal(path);
+            var tef = new TefCoordinator(new TefSimulator(), journal);
+            var terminal = profile.Identity;
+            _window!.ShowCounter(new SaleViewModel(
+                new ItemRegistration(database, terminal, ledger),
+                new Catalog(database.Connection, profile.TenantId),
+                new Checkout(database, terminal, ledger, tef),
+                identity,
+                token => tef.RecoverPendingAsync(
+                    entry => SaleRepository.WasRecorded(database.Connection, entry.TransactionId), token)));
+        }
+        catch (Exception error) when (error is SecretVaultException or PdvDatabaseException)
+        {
+            CrashLog.Write("abertura do caixa", error);
+            _window!.ShowFatal(error.Message);
+        }
     }
 }
