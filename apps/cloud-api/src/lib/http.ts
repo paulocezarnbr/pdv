@@ -82,17 +82,9 @@ export async function parseBody<T>(
   return parsed.data;
 }
 
-/** O IP de origem, para os limitadores de tentativa. */
-export function clientIp(request: Request): string {
-  // Atrás do proxy do Coolify o IP real vem no `x-forwarded-for`. O primeiro
-  // item é o cliente; os seguintes são os proxies do caminho. Confiar no
-  // cabeçalho só faz sentido porque o app **sempre** roda atrás do proxy do
-  // Coolify — exposto direto, qualquer um forjaria o próprio IP e escaparia do
-  // limitador de tentativas de ativação.
-  const forwarded = request.headers.get("x-forwarded-for");
-  if (forwarded) {
-    const first = forwarded.split(",")[0]?.trim();
-    if (first) return first;
-  }
-  return request.headers.get("x-real-ip")?.trim() || "desconhecido";
-}
+/**
+ * O IP de origem, para os limitadores de tentativa e a auditoria. A regra —
+ * Cloudflare, `X-Forwarded-For` pela direita, e a premissa de proxy — está em
+ * `client-ip.ts`.
+ */
+export { clientIp } from "./client-ip";

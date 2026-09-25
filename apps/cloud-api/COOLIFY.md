@@ -157,6 +157,27 @@ simplesmente escuta.
 
 Ligue também **Force HTTPS**.
 
+### O IP do cliente atrás da Cloudflare
+
+O limite de tentativas da ativação e do login conta por IP, e o app lê esse
+IP de cabeçalhos (`src/lib/client-ip.ts`):
+
+- **`CF-Connecting-IP`.** Vale só quando o salto mais próximo é uma borda da
+  Cloudflare.
+- **`X-Forwarded-For`.** Lido da direita para a esquerda, pulando a rede do
+  Docker e as bordas da Cloudflare. O primeiro item, que o cliente escreve,
+  nunca é usado sozinho.
+- **Premissa.** O app nunca fica exposto sem o Traefik na frente. Com a DNS
+  em modo proxy, feche a porta 443 da VPS para tudo que não for
+  [faixa da Cloudflare](https://www.cloudflare.com/ips/). Assim, ninguém fala
+  com o Traefik sem passar por ela.
+- **Outro proxy no caminho** (balanceador, CDN própria). Declare as faixas
+  dele, senão todos os clientes passam a dividir o IP do proxy no limite:
+
+  ```env
+  TRUSTED_PROXY_CIDRS=203.0.113.0/24,2001:db8::/32
+  ```
+
 ---
 
 ## 6. Primeiro deploy
