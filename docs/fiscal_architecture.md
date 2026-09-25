@@ -3,9 +3,9 @@
 ## Decisão
 
 A emissão normal acontece no **servidor**, não no caixa. O Next.js autentica o
-terminal, valida o tenant, reserva série/número no PostgreSQL e chama um serviço
-fiscal Python privado. O certificado A1 e seu segredo ficam no cofre do servidor;
-eles não atravessam a API pública.
+terminal, valida o tenant, reserva série/número no PostgreSQL e chama o serviço
+fiscal privado (`apps/fiscal-net`, C# com DFe.NET). O certificado A1 e seu
+segredo ficam no cofre do servidor; eles não atravessam a API pública.
 
 O PDV Python conserva uma série própria somente para contingência. Ela só pode
 ser usada quando a conexão com a nuvem comprovadamente nem chegou a ser
@@ -13,29 +13,42 @@ estabelecida. Timeout, HTTP 500 ou resposta ilegível são estados `unknown`: a
 SEFAZ pode ter autorizado, então o terminal consulta o status e **não** emite
 outro documento.
 
-## Por que não uma biblioteca JavaScript agora
+## O motor: C# com DFe.NET
 
-TypeScript é usado para autenticação, idempotência, numeração e orquestração —
-onde ele é uma ótima escolha e já é a stack do backend. O motor fiscal fica sob
-`FiscalProvider`, portanto pode ser trocado sem alterar PDV ou API.
+TypeScript fica com autenticação, idempotência, numeração e orquestração. O
+motor fiscal fica atrás de `FiscalProvider` (`HttpFiscalProvider`, pela rede do
+Coolify), então pode ser trocado sem mexer no PDV nem na API.
 
-O `@brasil-fiscal/nfe` foi avaliado, mas seu roadmap ainda marca contingência,
-QR Code v3 e Reforma Tributária como pendentes e não demonstra uma matriz de
-homologação para o RJ. O PyNFe 0.6.5 também mantém a adequação ao QR Code v3 em
-aberto. Nenhuma das duas bibliotecas será declarada pronta para produção por
-conveniência de linguagem.
+O serviço em Python (FastAPI + PyNFe) nunca passou da trava: o PyNFe não tinha
+QR Code v3 nem IBS/CBS. O serviço atual é C#/.NET 10 com o **DFe.NET (Zeus)**,
+LGPL-2.1, usado como pacote e sem modificação. A escolha foi comparada com o
+Unimake.DFe (MIT) e decidida por prova em contêiner Linux, não por README:
 
-O primeiro adaptador interno usa PyNFe para transporte/certificado e fica sob
-uma **trava de homologação**. Produção só será habilitada após XML 4.00, QR Code
-v3, regras da NT 2025.002 e cenários do RJ/SVRS passarem na suíte homologada.
+| | DFe.NET | Unimake.DFe |
+|---|---|---|
+| Linux | `net6.0` declarado para Linux. A NFC-e foi montada, assinada, validada no XSD e transmitida ao SVRS **dentro do contêiner** | depende de `WinHttpHandler`, que só existe no Windows |
+| Configuração por chamada | sim: certificado e config por loja, sem o singleton global | — |
+| QR Code | v1, v2 e v3 | — |
+| IBS/CBS (NT 2025.002) | classes e XSDs presentes | declarado |
+
+**QR Code v3 por padrão (NT 2025.001).** Na emissão normal ele é
+`chave|3|ambiente`: sem CSC e sem hash. O CSC deixa de ser segredo obrigatório
+da loja. Desde 1º de setembro de 2025 as SEFAZ aceitam o v3, e o v2 continua
+aceito. `FISCAL_QRCODE_VERSION=2` volta ao v2 com CSC, se alguma SEFAZ recusar.
+O v3 assinado com o A1 é o da **contingência**, que é do PDV, não deste serviço.
+
+**Produção** continua atrás de duas travas independentes, a da retaguarda e a
+do serviço. Cada uma exige `FISCAL_PRODUCTION_ENABLED=true`, e só se abrem
+depois da homologação com o A1 e a inscrição reais da loja.
 
 ## Componentes
 
 1. `cloud-api` — autentica dispositivo, valida cadastro tributário, reserva a
    série normal e mantém o estado autoritativo.
-2. `fiscal-service` — serviço FastAPI interno, protegido por token, com
-   idempotência durável própria e acesso a referências de segredo montadas em
-   diretório privado.
+2. `fiscal-service` (`apps/fiscal-net`) — serviço ASP.NET Core interno,
+   protegido por token. Tem idempotência durável própria (SQLite, a mesma
+   tabela do serviço anterior) e lê as referências de segredo numa pasta
+   privada montada no contêiner.
 3. `desktop-pdv` — cliente da API e emissor local exclusivamente em contingência.
 
 ## Invariantes
@@ -166,24 +179,103 @@ rotas.
   emissão desligada, produtos sem perfil completo e serviço fiscal não
   configurado na retaguarda.
 
+## O emissor em C#: o que ele faz
+
+**Segredos no cofre** (`FISCAL_SECRETS_DIR`, pasta montada só-leitura):
+
+| Arquivo | Conteúdo |
+|---|---|
+| `<certificateRef>` | o A1 (`.pfx`), por exemplo `loja-centro/a1.pfx` |
+| `<certificateRef>.senha` | a senha dele (sem o arquivo: A1 sem senha) |
+| `<cscRef>` | o CSC, só com `FISCAL_QRCODE_VERSION=2` |
+
+**Antes de reivindicar o pedido, nada é consumido.** O serviço confere a trava
+de produção e se o A1 abre e está na validade. Um problema aqui volta como
+`unknown`/`FISCAL_SETUP` com o motivo, sem gravar nada.
+
+**Depois de assinado, o XML e a chave são gravados antes de transmitir.** É o
+que permite a reconciliação por chave, antes pendente:
+
+| Resposta da SEFAZ | Desfecho |
+|---|---|
+| cStat 100 ou 150 | `authorized`, com o `nfeProc`: o XML assinado intacto mais o `protNFe` como a SEFAZ o mandou |
+| Recusa (cStat da nota ou do lote) | `rejected`, com o cStat e o motivo dela |
+| 204/539 (duplicidade) | consulta pela chave. Nunca se presume autorizada |
+| 103, 105, 108, 109, 656, 999 | `unknown`, em aberto: a SEFAZ está ocupada ou fora |
+| Sem resposta (rede, timeout) | `unknown`/`SEFAZ_UNREACHABLE`, em aberto |
+| HTTP 401/403 na porta (certificado barrado no TLS) | O XML é **descartado**: nada foi processado. A retransmissão assina de novo, com o A1 corrigido, e o número não se perde |
+
+**A consulta (`/v1/fiscal/status`) resolve o que ficou em aberto:**
+
+- **Chave autorizada:** `authorized`.
+- **217 (não consta):** retransmite **o mesmo XML**. Se a primeira tentativa
+  aparecer, é duplicidade da mesma chave, nunca nota dobrada.
+- **Denegada:** `rejected`.
+
+Um teste prova que o XML recarregado sai idêntico byte a byte e que a
+assinatura continua valendo dentro do `nfeProc`, validado no XSD oficial.
+
+**Tributação: o emissor não inventa.** Emite:
+
+- **Simples:** CSOSN 102, 103, 300, 400 e 500.
+- **Regime normal sem destaque:** CST 40, 41, 50 e 60.
+- **PIS/COFINS:** 04 a 09 e 49/99.
+
+O resto (CSOSN 101 e 201+, CST 00/10/20, PIS/COFINS 01/02) precisa de
+alíquota que o cadastro ainda não guarda. A retaguarda recusa **antes de
+reservar**, com o nome do produto, e o painel lista esses produtos entre os
+impedimentos da primeira nota.
+
+**Pagamento.** A NFC-e exige o grupo `pag`, e a retaguarda manda os pagamentos
+da venda:
+
+| PDV | tPag |
+|---|---|
+| `cash` | 01 |
+| `credit` / `debit` | 03 / 04, com o grupo `card` "não integrado" até o provedor de TEF ser escolhido |
+| `pix` | 17 |
+| `prepaid` | 21 (crédito em loja) |
+| `credit_account` | 05 (crediário) |
+| `cashback` | 19 (fidelidade/cashback) |
+
+O troco vai em `vTroco`. Pagamento que não fecha o total é recusado antes de
+reservar.
+
+**Valores.**
+
+- `vProd` bate com `qCom × vUnCom` em até um centavo (regra 629).
+- O desconto do item fica no item.
+- O desconto do pedido é rateado pelos itens pelo maior resto, sem sobrar
+  centavo.
+- Acréscimo não é emitido.
+
+**Reforma Tributária.** O grupo IBS/CBS não é enviado ainda. Em 2026 ele é
+dispensado para o Simples e informativo para os demais. Os XSDs e as classes
+já o têm; ele entra quando o produto tiver a classificação no cadastro.
+
 ## Próxima fatia fiscal
 
 - [x] Reconciliação automática dos documentos que nunca chegaram ao serviço.
-- [ ] Consulta por chave na SEFAZ, para resolver `IN_FLIGHT` e `ENGINE_FAILURE`
-      (depende do motor real).
-- [ ] Gerador/assinador XML NFC-e 4.00 com QR Code v3 e validação XSD.
+- [x] Consulta por chave na SEFAZ, para resolver `IN_FLIGHT` e falhas depois
+      da transmissão.
+- [x] Gerador e assinador de XML NFC-e 4.00, QR Code v3 e validação no XSD
+      (`apps/fiscal-net`).
 - [x] Cadastro fiscal em tela exclusiva do dono (`/api/panel/fiscal` e
       `/api/panel/fiscal/products`). Detalhes em "Cadastro fiscal pelo painel".
 - [x] DANFE NFC-e 80 mm com indicação visível de contingência
       (`pdv/fiscal/danfe.py`). Imprime só o que veio do documento autorizado,
-      nunca monta o QR Code, e **recusa** imprimir documento incoerente: chave
-      com dígito verificador errado, de outro CNPJ ou modelo, série/número ou
-      tipo de emissão divergentes da chave, emissão normal sem protocolo,
-      contingência com protocolo, ou pagamentos que não fecham o total. Ainda
-      não ligado ao caixa: depende do motor real extrair `qrCode` e `urlChave`
-      do XML autorizado.
-- [ ] Homologação formal RJ/SVRS antes de liberar `production` — exige o
-      certificado A1 e o CSC da loja, emitidos pela SEFAZ-RJ.
+      nunca monta o QR Code, e **recusa** imprimir documento incoerente. Ainda
+      não ligado ao caixa: o `nfeProc` autorizado já traz `qrCode` e
+      `urlChave`, e falta o PDV em C# ler e imprimir.
+- [ ] Homologação formal RJ/SVRS antes de liberar `production`. Exige o
+      certificado A1 e a inscrição estadual reais da loja. A prova no
+      contêiner chegou até o TLS do SVRS, que recusou o certificado de teste
+      (403), como deve.
+- [ ] Alíquotas no cadastro (CSOSN 101, CST 00/20, PIS/COFINS 01/02) e o grupo
+      IBS/CBS.
+- [ ] Cancelamento (evento 110111) e inutilização de numeração.
+- [ ] `tpIntegra = 1` com CNPJ da credenciadora e autorização, quando o
+      provedor de TEF for escolhido.
 
 SAT CF-e (modelo 59) permanece um adaptador separado: o hardware e o protocolo
 não serão tratados como se fossem NFC-e.

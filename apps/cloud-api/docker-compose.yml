@@ -25,7 +25,7 @@ services:
   # Rede interna apenas: não há `ports`. O Next é a única porta pública e
   # autentica o terminal antes de chegar aqui.
   fiscal-service:
-    build: ../fiscal-service
+    build: ../fiscal-net
     environment:
       FISCAL_SERVICE_TOKEN: ${FISCAL_SERVICE_TOKEN:?defina FISCAL_SERVICE_TOKEN}
       FISCAL_STATE_DB: /data/fiscal-state.sqlite3

@@ -216,8 +216,8 @@ function ConfigForm({ storeId, state, onSaved }: { storeId: string; state: Fisca
         helperText="O NOME do arquivo no cofre do serviço fiscal (ex.: loja-centro/a1.pfx). Nunca o arquivo nem a senha."
         value={form.certificate_ref} onChange={field("certificate_ref")} />
       <div className="form-pair">
-        <TextInput id="f-csc" labelText="Referência do CSC no cofre" value={form.csc_ref} onChange={field("csc_ref")} />
-        <TextInput id="f-cscid" labelText="ID do CSC" helperText="Fornecido pela SEFAZ junto do CSC." value={form.csc_id} onChange={field("csc_id")} />
+        <TextInput id="f-csc" labelText="Referência do CSC no cofre (opcional)" helperText="O QR Code v3, padrão do emissor, dispensa o CSC." value={form.csc_ref} onChange={field("csc_ref")} />
+        <TextInput id="f-cscid" labelText="ID do CSC (opcional)" helperText="Só se o emissor usar o QR Code v2." value={form.csc_id} onChange={field("csc_id")} />
       </div>
 
       <Toggle id="f-enabled" labelText="Emissão de NFC-e" labelA="Desligada" labelB="Ligada"

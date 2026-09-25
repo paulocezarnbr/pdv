@@ -18,8 +18,8 @@ pdv/
 │   │   ├── migrations/                # SQL ordenado, aplicado no deploy
 │   │   ├── tests/
 │   │   └── Dockerfile
-│   ├── fiscal-service/                # FastAPI interno, sem porta pública
-│   │   ├── src/fiscal_service/        # auth, engine, cofre e idempotência
+│   ├── fiscal-net/                    # emissor NFC-e (C#, DFe.NET), sem porta pública
+│   │   ├── src/Fiscal.Service/        # rotas, motor NFC-e, cofre, idempotência e XSDs
 │   │   ├── tests/
 │   │   └── Dockerfile
 │   └── desktop-pdv/                   # Python/PySide6 offline-first

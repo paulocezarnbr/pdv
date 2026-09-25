@@ -1,0 +1,13 @@
+<Project>
+  <!-- Serviço fiscal em C#: aviso vira erro, como no PDV. Um aviso ignorado
+       num emissor de nota é uma rejeição da SEFAZ que só aparece na venda. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+</Project>

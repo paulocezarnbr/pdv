@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <!-- O serviço fiscal interno: NFC-e 4.00 pela biblioteca DFe.NET (Zeus),
+       em contêiner Linux no Coolify, ao lado da retaguarda. -->
+  <PropertyGroup>
+    <AssemblyName>fiscal-service</AssemblyName>
+    <RootNamespace>Fiscal.Service</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Zeus.Net.NFe.NFCe" Version="2026.9.24.1416" />
+    <!-- System.Security.Cryptography.Xml (assinatura XMLDSig), que o Zeus usa
+         sem declarar, vem do framework do ASP.NET Core e é atualizado com o
+         runtime: nada de fixar uma versão que envelhece com alerta de segurança. -->
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.12" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- XSDs oficiais da NF-e 4.00 (inclui o grupo IBS/CBS da NT 2025.002). -->
+    <None Include="Schemas\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Fiscal.Tests" />
+  </ItemGroup>
+</Project>

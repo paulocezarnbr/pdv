@@ -105,12 +105,19 @@ describe("configuração da loja", () => {
     }).join(" ")).toContain("certificado");
   });
 
-  it("para ligar a emissão, as credenciais são obrigatórias", () => {
+  it("para ligar a emissão, o certificado é obrigatório; o CSC não (QR Code v3)", () => {
     const problems = validateFiscalConfig(
       config({ certificate_ref: "", csc_ref: "", csc_id: "" }),
       { productionEnabled: false },
     );
-    expect(problems).toHaveLength(3);
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toContain("certificado A1");
+    expect(validateFiscalConfig(config({ csc_ref: "", csc_id: "" }), { productionEnabled: false })).toEqual([]);
+  });
+
+  it("o CSC, quando informado, vem com referência e identificador juntos", () => {
+    const problems = validateFiscalConfig(config({ csc_ref: "loja-centro/csc", csc_id: "" }), { productionEnabled: false });
+    expect(problems.join(" ")).toContain("juntos");
   });
 
   it("inscrição estadual 'ISENTO' não serve para emitente de NFC-e", () => {

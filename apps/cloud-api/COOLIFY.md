@@ -320,8 +320,38 @@ eles vão para o cofre do serviço fiscal, e o painel guarda só o nome da
 referência (por exemplo, `loja-centro/a1.pfx`). A tela recusa qualquer campo
 que pareça segredo.
 
-A retaguarda sobe e o painel funciona **sem** o serviço fiscal. Para emitir,
-cadastre também:
+A retaguarda sobe e o painel funciona **sem** o serviço fiscal.
+
+**O serviço fiscal** é outra aplicação no mesmo projeto do Coolify:
+
+| Campo | Valor |
+|---|---|
+| Build Pack | Dockerfile |
+| Base Directory | `/apps/fiscal-net` |
+| Porta | `8081`, só rede interna, **sem domínio** |
+| Réplicas | **1**: o estado idempotente é um SQLite no volume |
+
+Volumes:
+
+- `/data`, persistente: o estado dos pedidos;
+- `/run/secrets/fiscal`, somente leitura: o cofre.
+
+No cofre ficam o A1 e a senha dele, em `loja-centro/a1.pfx` e
+`loja-centro/a1.pfx.senha`. O CSC só é necessário com o QR Code v2.
+
+Variáveis do serviço fiscal:
+
+```
+FISCAL_SERVICE_TOKEN=<token longo e aleatório; o mesmo da retaguarda>
+FISCAL_PRODUCTION_ENABLED=false          # true só depois da homologação
+FISCAL_QRCODE_VERSION=3                  # 2 volta ao QR com CSC
+FISCAL_RESP_TEC_CNPJ=<CNPJ do responsável técnico, se a SEFAZ exigir>
+FISCAL_RESP_TEC_CONTATO=<nome>
+FISCAL_RESP_TEC_EMAIL=<e-mail>
+FISCAL_RESP_TEC_FONE=<telefone só com dígitos>
+```
+
+Para emitir, cadastre também na retaguarda:
 
 ```
 FISCAL_SERVICE_URL=http://<servico-fiscal-interno>:8081

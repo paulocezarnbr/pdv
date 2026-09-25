@@ -7,6 +7,7 @@ import type { DeviceContext } from "../src/lib/auth/device.ts";
 import {
   FiscalProviderUnavailable,
   type FiscalIntent,
+  type FiscalProvider,
   type FiscalProviderResult,
 } from "../src/lib/fiscal/provider.ts";
 import {
@@ -118,12 +119,19 @@ describeDb("emissão fiscal contra PostgreSQL real", () => {
         (id,tenant_id,order_id,client_uuid,product_id,product_name,quantity,
          unit_price_cents,total_cents,created_at)
         VALUES (${randomUUID()},${tenant},${id},${randomUUID()},'p1','Cafe','1',700,700,now())`;
+      await pay(id, 1000, 300);
     }
     context = { tenantId: tenant, storeId: store, deviceId: device, storeName: "Loja" };
   });
 
+  /** O pagamento da venda, como o terminal sincroniza: valor entregue e troco. */
+  async function pay(orderId: string, amountCents: number, changeCents = 0, method = "cash"): Promise<void> {
+    await admin`INSERT INTO payments (id,tenant_id,order_id,client_uuid,method,amount_cents,change_cents,created_at)
+                VALUES (${randomUUID()},${tenant},${orderId},${randomUUID()},${method},${amountCents},${changeCents},now())`;
+  }
+
   /** Uma venda paga nova, para o teste não disputar pedido com os outros. */
-  async function paidOrder(): Promise<string> {
+  async function paidOrder(options: { pay?: boolean } = {}): Promise<string> {
     const id = randomUUID();
     await admin`INSERT INTO orders
       (id,tenant_id,store_id,device_id,client_uuid,local_number,status,total_cents)
@@ -132,6 +140,7 @@ describeDb("emissão fiscal contra PostgreSQL real", () => {
       (id,tenant_id,order_id,client_uuid,product_id,product_name,quantity,
        unit_price_cents,total_cents,created_at)
       VALUES (${randomUUID()},${tenant},${id},${randomUUID()},'p1','Cafe','1',700,700,now())`;
+    if (options.pay ?? true) await pay(id, 700);
     return id;
   }
 
@@ -181,6 +190,7 @@ describeDb("emissão fiscal contra PostgreSQL real", () => {
        unit_price_cents,total_cents,created_at)
       VALUES (${randomUUID()},${tenant},${id},${randomUUID()},'p1','Cafe','1',
               ${itemCents},${itemCents},now())`;
+    if (totalCents > 0) await pay(id, totalCents);
     return id;
   }
 
@@ -195,6 +205,7 @@ describeDb("emissão fiscal contra PostgreSQL real", () => {
       await admin`DELETE FROM fiscal_product_profiles WHERE tenant_id=${tenant}`;
       await admin`DELETE FROM fiscal_series WHERE tenant_id=${tenant}`;
       await admin`DELETE FROM fiscal_configurations WHERE tenant_id=${tenant}`;
+      await admin`DELETE FROM payments WHERE tenant_id=${tenant}`;
       await admin`DELETE FROM order_items WHERE tenant_id=${tenant}`;
       await admin`DELETE FROM orders WHERE tenant_id=${tenant}`;
       await admin`DELETE FROM tenants WHERE id=${tenant}`;
@@ -408,5 +419,85 @@ describeDb("emissão fiscal contra PostgreSQL real", () => {
 
     expect(error).toBeInstanceOf(ApiError);
     expect((error as ApiError).status).toBe(409);
+  });
+  // -- o emissor em C#: pagamento, QR Code v3 e o que ele calcula ---------------
+
+  class CapturingProvider implements FiscalProvider {
+    intents: FiscalIntent[] = [];
+    async authorize(intent: FiscalIntent): Promise<FiscalProviderResult> {
+      this.intents.push(intent);
+      return AUTHORIZED;
+    }
+    async query(): Promise<FiscalProviderResult> {
+      return NOT_FOUND;
+    }
+  }
+
+  async function refusedBeforeReserving(orderId: string, expected: string): Promise<void> {
+    const before = await nextNumber();
+    const provider = new CapturingProvider();
+    const error = await issueFiscalDocument(context, randomUUID(), orderId, provider)
+      .catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).status).toBe(409);
+    expect((error as ApiError).message).toContain(expected);
+    expect(await nextNumber()).toBe(before);
+    expect(provider.intents).toHaveLength(0);
+  }
+
+  it("a intenção leva os pagamentos da venda, com o troco", async () => {
+    const id = await paidOrder({ pay: false });
+    await pay(id, 1000, 300);
+    const provider = new CapturingProvider();
+
+    await issueFiscalDocument(context, randomUUID(), id, provider);
+
+    expect(provider.intents[0]!.payments).toEqual([{ method: "cash", amountCents: 1000, changeCents: 300 }]);
+  });
+
+  it("venda sem pagamento sincronizado é recusada antes de reservar", async () => {
+    await refusedBeforeReserving(await paidOrder({ pay: false }), "sem pagamento");
+  });
+
+  it("pagamento que não fecha o total é recusado antes de reservar", async () => {
+    const id = await paidOrder({ pay: false });
+    await pay(id, 500);
+    await refusedBeforeReserving(id, "não fecham o total");
+  });
+
+  it("forma de pagamento sem tPag é recusada antes de reservar", async () => {
+    const id = await paidOrder({ pay: false });
+    await pay(id, 700, 0, "voucher");
+    await refusedBeforeReserving(id, "voucher");
+  });
+
+  it("tributação que o emissor não calcula é recusada antes de reservar", async () => {
+    await admin`INSERT INTO fiscal_product_profiles
+      (tenant_id,product_id,ncm,cfop,unit_code,origin,csosn,cst_pis,cst_cofins)
+      VALUES (${tenant},'p101','21011200','5102','UN',0,'101','49','49')
+      ON CONFLICT DO NOTHING`;
+    const id = randomUUID();
+    await admin`INSERT INTO orders
+      (id,tenant_id,store_id,device_id,client_uuid,local_number,status,total_cents)
+      VALUES (${id},${tenant},${store},${device},${randomUUID()},1,'paid',700)`;
+    await admin`INSERT INTO order_items
+      (id,tenant_id,order_id,client_uuid,product_id,product_name,quantity,
+       unit_price_cents,total_cents,created_at)
+      VALUES (${randomUUID()},${tenant},${id},${randomUUID()},'p101','Cafe com credito','1',700,700,now())`;
+    await pay(id, 700);
+    await refusedBeforeReserving(id, "CSOSN 101");
+  });
+
+  it("sem CSC a emissão segue: o QR Code v3 dispensa", async () => {
+    await admin`UPDATE fiscal_configurations SET csc_ref=NULL, csc_id=NULL WHERE tenant_id=${tenant}`;
+    try {
+      const provider = new CapturingProvider();
+      const result = await issueFiscalDocument(context, randomUUID(), await paidOrder(), provider);
+      expect(issued(result.document).status).toBe("authorized");
+      expect(provider.intents[0]!.cscRef).toBeUndefined();
+      expect(provider.intents[0]!.cscId).toBeUndefined();
+    } finally {
+      await admin`UPDATE fiscal_configurations SET csc_ref='loja/csc', csc_id='1' WHERE tenant_id=${tenant}`;
+    }
   });
 });

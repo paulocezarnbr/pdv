@@ -17,6 +17,7 @@ import { requirePanelUser, type PanelUser } from "@/lib/auth/panel";
 import { withTenant, type Tx } from "@/lib/db";
 import { env } from "@/lib/env";
 import {
+  engineGap,
   digits,
   secretLikeFields,
   validateFiscalConfig,
@@ -118,6 +119,10 @@ export const GET = handler(async (request) => {
             cst_pis: product.cst_pis ?? "", cst_cofins: product.cst_cofins ?? "",
           }, regimes)
         : ["Sem perfil tributário."];
+      // O perfil pode estar correto e ainda assim fora do que o emissor calcula
+      // (CSOSN 101, CST 00...): melhor o dono saber aqui que na primeira venda.
+      const gap = product.ncm ? engineGap(product) : null;
+      if (gap) problems.push(`${gap} exige alíquota que o emissor ainda não calcula.`);
       return { ...product, complete: problems.length === 0, problems };
     });
 

@@ -60,6 +60,32 @@ export const CST_PIS_COFINS_CODES = new Set([
   "70", "71", "72", "73", "74", "75", "98", "99",
 ]);
 
+/**
+ * O que o emissor fiscal (apps/fiscal-net) calcula hoje: tributação sem
+ * alíquota nem crédito a destacar. O resto — CSOSN 101 e 201+, CST 00/10/20,
+ * PIS/COFINS 01/02 — precisa de percentuais que o cadastro ainda não guarda, e
+ * é recusado ANTES de reservar o número, com o nome do produto.
+ */
+export const ENGINE_CSOSN = new Set(["102", "103", "300", "400", "500"]);
+export const ENGINE_CST_ICMS = new Set(["40", "41", "50", "60"]);
+export const ENGINE_CST_PIS_COFINS = new Set(["04", "05", "06", "07", "08", "09", "49", "99"]);
+
+/** O motivo de o emissor não conseguir emitir este perfil, ou `null`. */
+export function engineGap(profile: {
+  csosn?: string | null; cst_icms?: string | null; cst_pis?: string | null; cst_cofins?: string | null;
+}): string | null {
+  if (profile.csosn && !ENGINE_CSOSN.has(profile.csosn)) return `CSOSN ${profile.csosn}`;
+  if (profile.cst_icms && !ENGINE_CST_ICMS.has(profile.cst_icms)) return `CST de ICMS ${profile.cst_icms}`;
+  if (profile.cst_pis && !ENGINE_CST_PIS_COFINS.has(profile.cst_pis)) return `CST de PIS ${profile.cst_pis}`;
+  if (profile.cst_cofins && !ENGINE_CST_PIS_COFINS.has(profile.cst_cofins)) return `CST de COFINS ${profile.cst_cofins}`;
+  return null;
+}
+
+/** Os valores de `payments.method` que viram `tPag` na NFC-e. */
+export const FISCAL_PAYMENT_METHODS = new Set([
+  "cash", "debit", "credit", "pix", "prepaid", "credit_account", "cashback",
+]);
+
 export const digits = (value: string): string => value.replace(/\D/g, "");
 
 /**
@@ -192,11 +218,16 @@ export function validateFiscalConfig(
   if (check(config.certificate_ref) && !isValidSecretRef(config.certificate_ref)) {
     problems.push("Referência do certificado A1 inválida (use o nome no cofre, ex.: loja-centro/a1.pfx).");
   }
-  if (check(config.csc_ref) && !isValidSecretRef(config.csc_ref)) {
+  // O CSC é opcional: o QR Code v3 (NT 2025.001), padrão do emissor, não o
+  // usa. Informado, ele precisa estar certo — é a volta ao v2, se preciso.
+  if (config.csc_ref !== "" && !isValidSecretRef(config.csc_ref)) {
     problems.push("Referência do CSC inválida.");
   }
-  if (check(config.csc_id) && !/^\d{1,6}$/.test(config.csc_id)) {
+  if (config.csc_id !== "" && !/^\d{1,6}$/.test(config.csc_id)) {
     problems.push("Identificador do CSC precisa de 1 a 6 dígitos.");
+  }
+  if ((config.csc_ref === "") !== (config.csc_id === "")) {
+    problems.push("Informe a referência e o identificador do CSC juntos, ou nenhum dos dois.");
   }
 
   if (config.environment === "production" && !options.productionEnabled) {

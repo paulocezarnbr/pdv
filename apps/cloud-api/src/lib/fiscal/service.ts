@@ -2,9 +2,10 @@ import type { DeviceContext } from "@/lib/auth/device";
 import { withTenant, type Tx } from "@/lib/db";
 import { env } from "@/lib/env";
 import { ApiError } from "@/lib/http";
+import { engineGap, FISCAL_PAYMENT_METHODS } from "@/lib/fiscal/registry";
 import {
   FiscalProviderUnavailable,
-  PythonFiscalProvider,
+  HttpFiscalProvider,
   type FiscalIntent,
   type FiscalProvider,
   type FiscalProviderResult,
@@ -82,6 +83,12 @@ interface ConfigRow {
   legal_name: string | null;
   address_json: Record<string, unknown>;
   enabled: boolean;
+}
+
+interface PaymentRow {
+  method: string;
+  amount_cents: string;
+  change_cents: string;
 }
 
 interface ItemRow {
@@ -179,7 +186,7 @@ function defaultProvider(): FiscalProvider {
       "Emissão fiscal não configurada nesta retaguarda. Nenhum número foi reservado.",
     );
   }
-  return new PythonFiscalProvider();
+  return new HttpFiscalProvider();
 }
 
 /**
@@ -208,7 +215,7 @@ export async function fiscalDocumentStatus(
   const row = rows[0];
   if (row.status !== "unknown" && row.status !== "processing") return out(row);
   if (!provider && !env.fiscalConfigured) return out(row);
-  const fiscal = provider ?? new PythonFiscalProvider();
+  const fiscal = provider ?? new HttpFiscalProvider();
 
   // O request anterior pode ter sido autorizado e perdido apenas a resposta.
   // Consulta o ledger idempotente do serviço antes de qualquer novo envio.
@@ -237,8 +244,8 @@ export async function fiscalDocumentStatus(
   let intent: FiscalIntent;
   try {
     intent = await withTenant(device.tenantId, async (tx) => {
-      const { order, config, items } = await readEmissionInputs(tx, device, row.order_id);
-      return makeIntent(device, row, order.total_cents, config, items);
+      const { order, config, items, payments } = await readEmissionInputs(tx, device, row.order_id);
+      return makeIntent(device, row, order.total_cents, config, items, payments);
     });
   } catch (error) {
     // Configuração desligada, produção bloqueada ou item sem perfil desde a
@@ -273,7 +280,7 @@ async function reserve(
       return { row: existing[0], intent: {} as FiscalIntent, created: false };
     }
 
-    const { order, config, items } = await readEmissionInputs(tx, device, orderId);
+    const { order, config, items, payments } = await readEmissionInputs(tx, device, orderId);
     beforeReservation();
 
     const seriesRows = await tx<{ id: string; series: number; next_number: string }[]>`
@@ -315,7 +322,7 @@ async function reserve(
     return {
       row: inserted[0],
       created: true,
-      intent: makeIntent(device, inserted[0], order.total_cents, config, items),
+      intent: makeIntent(device, inserted[0], order.total_cents, config, items, payments),
     };
   });
 }
@@ -332,7 +339,7 @@ async function readEmissionInputs(
   tx: Tx,
   device: DeviceContext,
   orderId: string,
-): Promise<{ order: { total_cents: string }; config: ConfigRow; items: ItemRow[] }> {
+): Promise<{ order: { total_cents: string }; config: ConfigRow; items: ItemRow[]; payments: PaymentRow[] }> {
   const orders = await tx<{ id: string; status: string; total_cents: string }[]>`
     SELECT id, status, total_cents FROM orders
      WHERE id=${orderId}::uuid AND tenant_id=${device.tenantId}
@@ -369,7 +376,14 @@ async function readEmissionInputs(
   `;
   validateItems(items);
 
-  return { order, config, items };
+  const payments = await tx<PaymentRow[]>`
+    SELECT method, amount_cents, change_cents FROM payments
+     WHERE tenant_id=${device.tenantId} AND order_id=${orderId}::uuid
+     ORDER BY created_at, id
+  `;
+  validatePayments(payments, total);
+
+  return { order, config, items, payments };
 }
 
 async function settle(
@@ -417,7 +431,8 @@ function validateConfiguration(config: ConfigRow | undefined): asserts config is
         "Nenhum número foi consumido.",
     );
   }
-  const required = [config.certificate_ref, config.csc_ref, config.csc_id, config.cnpj,
+  // O CSC não entra: o QR Code v3, padrão do emissor, dispensa.
+  const required = [config.certificate_ref, config.cnpj,
     config.state_registration, config.tax_regime, config.legal_name];
   if (required.some((value) => value === null || value === "")) {
     throw new ApiError(409, "Configuração fiscal incompleta; nenhum valor será inventado.");
@@ -432,6 +447,32 @@ function validateItems(items: ItemRow[]): void {
   if (invalid) {
     throw new ApiError(409, `Produto sem perfil tributário completo: ${invalid.product_name}.`);
   }
+  for (const item of items) {
+    const gap = engineGap(item);
+    if (gap) {
+      throw new ApiError(409,
+        `${item.product_name}: ${gap} exige alíquota que o cadastro ainda não guarda; ` +
+        "o emissor não inventa tributação. Nenhum número foi consumido.");
+    }
+  }
+}
+
+/**
+ * Antes da reserva: a NFC-e exige o grupo de pagamento, e pagamento que não
+ * fecha o total seria rejeitado pela SEFAZ depois de o número já ter sido
+ * consumido.
+ */
+function validatePayments(payments: PaymentRow[], totalCents: number): void {
+  if (!payments.length) {
+    throw new ApiError(409, "Venda sem pagamento sincronizado; a NFC-e exige a forma de pagamento.");
+  }
+  const unknown = payments.find((payment) => !FISCAL_PAYMENT_METHODS.has(payment.method));
+  if (unknown) throw new ApiError(409, `Forma de pagamento sem correspondência na NFC-e: ${unknown.method}.`);
+  const net = payments.reduce(
+    (sum, payment) => sum + Number(payment.amount_cents) - Number(payment.change_cents), 0);
+  if (net !== totalCents) {
+    throw new ApiError(409, "Os pagamentos da venda não fecham o total; nenhum número foi consumido.");
+  }
 }
 
 function makeIntent(
@@ -440,13 +481,14 @@ function makeIntent(
   totalCents: string,
   config: ConfigRow,
   items: ItemRow[],
+  payments: PaymentRow[],
 ): FiscalIntent {
   return {
     documentId: document.id, requestUuid: document.request_uuid, orderId: document.order_id,
     tenantId: device.tenantId, storeId: device.storeId, deviceId: device.deviceId,
     model: 65, series: document.series, number: Number(document.number),
     environment: config.environment, certificateRef: config.certificate_ref!,
-    cscRef: config.csc_ref!, cscId: config.csc_id!,
+    cscRef: config.csc_ref ?? undefined, cscId: config.csc_id ?? undefined,
     issuer: { uf: config.uf, cnpj: config.cnpj!, stateRegistration: config.state_registration!,
       taxRegime: config.tax_regime!, legalName: config.legal_name!, address: config.address_json },
     totalCents: Number(totalCents),
@@ -456,6 +498,10 @@ function makeIntent(
       ncm: item.ncm!, cfop: item.cfop!, cest: item.cest ?? undefined,
       unitCode: item.unit_code!, origin: item.origin!, csosn: item.csosn ?? undefined,
       cstIcms: item.cst_icms ?? undefined, cstPis: item.cst_pis!, cstCofins: item.cst_cofins!,
+    })),
+    payments: payments.map((payment) => ({
+      method: payment.method, amountCents: Number(payment.amount_cents),
+      changeCents: Number(payment.change_cents),
     })),
   };
 }

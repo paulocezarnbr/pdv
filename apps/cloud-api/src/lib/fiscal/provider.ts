@@ -33,8 +33,9 @@ export interface FiscalIntent {
   number: number;
   environment: "homologation" | "production";
   certificateRef: string;
-  cscRef: string;
-  cscId: string;
+  /** Só com o QR Code v2; o v3, padrão do emissor, dispensa o CSC. */
+  cscRef?: string;
+  cscId?: string;
   issuer: {
     uf: string;
     cnpj: string;
@@ -45,6 +46,14 @@ export interface FiscalIntent {
   };
   totalCents: number;
   items: FiscalItemIntent[];
+  /** A NFC-e exige o grupo de pagamento; o troco vai em `changeCents`. */
+  payments: FiscalPaymentIntent[];
+}
+
+export interface FiscalPaymentIntent {
+  method: string;
+  amountCents: number;
+  changeCents: number;
 }
 
 export interface FiscalProviderResult {
@@ -77,7 +86,11 @@ export class FiscalProviderUnavailable extends Error {
   }
 }
 
-export class PythonFiscalProvider implements FiscalProvider {
+/**
+ * O serviço fiscal interno (`apps/fiscal-net`, C# com DFe.NET) pela rede do
+ * Coolify. O contrato HTTP é o mesmo do serviço em Python que ele substituiu.
+ */
+export class HttpFiscalProvider implements FiscalProvider {
   private readonly baseUrl: string;
   private readonly token: string;
 
