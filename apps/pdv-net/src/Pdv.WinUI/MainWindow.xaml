@@ -1,0 +1,9 @@
+<Window
+    x:Class="Pdv.WinUI.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="PDV Balcão">
+    <Grid>
+        <TextBlock Text="PDV Balcão" HorizontalAlignment="Center" VerticalAlignment="Center" />
+    </Grid>
+</Window>

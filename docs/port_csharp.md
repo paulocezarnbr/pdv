@@ -9,6 +9,21 @@ Código em `apps/pdv-net/`. O PDV em Python (`apps/desktop-pdv/`) continua
 vendendo até a paridade, e daqui em diante só recebe correções. **Toda fase nova
 é em C#.**
 
+**Interface em WinUI 3** (Windows App SDK 2.5), decidido em 25/09/2026, e o
+trabalho segue na branch `port/csharp-winui`. O app é *unpackaged* e
+*self-contained*: não usa MSIX, e o runtime do Windows App SDK vai dentro da
+pasta. O mesmo instalador Inno copia a pasta e roda o `harden.ps1`, e a loja
+sem internet não precisa baixar pré-requisito.
+
+A arquitetura existe para que a tela seja testável:
+
+| Projeto | Conteúdo | Testado por |
+|---|---|---|
+| `Pdv.Core` | regras puras: auditoria, TEF, dinheiro | xUnit |
+| `Pdv.Data` | SQLite: venda, pagamento, diário do TEF, login | xUnit sobre o banco real |
+| `Pdv.App` | *view models* (CommunityToolkit.Mvvm): o que cada tela faz | xUnit, sem janela |
+| `Pdv.WinUI` | só XAML e *binding* | build no CI e abertura do binário |
+
 ## As regras da transição
 
 1. **Mesmo banco.** O C# abre o mesmo `C:\ProgramData\ERPFood\PDV\pdv_local.db`,
@@ -83,9 +98,15 @@ vendendo até a paridade, e daqui em diante só recebe correções. **Toda fase 
 - [ ] **C3b. Itens da venda.** Item por unidade e por peso (com o quadro cru
       da balança), baixa de estoque por ficha técnica, cancelamento de item e
       desconto com autorização. Payloads conferidos contra o `push-day.json`.
-- [ ] **C4. Interface (WPF).** Login por PIN, com Argon2id compatível com os
-      hashes do Python (contrato). Também a tela de venda, o pagamento com a
-      conversa do TEF e o diálogo de pendências na abertura.
+- [ ] **C4. Interface (WinUI 3).**
+  - [x] **C4.0.** Casca WinUI 3 *unpackaged* e *self-contained*, que compila
+        e abre.
+  - [ ] **C4a. Login por PIN.** Argon2id compatível com os hashes do Python
+        (contrato nos dois sentidos) e o freio de tentativas na mesma
+        `auth_throttle`.
+  - [ ] **C4b.** Tela de login.
+  - [ ] **C4c.** Tela de venda e pagamento com a conversa do TEF.
+  - [ ] **C4d.** Diálogo de pendências do TEF na abertura.
 - [ ] **C5. Sincronização e ativação.** Cliente HTTP da nuvem, cofre de
       segredos (DPAPI, mesmo formato: contrato), heartbeat e comandos
       remotos.

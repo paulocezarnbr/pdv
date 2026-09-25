@@ -2,6 +2,9 @@
   <Folder Name="/src/">
     <Project Path="src/Pdv.Core/Pdv.Core.csproj" />
     <Project Path="src/Pdv.Data/Pdv.Data.csproj" />
+    <Project Path="src/Pdv.WinUI/Pdv.WinUI.csproj">
+      <Platform Project="x64" />
+    </Project>
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Pdv.Core.Tests/Pdv.Core.Tests.csproj" />
