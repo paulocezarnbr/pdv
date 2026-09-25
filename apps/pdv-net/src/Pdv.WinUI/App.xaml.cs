@@ -9,9 +9,9 @@ namespace Pdv.WinUI;
 /// Composição do caixa: abre o banco, lê quem é o terminal, entra pelo login.
 /// </summary>
 /// <remarks>
-/// Toda falha de abertura vira uma mensagem na janela, nunca um fechamento
-/// mudo: o executável não tem console, e "abri e sumiu" é o pior chamado de
-/// suporte que existe.
+/// Toda falha de abertura vira uma mensagem na janela e uma linha no
+/// <see cref="CrashLog"/>, nunca um fechamento mudo: o executável não tem
+/// console, e "abri e sumiu" é o pior chamado de suporte que existe.
 /// </remarks>
 public partial class App : Application
 {
@@ -20,6 +20,9 @@ public partial class App : Application
     public App()
     {
         InitializeComponent();
+        UnhandledException += (_, e) => CrashLog.Write("erro não tratado na interface", e.Exception);
+        AppDomain.CurrentDomain.UnhandledException +=
+            (_, e) => CrashLog.Write("erro não tratado", e.ExceptionObject as Exception);
     }
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
@@ -36,7 +39,15 @@ public partial class App : Application
         }
         catch (PdvDatabaseException error)
         {
+            CrashLog.Write("abertura do banco", error);
             _window.ShowFatal(error.Message);
+        }
+        catch (Exception error)
+        {
+            CrashLog.Write("abertura do caixa", error);
+            _window.ShowFatal(
+                $"Erro inesperado ao abrir o caixa: {error.Message}\n\nDetalhes em {CrashLog.Path}. " +
+                "Nenhuma venda foi perdida.");
         }
         _window.Activate();
     }

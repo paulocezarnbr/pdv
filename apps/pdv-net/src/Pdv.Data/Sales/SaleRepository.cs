@@ -58,10 +58,17 @@ public sealed class SaleRepository(TerminalIdentity terminal, TimeProvider? cloc
         return new OpenOrder(id, clientUuid, localNumber, 0, 0, 0);
     }
 
-    public static OpenOrder LoadOpenOrder(SqliteConnection connection, string orderId)
+    public static OpenOrder LoadOpenOrder(SqliteConnection connection, string orderId) =>
+        LoadOpenOrder(connection, null, orderId);
+
+    /// <summary>Dentro de uma transação aberta, o comando precisa dela (Microsoft.Data.Sqlite exige).</summary>
+    public static OpenOrder LoadOpenOrder(SqliteTransaction transaction, string orderId) =>
+        LoadOpenOrder(transaction.Connection!, transaction, orderId);
+
+    private static OpenOrder LoadOpenOrder(SqliteConnection connection, SqliteTransaction? transaction, string orderId)
     {
         using var command = Sql.Command(
-            connection, null,
+            connection, transaction,
             "SELECT id, client_uuid, local_number, subtotal_cents, discount_cents, total_cents, status " +
             "FROM orders WHERE id = $id",
             ("$id", orderId));

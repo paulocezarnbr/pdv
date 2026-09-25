@@ -46,8 +46,16 @@ db.close()
 # argumento para programa nativo.
 $seedFile = Join-Path $work 'seed.py'
 Set-Content -Path $seedFile -Value $seed -Encoding UTF8
-& python $seedFile
-if ($LASTEXITCODE -ne 0) { throw 'Falha ao criar o banco pelo PDV em Python.' }
+$previous = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'   # stderr do python não pode virar exceção antes de ser lido
+$seedOutput = & python $seedFile 2>&1 | ForEach-Object { "$_" }
+$seedCode = $LASTEXITCODE
+$ErrorActionPreference = $previous
+if ($seedCode -ne 0) {
+    $reason = "Falha ao criar o banco pelo PDV em Python: " + (($seedOutput | Select-Object -Last 3) -join ' | ')
+    if ($env:GITHUB_ACTIONS) { Write-Host "::error title=ui-smoke::$reason" }
+    throw $reason
+}
 
 $A = [System.Windows.Automation.AutomationElement]
 $Tree = [System.Windows.Automation.TreeScope]
@@ -68,8 +76,23 @@ function TypePin($window, [string] $pin) { foreach ($digit in $pin.ToCharArray()
 function Text($element) { $element.Current.Name }
 
 $env:PDV_DB_PATH = $db
+# O PDV.exe não tem console: o erro de abertura só aparece neste arquivo.
+$crashLog = Join-Path $work 'pdv-winui.log'
+$env:PDV_CRASH_LOG = $crashLog
 $process = Start-Process -FilePath $Exe -PassThru
 $failures = @()
+
+function Diagnose {
+    $lines = @()
+    $process.Refresh()
+    $lines += if ($process.HasExited) { "o processo saiu com código $($process.ExitCode)" } else { 'o processo continua rodando' }
+    if (Test-Path $crashLog) { $lines += 'log do PDV: ' + ((Get-Content $crashLog -Raw -Encoding UTF8) -replace '\s+', ' ') }
+    $windows = $A::RootElement.FindAll($Tree::Children, [System.Windows.Automation.Condition]::TrueCondition) |
+        ForEach-Object { "'$($_.Current.Name)' (pid $($_.Current.ProcessId))" } | Select-Object -First 12
+    $lines += 'janelas na sessão: ' + ($windows -join ', ')
+    return $lines
+}
+
 try {
     $windowCondition = New-Object System.Windows.Automation.PropertyCondition($A::ProcessIdProperty, $process.Id)
     $deadline = (Get-Date).AddSeconds(30)
@@ -107,6 +130,10 @@ try {
     if ($greeting -ne 'Olá, Ana') { $failures += "entrada: esperado 'Olá, Ana', veio '$greeting'" }
     else { Write-Host 'ok  PIN certo entra no caixa' }
 }
+catch {
+    $failures += $_.Exception.Message
+    $failures += Diagnose
+}
 finally {
     if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force }
     Start-Sleep -Milliseconds 500
@@ -114,7 +141,11 @@ finally {
 }
 
 if ($failures.Count -gt 0) {
-    $failures | ForEach-Object { Write-Host "FALHOU  $_" }
+    foreach ($failure in $failures) {
+        Write-Host "FALHOU  $failure"
+        # O log da execução no GitHub exige login; a anotação aparece no resumo público.
+        if ($env:GITHUB_ACTIONS) { Write-Host "::error title=ui-smoke::$failure" }
+    }
     exit 1
 }
 Write-Host 'Tela de login: ok'

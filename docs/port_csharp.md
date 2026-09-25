@@ -95,9 +95,23 @@ A arquitetura existe para que a tela seja testável:
     R$ 10 devolviam R$ 10 em espécie.
   - **Testes.** 13 de ponta a ponta sobre o banco real, incluindo queda antes
     e depois de gravar. As quatro regras foram verificadas por mutação.
-- [ ] **C3b. Itens da venda.** Item por unidade e por peso (com o quadro cru
-      da balança), baixa de estoque por ficha técnica, cancelamento de item e
-      desconto com autorização. Payloads conferidos contra o `push-day.json`.
+- [x] **C3b. Item por unidade e baixa de estoque.**
+  - **Baixa por ficha técnica** (`Pdv.Core.Stock`). Miligramas inteiros,
+    `ROUND_HALF_UP` no fim e o rendimento dividindo. É conferida miligrama a
+    miligrama contra `contracts/recipe-explosion.json`, gerado pelo
+    `explode_recipe` do Python.
+  - **Total do item por unidade.** Usa "meio para o par" (`ROUND_HALF_EVEN`),
+    como o `quantize` do Python: 1,5 × R$ 3,33 = 499,5 centavos vira 500.
+  - **`ItemRegistration`.** O item, o consumo por insumo, o movimento de
+    estoque, o saldo e a auditoria entram numa transação só. O primeiro item
+    abre o pedido, e os totais saem dos itens vivos no banco. Estoque
+    negativo avisa e não trava a fila (padrão do Python), e há a opção de
+    travar sem deixar nada gravado pela metade. `order_items` (com
+    `ingredients`) e `stock_movements` sobem com as chaves do
+    `push-day.json`.
+  - **Venda completa.** Item mais cartão, de ponta a ponta. 121 testes.
+- [ ] **C3c. Item por peso** (com o quadro cru da balança), **cancelamento de
+      item e desconto** com autorização.
 - [ ] **C4. Interface (WinUI 3).**
   - [x] **C4.0.** Casca WinUI 3 *unpackaged* e *self-contained*, que compila
         e abre.

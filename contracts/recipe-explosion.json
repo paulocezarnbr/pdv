@@ -1,0 +1,450 @@
+{
+  "comment": "Gerado por apps/desktop-pdv/tests/test_stock_contract.py. Não edite à mão.",
+  "cases": [
+    {
+      "recipe": {
+        "name": "torta_847g",
+        "base_qty_g": 1000,
+        "yield_factor": "1",
+        "lines": [
+          {
+            "inventory_item_id": "farinha",
+            "inventory_item_name": "Farinha",
+            "qty_per_base_mg": 250000,
+            "waste_percent": "0",
+            "unit_cost_cents_per_kg": 520
+          },
+          {
+            "inventory_item_id": "acucar",
+            "inventory_item_name": "Açúcar",
+            "qty_per_base_mg": 180000,
+            "waste_percent": "0",
+            "unit_cost_cents_per_kg": 430
+          },
+          {
+            "inventory_item_id": "chocolate",
+            "inventory_item_name": "Chocolate",
+            "qty_per_base_mg": 320000,
+            "waste_percent": "2.5",
+            "unit_cost_cents_per_kg": 4890
+          }
+        ]
+      },
+      "sold_grams": 847,
+      "consumptions": [
+        {
+          "inventory_item_id": "farinha",
+          "consumed_mg": 211750,
+          "unit_cost_cents": 110
+        },
+        {
+          "inventory_item_id": "acucar",
+          "consumed_mg": 152460,
+          "unit_cost_cents": 66
+        },
+        {
+          "inventory_item_id": "chocolate",
+          "consumed_mg": 277816,
+          "unit_cost_cents": 1359
+        }
+      ]
+    },
+    {
+      "recipe": {
+        "name": "torta_847g",
+        "base_qty_g": 1000,
+        "yield_factor": "1",
+        "lines": [
+          {
+            "inventory_item_id": "farinha",
+            "inventory_item_name": "Farinha",
+            "qty_per_base_mg": 250000,
+            "waste_percent": "0",
+            "unit_cost_cents_per_kg": 520
+          },
+          {
+            "inventory_item_id": "acucar",
+            "inventory_item_name": "Açúcar",
+            "qty_per_base_mg": 180000,
+            "waste_percent": "0",
+            "unit_cost_cents_per_kg": 430
+          },
+          {
+            "inventory_item_id": "chocolate",
+            "inventory_item_name": "Chocolate",
+            "qty_per_base_mg": 320000,
+            "waste_percent": "2.5",
+            "unit_cost_cents_per_kg": 4890
+          }
+        ]
+      },
+      "sold_grams": 1,
+      "consumptions": [
+        {
+          "inventory_item_id": "farinha",
+          "consumed_mg": 250,
+          "unit_cost_cents": 0
+        },
+        {
+          "inventory_item_id": "acucar",
+          "consumed_mg": 180,
+          "unit_cost_cents": 0
+        },
+        {
+          "inventory_item_id": "chocolate",
+          "consumed_mg": 328,
+          "unit_cost_cents": 2
+        }
+      ]
+    },
+    {
+      "recipe": {
+        "name": "torta_847g",
+        "base_qty_g": 1000,
+        "yield_factor": "1",
+        "lines": [
+          {
+            "inventory_item_id": "farinha",
+            "inventory_item_name": "Farinha",
+            "qty_per_base_mg": 250000,
+            "waste_percent": "0",
+            "unit_cost_cents_per_kg": 520
+          },
+          {
+            "inventory_item_id": "acucar",
+            "inventory_item_name": "Açúcar",
+            "qty_per_base_mg": 180000,
+            "waste_percent": "0",
+            "unit_cost_cents_per_kg": 430
+          },
+          {
+            "inventory_item_id": "chocolate",
+            "inventory_item_name": "Chocolate",
+            "qty_per_base_mg": 320000,
+            "waste_percent": "2.5",
+            "unit_cost_cents_per_kg": 4890
+          }
+        ]
+      },
+      "sold_grams": 1000,
+      "consumptions": [
+        {
+          "inventory_item_id": "farinha",
+          "consumed_mg": 250000,
+          "unit_cost_cents": 130
+        },
+        {
+          "inventory_item_id": "acucar",
+          "consumed_mg": 180000,
+          "unit_cost_cents": 77
+        },
+        {
+          "inventory_item_id": "chocolate",
+          "consumed_mg": 328000,
+          "unit_cost_cents": 1604
+        }
+      ]
+    },
+    {
+      "recipe": {
+        "name": "torta_847g",
+        "base_qty_g": 1000,
+        "yield_factor": "1",
+        "lines": [
+          {
+            "inventory_item_id": "farinha",
+            "inventory_item_name": "Farinha",
+            "qty_per_base_mg": 250000,
+            "waste_percent": "0",
+            "unit_cost_cents_per_kg": 520
+          },
+          {
+            "inventory_item_id": "acucar",
+            "inventory_item_name": "Açúcar",
+            "qty_per_base_mg": 180000,
+            "waste_percent": "0",
+            "unit_cost_cents_per_kg": 430
+          },
+          {
+            "inventory_item_id": "chocolate",
+            "inventory_item_name": "Chocolate",
+            "qty_per_base_mg": 320000,
+            "waste_percent": "2.5",
+            "unit_cost_cents_per_kg": 4890
+          }
+        ]
+      },
+      "sold_grams": 3333,
+      "consumptions": [
+        {
+          "inventory_item_id": "farinha",
+          "consumed_mg": 833250,
+          "unit_cost_cents": 433
+        },
+        {
+          "inventory_item_id": "acucar",
+          "consumed_mg": 599940,
+          "unit_cost_cents": 258
+        },
+        {
+          "inventory_item_id": "chocolate",
+          "consumed_mg": 1093224,
+          "unit_cost_cents": 5346
+        }
+      ]
+    },
+    {
+      "recipe": {
+        "name": "bolo_que_encolhe",
+        "base_qty_g": 1200,
+        "yield_factor": "0.85",
+        "lines": [
+          {
+            "inventory_item_id": "ovos",
+            "inventory_item_name": "Ovos",
+            "qty_per_base_mg": 360000,
+            "waste_percent": "3.5",
+            "unit_cost_cents_per_kg": 1150
+          },
+          {
+            "inventory_item_id": "manteiga",
+            "inventory_item_name": "Manteiga",
+            "qty_per_base_mg": 125000,
+            "waste_percent": "1",
+            "unit_cost_cents_per_kg": 5290
+          }
+        ]
+      },
+      "sold_grams": 100,
+      "consumptions": [
+        {
+          "inventory_item_id": "ovos",
+          "consumed_mg": 36529,
+          "unit_cost_cents": 42
+        },
+        {
+          "inventory_item_id": "manteiga",
+          "consumed_mg": 12377,
+          "unit_cost_cents": 65
+        }
+      ]
+    },
+    {
+      "recipe": {
+        "name": "bolo_que_encolhe",
+        "base_qty_g": 1200,
+        "yield_factor": "0.85",
+        "lines": [
+          {
+            "inventory_item_id": "ovos",
+            "inventory_item_name": "Ovos",
+            "qty_per_base_mg": 360000,
+            "waste_percent": "3.5",
+            "unit_cost_cents_per_kg": 1150
+          },
+          {
+            "inventory_item_id": "manteiga",
+            "inventory_item_name": "Manteiga",
+            "qty_per_base_mg": 125000,
+            "waste_percent": "1",
+            "unit_cost_cents_per_kg": 5290
+          }
+        ]
+      },
+      "sold_grams": 250,
+      "consumptions": [
+        {
+          "inventory_item_id": "ovos",
+          "consumed_mg": 91324,
+          "unit_cost_cents": 105
+        },
+        {
+          "inventory_item_id": "manteiga",
+          "consumed_mg": 30944,
+          "unit_cost_cents": 164
+        }
+      ]
+    },
+    {
+      "recipe": {
+        "name": "bolo_que_encolhe",
+        "base_qty_g": 1200,
+        "yield_factor": "0.85",
+        "lines": [
+          {
+            "inventory_item_id": "ovos",
+            "inventory_item_name": "Ovos",
+            "qty_per_base_mg": 360000,
+            "waste_percent": "3.5",
+            "unit_cost_cents_per_kg": 1150
+          },
+          {
+            "inventory_item_id": "manteiga",
+            "inventory_item_name": "Manteiga",
+            "qty_per_base_mg": 125000,
+            "waste_percent": "1",
+            "unit_cost_cents_per_kg": 5290
+          }
+        ]
+      },
+      "sold_grams": 999,
+      "consumptions": [
+        {
+          "inventory_item_id": "ovos",
+          "consumed_mg": 364929,
+          "unit_cost_cents": 420
+        },
+        {
+          "inventory_item_id": "manteiga",
+          "consumed_mg": 123651,
+          "unit_cost_cents": 654
+        }
+      ]
+    },
+    {
+      "recipe": {
+        "name": "bolo_que_encolhe",
+        "base_qty_g": 1200,
+        "yield_factor": "0.85",
+        "lines": [
+          {
+            "inventory_item_id": "ovos",
+            "inventory_item_name": "Ovos",
+            "qty_per_base_mg": 360000,
+            "waste_percent": "3.5",
+            "unit_cost_cents_per_kg": 1150
+          },
+          {
+            "inventory_item_id": "manteiga",
+            "inventory_item_name": "Manteiga",
+            "qty_per_base_mg": 125000,
+            "waste_percent": "1",
+            "unit_cost_cents_per_kg": 5290
+          }
+        ]
+      },
+      "sold_grams": 1200,
+      "consumptions": [
+        {
+          "inventory_item_id": "ovos",
+          "consumed_mg": 438353,
+          "unit_cost_cents": 504
+        },
+        {
+          "inventory_item_id": "manteiga",
+          "consumed_mg": 148529,
+          "unit_cost_cents": 786
+        }
+      ]
+    },
+    {
+      "recipe": {
+        "name": "meio_exato",
+        "base_qty_g": 2,
+        "yield_factor": "1",
+        "lines": [
+          {
+            "inventory_item_id": "sal",
+            "inventory_item_name": "Sal",
+            "qty_per_base_mg": 1,
+            "waste_percent": "0",
+            "unit_cost_cents_per_kg": 100
+          },
+          {
+            "inventory_item_id": "fermento",
+            "inventory_item_name": "Fermento",
+            "qty_per_base_mg": 3,
+            "waste_percent": "0",
+            "unit_cost_cents_per_kg": 999
+          }
+        ]
+      },
+      "sold_grams": 1,
+      "consumptions": [
+        {
+          "inventory_item_id": "sal",
+          "consumed_mg": 1,
+          "unit_cost_cents": 0
+        },
+        {
+          "inventory_item_id": "fermento",
+          "consumed_mg": 2,
+          "unit_cost_cents": 0
+        }
+      ]
+    },
+    {
+      "recipe": {
+        "name": "meio_exato",
+        "base_qty_g": 2,
+        "yield_factor": "1",
+        "lines": [
+          {
+            "inventory_item_id": "sal",
+            "inventory_item_name": "Sal",
+            "qty_per_base_mg": 1,
+            "waste_percent": "0",
+            "unit_cost_cents_per_kg": 100
+          },
+          {
+            "inventory_item_id": "fermento",
+            "inventory_item_name": "Fermento",
+            "qty_per_base_mg": 3,
+            "waste_percent": "0",
+            "unit_cost_cents_per_kg": 999
+          }
+        ]
+      },
+      "sold_grams": 3,
+      "consumptions": [
+        {
+          "inventory_item_id": "sal",
+          "consumed_mg": 2,
+          "unit_cost_cents": 0
+        },
+        {
+          "inventory_item_id": "fermento",
+          "consumed_mg": 5,
+          "unit_cost_cents": 0
+        }
+      ]
+    }
+  ],
+  "unit_totals": [
+    {
+      "price_cents": 333,
+      "quantity": "1.5",
+      "total_cents": 500
+    },
+    {
+      "price_cents": 335,
+      "quantity": "1.5",
+      "total_cents": 502
+    },
+    {
+      "price_cents": 1000,
+      "quantity": "3",
+      "total_cents": 3000
+    },
+    {
+      "price_cents": 799,
+      "quantity": "0.5",
+      "total_cents": 400
+    },
+    {
+      "price_cents": 125,
+      "quantity": "2.25",
+      "total_cents": 281
+    },
+    {
+      "price_cents": 1,
+      "quantity": "0.5",
+      "total_cents": 0
+    },
+    {
+      "price_cents": 3,
+      "quantity": "0.5",
+      "total_cents": 2
+    }
+  ]
+}
