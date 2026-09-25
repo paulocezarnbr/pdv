@@ -160,7 +160,7 @@ O pipeline roda os testes antes de empacotar e **aborta se algum falhar**.
 ```
 dist\PDV\PDV.exe                       o caixa (onedir)
 dist\PDV\PDVSetup.exe                  assistente de instalação
-dist\installer\PDV-Setup-1.1.5.exe     instalador
+dist\installer\PDV-Setup-1.1.6.exe     instalador
 ```
 
 Os dois executáveis dividem o mesmo diretório e, portanto, as mesmas DLLs do Qt
@@ -202,7 +202,7 @@ chama quando a balança é trocada ou o cabo USB muda de porta.
 Implantação em massa:
 
 ```powershell
-.\PDV-Setup-1.1.5.exe /SILENT /ACTIVATIONCODE=A1B2C3D4
+.\PDV-Setup-1.1.6.exe /SILENT /ACTIVATIONCODE=A1B2C3D4
 ```
 
 Na instalação interativa o próprio `PDVSetup.exe` pergunta numa caixa de
@@ -249,7 +249,7 @@ database", rode o mesmo instalador e escolha o reparo. Por linha de comando,
 para suporte remoto:
 
 ```powershell
-.\PDV-Setup-1.1.5.exe /SILENT /REPARO=permissoes
+.\PDV-Setup-1.1.6.exe /SILENT /REPARO=permissoes
 ```
 
 Até a 1.1.4 a detecção nunca funcionou: o `[Code]` procurava a chave do

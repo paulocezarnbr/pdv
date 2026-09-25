@@ -241,6 +241,17 @@ a baixar à parte, nenhum prompt de linha de comando.
       funcionou antes: a chave do registro era montada com o `{{` do AppId.
       No CI, o `.iss` é compilado antes do build, e um erro nele aparece em
       um minuto.
+- [x] **1.1.6 — o caixa passa do login.** Com o banco enfim gravável, o
+      `PDV.exe` travou depois do login com "Unable to configure formatter
+      'default'". O executável não tem console (`sys.stdout` é None), e a
+      configuração de log padrão do uvicorn (o servidor do app do garçom)
+      consulta o `sys.stdout`. Agora o uvicorn sobe com `log_config=None`, e
+      uma falha na subida do servidor do app do garçom vira log, não derruba
+      o caixa. O log também parou de sumir: a pasta `logs` é append-only, e o
+      `open(..., "a")` do Python é recusado. O PDV agora abre o arquivo
+      pedindo só `FILE_APPEND_DATA` (`pdv/logfile.py`), o `harden.ps1` cria o
+      `pdv.log`, e há o perfil do usuário como último recurso. Testes
+      reproduzem o executável sem console e a ACL real dos logs.
 - [x] **Instalador gerado no CI** (`.github/workflows/installer.yml`): Windows
       limpo, só os pins, VC++ baixado com a assinatura da Microsoft
       conferida, suíte + `--selftest` no binário + Inno Setup, e o `.exe` com

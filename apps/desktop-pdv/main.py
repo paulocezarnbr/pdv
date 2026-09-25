@@ -383,28 +383,49 @@ def _restart_application_after_exit() -> None:
     QProcess.startDetached(sys.executable, arguments)
 
 
-def _configure_logging(config: AppConfig) -> None:
+def _log_candidates(config: AppConfig) -> list[Path]:
+    """Onde o log pode morar, do lugar certo ao último recurso.
+
+    `logs\\` é append-only para o operador (ver `pdv.logfile`). A pasta de
+    dados e o perfil do usuário existem para a instalação cujas permissões
+    ainda não foram refeitas — é justamente nela que o log mais faz falta.
+    """
+    data = config.database_path.parent
+    candidates = [data / "logs" / "pdv.log", data / "pdv.log"]
+    local = os.getenv("LOCALAPPDATA")
+    if local:
+        candidates.append(Path(local) / "ERPFood" / "PDV" / "pdv.log")
+    return candidates
+
+
+def _configure_logging(config: AppConfig) -> list[logging.Handler]:
     """Log em arquivo ao lado dos dados.
 
     O `PDV.exe` não tem console: sem arquivo, o motivo de qualquer falha some
     junto com a janela. Não conseguir abrir o log não impede o caixa de vender.
     """
+    from pdv.logfile import AppendOnlyFileHandler
+
     handlers: list[logging.Handler] = []
-    for folder in (config.database_path.parent / "logs", config.database_path.parent):
+    for candidate in _log_candidates(config):
         try:
-            handlers.append(
-                logging.FileHandler(folder / "pdv.log", encoding="utf-8", delay=False)
-            )
+            candidate.parent.mkdir(parents=True, exist_ok=True)
+            handlers.append(AppendOnlyFileHandler(candidate))
             break
         except OSError:
             continue
     if sys.stderr is not None:
         handlers.append(logging.StreamHandler())
+    if not handlers:
+        # Sem arquivo e sem console. O `basicConfig` sem handler criaria um
+        # StreamHandler apontando para um `sys.stderr` que não existe.
+        handlers.append(logging.NullHandler())
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-        handlers=handlers or None,
+        handlers=handlers,
     )
+    return handlers
 
 
 def main() -> int:

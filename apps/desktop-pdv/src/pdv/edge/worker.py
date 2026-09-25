@@ -88,22 +88,34 @@ class EdgeServer:
             logger.error("uvicorn ausente: servidor local indisponível")
             return False
 
-        self._tls = self._build_tls()
+        try:
+            self._tls = self._build_tls()
 
-        app = create_app(self._database, self._config, self._hub)
-        server_config = uvicorn.Config(
-            app,
-            # 0.0.0.0 para aceitar os celulares da LAN. Quem autentica é o token
-            # do aparelho, não a origem do pacote — ver auth.py.
-            host="0.0.0.0",  # noqa: S104
-            port=self._port,
-            log_level="warning",
-            access_log=False,
-            ssl_certfile=str(self._tls.certificate_path) if self._tls else None,
-            ssl_keyfile=str(self._tls.key_path) if self._tls else None,
-        )
-        self._server = uvicorn.Server(server_config)
-        self._server.install_signal_handlers = False
+            app = create_app(self._database, self._config, self._hub)
+            server_config = uvicorn.Config(
+                app,
+                # 0.0.0.0 para aceitar os celulares da LAN. Quem autentica é o
+                # token do aparelho, não a origem do pacote — ver auth.py.
+                host="0.0.0.0",  # noqa: S104
+                port=self._port,
+                log_level="warning",
+                access_log=False,
+                # O log do PDV já está configurado (main.py). A configuração
+                # padrão do uvicorn pergunta ao `sys.stdout` se o terminal tem
+                # cores — e no PDV.exe, sem console, `sys.stdout` é None: o
+                # salão morria na subida com "Unable to configure formatter
+                # 'default'", logo depois do login.
+                log_config=None,
+                ssl_certfile=str(self._tls.certificate_path) if self._tls else None,
+                ssl_keyfile=str(self._tls.key_path) if self._tls else None,
+            )
+            self._server = uvicorn.Server(server_config)
+            self._server.install_signal_handlers = False
+        except Exception:  # noqa: BLE001 - o salão é acessório; o caixa não
+            logger.exception("Servidor local não pôde ser configurado")
+            self._server = None
+            self._tls = None
+            return False
 
         self._ready.clear()
         self._thread = threading.Thread(

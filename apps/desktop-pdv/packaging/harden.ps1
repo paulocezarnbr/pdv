@@ -183,6 +183,15 @@ function Protect-LogDirectory {
         New-Item -ItemType Directory -Path $Path -Force | Out-Null
     }
 
+    # Append-only vale para a pasta tambem: o operador acrescenta, mas nao
+    # CRIA arquivo aqui. O log do caixa nasce agora, pelas maos do
+    # administrador, e recebe a ACL abaixo. O PDV o abre so para acrescentar
+    # (pdv.logfile) - o open() comum do Python seria recusado.
+    $counterLog = Join-Path $Path 'pdv.log'
+    if (-not (Test-Path -LiteralPath $counterLog)) {
+        New-Item -ItemType File -Path $counterLog | Out-Null
+    }
+
     Invoke-Icacls @($Path, '/inheritance:r', '/Q') | Out-Null
     Invoke-Icacls @(
         $Path,

@@ -17,7 +17,7 @@
 ; ===========================================================================
 
 #define AppName        "PDV Balcao"
-#define AppVersion     "1.1.5"
+#define AppVersion     "1.1.6"
 #define AppPublisher   "ERP Food Service"
 #define AppExeName     "PDV.exe"
 #define SetupExeName   "PDVSetup.exe"
@@ -267,7 +267,7 @@ end;
   escrita na pasta de dados, a falha que motivou tudo isto.
 
   Instalacao silenciosa: atualiza ou repara tudo. Para so as permissoes:
-      PDV-Setup-1.1.5.exe /SILENT /REPARO=permissoes
+      PDV-Setup-1.1.6.exe /SILENT /REPARO=permissoes
   --------------------------------------------------------------------------- }
 
 var
@@ -445,7 +445,7 @@ end;
 { ---------------------------------------------------------------------------
   Codigo de ativacao para implantacao em massa.
 
-      PDV-Setup-1.1.5.exe /SILENT /ACTIVATIONCODE=A1B2C3D4
+      PDV-Setup-1.1.6.exe /SILENT /ACTIVATIONCODE=A1B2C3D4
 
   Na instalacao interativa isto fica vazio e quem pergunta e o proprio
   PDVSetup.exe, numa caixa de dialogo - o codigo e gerado no painel no momento
@@ -471,7 +471,7 @@ end;
 { ---------------------------------------------------------------------------
   Endereco do painel da retaguarda, para a ativacao.
 
-      PDV-Setup-1.1.5.exe /SILENT /SERVER=painel.minhaloja.com.br /ACTIVATIONCODE=A1B2C3D4
+      PDV-Setup-1.1.6.exe /SILENT /SERVER=painel.minhaloja.com.br /ACTIVATIONCODE=A1B2C3D4
 
   Sem ele o terminal nao tem para onde ativar: o endereco que vinha no codigo
   era de exemplo. Na instalacao interativa o proprio PDVSetup.exe pergunta.
