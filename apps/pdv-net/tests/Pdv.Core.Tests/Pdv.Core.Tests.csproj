@@ -21,6 +21,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Pdv.Core\Pdv.Core.csproj" />
     <ProjectReference Include="..\..\src\Pdv.Data\Pdv.Data.csproj" />
+    <ProjectReference Include="..\..\src\Pdv.App\Pdv.App.csproj" />
   </ItemGroup>
 
 </Project>

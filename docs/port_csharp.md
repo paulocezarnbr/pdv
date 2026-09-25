@@ -115,7 +115,19 @@ A arquitetura existe para que a tela seja testável:
     - **Bug pego pelo contrato.** PIN vazio (Enter sem digitar) derrubava o
       login com exceção, sem contar a tentativa.
     - 38 testes; as quatro regras do freio verificadas por mutação.
-  - [ ] **C4b.** Tela de login.
+  - [x] **C4b. Tela de login.**
+    - `LoginViewModel`: o teclado na tela só digita dígitos, até 12. O
+      Argon2 roda fora da thread da tela. PIN errado limpa o campo e mantém o
+      login. Um terminal não ativado avisa que é demonstração.
+    - `TerminalProfile` lê a identidade das mesmas chaves de
+      `device_settings` do Python, com a loja de demonstração quando o
+      terminal não foi ativado.
+    - A casca abre o banco e mostra o erro na janela, em vez de fechar
+      calada.
+    - `tools/ui-smoke.ps1` dirige o `PDV.exe` real pela UI Automation, no CI.
+      Sobre um banco migrado pelo Python e com um PIN cadastrado pelo Python,
+      confere que o caixa abre com o nome da loja, que o PIN errado mostra o
+      motivo e que o PIN certo, digitado no teclado da tela, entra.
   - [ ] **C4c.** Tela de venda e pagamento com a conversa do TEF.
   - [ ] **C4d.** Diálogo de pendências do TEF na abertura.
 - [ ] **C5. Sincronização e ativação.** Cliente HTTP da nuvem, cofre de

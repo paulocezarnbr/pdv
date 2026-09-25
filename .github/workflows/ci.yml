@@ -111,6 +111,13 @@ jobs:
           python -m pip install argon2-cffi==25.1.0
           python crosscheck.py "${{ runner.temp }}\crosscheck.db"
 
+      # O que só o binário prova: o PDV.exe (WinUI, self-contained) abre, a
+      # tela liga o teclado aos comandos certos e o PIN que o Python cadastrou
+      # entra. Dirigido pela UI Automation, como um operador.
+      - name: O caixa abre e o login funciona no binario
+        shell: powershell
+        run: .\tools\ui-smoke.ps1 -Exe (Resolve-Path src\Pdv.WinUI\bin\x64\Debug\net10.0-windows10.0.19041.0\win-x64\PDV.exe)
+
       - name: Nenhum teste pode ter pulado
         shell: pwsh
         run: |

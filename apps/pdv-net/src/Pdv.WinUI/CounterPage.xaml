@@ -1,0 +1,11 @@
+<UserControl
+    x:Class="Pdv.WinUI.CounterPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- C4c substitui esta tela pela venda com o TEF. -->
+    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="8">
+        <TextBlock x:Name="Greeting" AutomationProperties.AutomationId="Greeting"
+                   Style="{StaticResource TitleTextBlockStyle}" />
+        <TextBlock x:Name="Store" Style="{StaticResource BodyTextBlockStyle}" />
+    </StackPanel>
+</UserControl>

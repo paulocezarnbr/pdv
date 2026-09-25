@@ -24,4 +24,8 @@
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2705" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\Pdv.App\Pdv.App.csproj" />
+  </ItemGroup>
+
 </Project>

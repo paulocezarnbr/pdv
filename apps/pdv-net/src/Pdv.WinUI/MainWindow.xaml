@@ -4,6 +4,8 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Title="PDV Balcão">
     <Grid>
-        <TextBlock Text="PDV Balcão" HorizontalAlignment="Center" VerticalAlignment="Center" />
+        <ContentControl x:Name="Host"
+                        HorizontalContentAlignment="Stretch"
+                        VerticalContentAlignment="Stretch" />
     </Grid>
 </Window>
