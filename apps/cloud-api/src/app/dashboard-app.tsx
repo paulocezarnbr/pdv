@@ -9,6 +9,7 @@ import { FiscalAdmin } from "./fiscal-admin";
 import { ForecastPanel } from "./forecast-panel";
 import { MenuAdmin } from "./menu-admin";
 import { TerminalActivation } from "./terminal-activation";
+import { TurnstileWidget } from "./turnstile-widget";
 import { deviceIssues, queueSummary, type DeviceTelemetry } from "@/lib/device-health";
 
 type SessionUser = { name: string; email: string; role: string };
@@ -193,8 +194,20 @@ function OwnerAdmin() {
 
 function Login({ onLogin }: { onLogin: (user: SessionUser) => void }) {
   const [email, setEmail] = useState(""); const [password, setPassword] = useState(""); const [error, setError] = useState(""); const [busy, setBusy] = useState(false);
-  async function submit(event: FormEvent) { event.preventDefault(); setBusy(true); setError(""); try { const response = await fetch("/api/panel/session", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password }) }); const body = await response.json(); if (!response.ok) throw new Error(body.detail || "Não foi possível entrar."); onLogin(body.user); } catch (reason) { setError(reason instanceof Error ? reason.message : "Falha de rede."); } finally { setBusy(false); } }
-  return <main className="login-page"><section className="login-context"><Restaurant size={28} /><div><p className="section-label">ERP FOOD</p><h1>O salão e o caixa, vistos de fora da loja.</h1><p>Dados sincronizados, terminais visíveis e alertas antifraude em uma única retaguarda.</p></div></section><form className="login-form" onSubmit={submit}><div><h2>Entrar no painel</h2><p>Use a conta administrativa do seu tenant.</p></div>{error && <InlineNotification kind="error" title="Acesso não liberado" subtitle={error} lowContrast hideCloseButton />}<TextInput id="email" labelText="E-mail" type="email" value={email} autoComplete="username" onChange={(event) => setEmail(event.target.value)} required /><TextInput id="password" labelText="Senha" type="password" value={password} autoComplete="current-password" onChange={(event) => setPassword(event.target.value)} required /><Button type="submit" disabled={busy}>{busy ? "Verificando" : "Entrar"}</Button><small>O acesso tem limite de tentativas e a sessão expira automaticamente.</small></form></main>;
+  // Cloudflare Turnstile: a chave vem do servidor em tempo de execução, e o
+  // botão só libera com o token quando o servidor exige.
+  const [captcha, setCaptcha] = useState<{ siteKey: string | null; required: boolean } | null>(null);
+  const [token, setToken] = useState(""); const [resetKey, setResetKey] = useState(0);
+  useEffect(() => {
+    fetch("/api/panel/login-config", { cache: "no-store" })
+      .then((response) => response.json())
+      .then((body) => setCaptcha({ siteKey: body.turnstile_site_key ?? null, required: Boolean(body.turnstile_required) }))
+      .catch(() => setCaptcha({ siteKey: null, required: false }));
+  }, []);
+  const misconfigured = captcha?.required && !captcha.siteKey;
+  const waiting = captcha === null || (captcha.required && !token);
+  async function submit(event: FormEvent) { event.preventDefault(); setBusy(true); setError(""); try { const response = await fetch("/api/panel/session", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password, turnstile_token: token || undefined }) }); const body = await response.json(); if (!response.ok) throw new Error(body.detail || "Não foi possível entrar."); onLogin(body.user); } catch (reason) { setError(reason instanceof Error ? reason.message : "Falha de rede."); if (captcha?.siteKey) { setToken(""); setResetKey((key) => key + 1); } } finally { setBusy(false); } }
+  return <main className="login-page"><section className="login-context"><Restaurant size={28} /><div><p className="section-label">ERP FOOD</p><h1>O salão e o caixa, vistos de fora da loja.</h1><p>Dados sincronizados, terminais visíveis e alertas antifraude em uma única retaguarda.</p></div></section><form className="login-form" onSubmit={submit}><div><h2>Entrar no painel</h2><p>Use a conta administrativa do seu tenant.</p></div>{error && <InlineNotification kind="error" title="Acesso não liberado" subtitle={error} lowContrast hideCloseButton />}{misconfigured && <InlineNotification kind="error" title="Verificação de segurança sem chave" subtitle="O servidor exige o Turnstile, mas TURNSTILE_SITE_KEY não foi definida." lowContrast hideCloseButton />}<TextInput id="email" labelText="E-mail" type="email" value={email} autoComplete="username" onChange={(event) => setEmail(event.target.value)} required /><TextInput id="password" labelText="Senha" type="password" value={password} autoComplete="current-password" onChange={(event) => setPassword(event.target.value)} required />{captcha?.siteKey && <TurnstileWidget siteKey={captcha.siteKey} resetKey={resetKey} onToken={setToken} onError={setError} />}<Button type="submit" disabled={busy || waiting || Boolean(misconfigured)}>{busy ? "Verificando" : "Entrar"}</Button><small>O acesso tem limite de tentativas, verificação anti-robô e a sessão expira automaticamente.</small></form></main>;
 }
 
 function Metric({ label, value, note }: { label: string; value: string; note: string }) { return <div className="metric"><span>{label}</span><strong>{value}</strong><small>{note}</small></div>; }

@@ -41,9 +41,11 @@ const config: NextConfig = {
               // localmente — fica parado em "Verificando sessão", impossível de
               // testar. O build de produção não usa eval e não recebe a
               // exceção.
-              `script-src 'self' 'unsafe-inline'${
+              // O Cloudflare Turnstile do login: o script e o iframe do
+              // desafio vêm de challenges.cloudflare.com, e só dele.
+              `script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com${
                 process.env.NODE_ENV === "production" ? "" : " 'unsafe-eval'"
-              }; connect-src 'self'`,
+              }; frame-src https://challenges.cloudflare.com; connect-src 'self'`,
           },
           {
             key: "Permissions-Policy",

@@ -252,6 +252,36 @@ valida esse filtro contra o tenant da sessão; trocar o UUID na URL não permite
 consultar outra empresa. Os números são atualizados automaticamente a cada
 30 segundos, e o horário do último dado fica sempre visível.
 
+### Captcha no login (Cloudflare Turnstile)
+
+1. No painel da Cloudflare, abra **Turnstile → Add widget**:
+   - informe o domínio do painel (ex.: `teste.rsrassessoria.com.br`);
+   - escolha o modo **Managed**.
+2. Copie as duas chaves para as variáveis da aplicação no Coolify e faça
+   Redeploy:
+
+   ```env
+   TURNSTILE_SITE_KEY=<Site Key: pública, aparece na tela de login>
+   TURNSTILE_SECRET_KEY=<Secret Key: marque "Is Literal"; nunca vai ao navegador>
+   ```
+
+Com a secreta definida, todo login precisa do token do widget. A chave vale
+só para a ação `login` e é conferida com a Cloudflare antes do limite de
+tentativas e antes da senha. Assim, um robô barrado não gasta tentativa da
+conta nem o scrypt do servidor.
+
+- **Sem a secreta:** o login funciona como antes.
+- **Só com a secreta:** a tela avisa que falta a `TURNSTILE_SITE_KEY`.
+- **Cloudflare fora do ar:** o login é recusado (503). É uma falha fechada
+  de propósito, porque aceitar "porque não deu para conferir" deixaria o
+  captcha ser contornado.
+
+Para testar sem domínio, use as chaves de teste públicas da Cloudflare.
+Elas sempre aprovam e mostram a faixa "Somente para teste":
+
+- site key: `1x00000000000000000000AA`
+- secret key: `1x0000000000000000000000000000000AA`
+
 ### Endereço da nuvem no terminal
 
 No instalador do PDV, informe o endereço do domínio, como no navegador

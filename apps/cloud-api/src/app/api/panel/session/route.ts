@@ -31,6 +31,7 @@ import {
   type PanelUser,
   requirePanelUser,
 } from "@/lib/auth/panel";
+import { verifyTurnstile } from "@/lib/auth/turnstile";
 import { sql } from "@/lib/db";
 import { ApiError, clientIp, handler, json, parseBody } from "@/lib/http";
 
@@ -54,6 +55,8 @@ const WINDOW_MINUTES = 15;
 const LoginSchema = z.object({
   email: z.string().min(3).max(255),
   password: z.string().min(1).max(256),
+  /** Token do Cloudflare Turnstile; exigido quando `TURNSTILE_SECRET_KEY` está definido. */
+  turnstile_token: z.string().max(4096).optional(),
 });
 
 //: Hash descartável, com os mesmos parâmetros dos reais, para gastar o mesmo
@@ -71,6 +74,9 @@ export const POST = handler(async (request) => {
   const ip = clientIp(request);
   const email = body.email.trim().toLowerCase();
 
+  // Antes do freio e da senha: robô barrado aqui não gasta tentativa da conta
+  // nem o scrypt do servidor.
+  await verifyTurnstile(body.turnstile_token, ip);
   await assertNotThrottled(email, ip);
 
   const rows = await sql<

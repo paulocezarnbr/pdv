@@ -25,6 +25,7 @@ body { margin: 0; min-height: 100dvh; background: #0f1114; color: #f4f4f4; font-
 .owner-admin { display: grid; grid-template-columns: minmax(360px, .9fr) minmax(0, 1.1fr); gap: 16px; margin-top: 16px; }
 .owner-form { padding: 20px 16px; display: grid; gap: 18px; }
 .owner-form > small { color: #8d8d8d; line-height: 1.45; }
+.turnstile-box { min-height: 65px; }
 .activation-result { padding: 20px 16px; display: grid; gap: 8px; }
 .activation-result small { color: #8d8d8d; }
 .activation-server { font-size: 1.1rem; word-break: break-all; margin-bottom: 12px; }
