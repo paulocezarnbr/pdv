@@ -43,13 +43,26 @@ vendendo até a paridade, e daqui em diante só recebe correções. **Toda fase 
   - O simulador de TEF inclui o lado da adquirente, para os testes
     responderem onde terminou o dinheiro do cliente.
   - 31 testes, e as quatro regras de segurança verificadas por mutação.
-- [ ] **C2. Dados.** `Microsoft.Data.Sqlite` sobre o mesmo banco:
-      - repositórios de pedido, item, pagamento e outbox;
-      - `SqliteTefJournal` (tabela `tef_transactions`, gravação com
-        `synchronous=FULL`);
-      - auditoria gravando no `audit_ledger`, com a cadeia que o Python
-        verifica.
-      Contrato: o payload do outbox igual ao `push-day.json`.
+- [x] **C2. Dados (base).** `Pdv.Data`, com `Microsoft.Data.Sqlite` sobre o
+      mesmo banco.
+  - **Schema.** `contracts/pdv-schema.sql` é gerado do `migrate()` do Python
+    (`tests/test_schema_contract.py`). Os testes do C# criam os bancos a
+    partir dele, e os triggers de imutabilidade do ledger vieram junto.
+  - **Abertura.** O C# só abre a versão 14 (a versão 0, uma anterior ou uma
+    mais nova são recusadas, dizendo o que fazer) e não cria banco que não
+    existe. Usa os mesmos PRAGMAs do Python (WAL, `synchronous=FULL`).
+  - **Auditoria.** A cadeia é gravada na transação da operação e o elo vai
+    ao outbox no formato do Python (`", "` e `": "`). O rollback não deixa
+    rastro nem fila. O CI verifica, com o `AuditService` do Python, um ledger
+    gravado pelo C# (`crosscheck.py`).
+  - **Diário do TEF.** `SqliteTefJournal` usa conexão própria, então não volta
+    atrás junto com a venda. A tabela é `tef_transactions`, e a pendência
+    sobrevive à queda.
+  - **Ordem da venda com cartão.** Autorizar, depois abrir a transação e
+    gravar, depois confirmar. No WAL só um escreve por vez.
+  - 43 testes.
+- [ ] **C2b. Repositórios da venda.** Pedido, item e pagamento; o payload do
+      outbox igual ao `push-day.json`.
 - [ ] **C3. Venda com TEF.** Fechamento de venda:
       - autorizar → gravar venda e pagamento (NSU e `transaction_id`) na mesma
         transação → confirmar;

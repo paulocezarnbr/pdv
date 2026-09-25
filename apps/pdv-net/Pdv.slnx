@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/Pdv.Core/Pdv.Core.csproj" />
+    <Project Path="src/Pdv.Data/Pdv.Data.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Pdv.Core.Tests/Pdv.Core.Tests.csproj" />

@@ -91,8 +91,21 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
+      # Só a biblioteca padrão: o crosscheck importa o AuditService do PDV em
+      # Python direto do código-fonte, sem pip.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
       - name: Build e testes
+        env:
+          PDV_CROSSCHECK_OUT: ${{ runner.temp }}\crosscheck.db
         run: dotnet test --logger "trx;LogFileName=report.trx" --results-directory TestResults
+
+      # A volta do contrato de auditoria: o ledger que o C# gravou, verificado
+      # pelo código do PDV em Python.
+      - name: O PDV em Python aceita o ledger gravado pelo C#
+        run: python crosscheck.py "${{ runner.temp }}\crosscheck.db"
 
       - name: Nenhum teste pode ter pulado
         shell: pwsh

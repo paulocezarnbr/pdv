@@ -33,6 +33,12 @@ public sealed class TefCoordinator(ITefProvider provider, ITefJournal journal, T
     public bool HasPending => journal.Pending().Count > 0;
 
     /// <summary>Pede a autorização. A aprovação devolvida AINDA precisa de <see cref="ConfirmAsync"/>.</summary>
+    /// <remarks>
+    /// Chame FORA da transação da venda: autorizar, depois abrir a transação e
+    /// gravar venda e pagamento, depois confirmar. O diário grava por conta
+    /// própria, e no SQLite em WAL só um escreve por vez — com a venda aberta,
+    /// ele esperaria a trava até falhar.
+    /// </remarks>
     /// <exception cref="TefPendingException">Há pendência de venda anterior não resolvida.</exception>
     /// <exception cref="TefCommunicationException">Resultado desconhecido; a transação foi (ou será) desfeita.</exception>
     public async Task<TefOutcome> AuthorizeAsync(

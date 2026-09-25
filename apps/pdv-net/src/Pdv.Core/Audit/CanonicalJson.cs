@@ -25,14 +25,29 @@ namespace Pdv.Core.Audit;
 /// </remarks>
 public static class CanonicalJson
 {
-    public static string Serialize(object? value)
+    public static string Serialize(object? value) => Serialize(value, Compact);
+
+    /// <summary>
+    /// O <c>json.dumps(..., sort_keys=True)</c> SEM <c>separators</c>: <c>", "</c> e
+    /// <c>": "</c>. É o formato do <c>payload_json</c> do outbox no Python. Não
+    /// entra em hash nenhum, mas os dois PDVs gravam a mesma fila, e uma fila com
+    /// dois formatos é uma fila que ninguém consegue comparar ao depurar.
+    /// </summary>
+    public static string SerializeForOutbox(object? value) => Serialize(value, PythonDefault);
+
+    private sealed record Separators(string Item, string Key);
+
+    private static readonly Separators Compact = new(",", ":");
+    private static readonly Separators PythonDefault = new(", ", ": ");
+
+    private static string Serialize(object? value, Separators separators)
     {
         var builder = new StringBuilder();
-        Write(builder, value);
+        Write(builder, value, separators);
         return builder.ToString();
     }
 
-    private static void Write(StringBuilder output, object? value)
+    private static void Write(StringBuilder output, object? value, Separators separators)
     {
         switch (value)
         {
@@ -46,7 +61,7 @@ public static class CanonicalJson
                 WriteString(output, text);
                 break;
             case JsonElement element:
-                WriteElement(output, element);
+                WriteElement(output, element, separators);
                 break;
             case double number:
                 output.Append(PythonFloat.Repr(number));
@@ -67,10 +82,10 @@ public static class CanonicalJson
                 throw new ArgumentException(
                     "Data no payload de auditoria precisa ir como texto ISO (Iso.Format).");
             case IDictionary map:
-                WriteObject(output, map);
+                WriteObject(output, map, separators);
                 break;
             case IEnumerable sequence:
-                WriteArray(output, sequence);
+                WriteArray(output, sequence, separators);
                 break;
             default:
                 // `default=str`: Guid e afins viram o texto deles.
@@ -79,7 +94,7 @@ public static class CanonicalJson
         }
     }
 
-    private static void WriteObject(StringBuilder output, IDictionary map)
+    private static void WriteObject(StringBuilder output, IDictionary map, Separators separators)
     {
         var entries = new List<KeyValuePair<string, object?>>(map.Count);
         foreach (DictionaryEntry entry in map)
@@ -95,28 +110,28 @@ public static class CanonicalJson
         output.Append('{');
         for (var i = 0; i < entries.Count; i++)
         {
-            if (i > 0) output.Append(',');
+            if (i > 0) output.Append(separators.Item);
             WriteString(output, entries[i].Key);
-            output.Append(':');
-            Write(output, entries[i].Value);
+            output.Append(separators.Key);
+            Write(output, entries[i].Value, separators);
         }
         output.Append('}');
     }
 
-    private static void WriteArray(StringBuilder output, IEnumerable sequence)
+    private static void WriteArray(StringBuilder output, IEnumerable sequence, Separators separators)
     {
         output.Append('[');
         var first = true;
         foreach (var item in sequence)
         {
-            if (!first) output.Append(',');
+            if (!first) output.Append(separators.Item);
             first = false;
-            Write(output, item);
+            Write(output, item, separators);
         }
         output.Append(']');
     }
 
-    private static void WriteElement(StringBuilder output, JsonElement element)
+    private static void WriteElement(StringBuilder output, JsonElement element, Separators separators)
     {
         switch (element.ValueKind)
         {
@@ -126,10 +141,10 @@ public static class CanonicalJson
                 {
                     map[property.Name] = property.Value;
                 }
-                WriteObject(output, map);
+                WriteObject(output, map, separators);
                 break;
             case JsonValueKind.Array:
-                WriteArray(output, element.EnumerateArray().Select(item => (object?)item));
+                WriteArray(output, element.EnumerateArray().Select(item => (object?)item), separators);
                 break;
             case JsonValueKind.String:
                 WriteString(output, element.GetString()!);
