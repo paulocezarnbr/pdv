@@ -122,6 +122,11 @@ jobs:
       # O que só o binário prova: o PDV.exe (WinUI, self-contained) abre, a
       # tela liga o teclado aos comandos certos e o PIN que o Python cadastrou
       # entra. Dirigido pela UI Automation, como um operador.
+      # O `dotnet test` só compila o que os testes referenciam, e nenhum
+      # teste referencia a casca WinUI: sem este passo não existe PDV.exe.
+      - name: Build do PDV.exe (WinUI)
+        run: dotnet build src/Pdv.WinUI -c Debug -nologo
+
       - name: O caixa abre e o login funciona no binario
         shell: powershell
         run: .\tools\ui-smoke.ps1
