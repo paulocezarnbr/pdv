@@ -81,6 +81,10 @@ COPY --from=builder --chown=node:node /app/public ./public
 # nova falando com o schema velho — em produção, com o terminal sincronizando.
 COPY --from=builder --chown=node:node /app/migrations ./migrations
 COPY --from=builder --chown=node:node /app/scripts ./scripts
+# O `seed-tenant.ts` importa o hash de senha do painel. Sem este arquivo o
+# primeiro tenant não tinha como ser criado dentro do contêiner — a imagem não
+# leva `src/`. Ele só usa `node:crypto`: nada mais do código-fonte vem junto.
+COPY --from=builder --chown=node:node /app/src/lib/auth/password.ts ./src/lib/auth/password.ts
 COPY --from=builder --chown=node:node /app/node_modules/postgres ./node_modules/postgres
 COPY --chown=node:node docker-entrypoint.sh ./docker-entrypoint.sh
 

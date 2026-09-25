@@ -205,7 +205,7 @@ As migrations criam o schema, não os dados. Para o primeiro cliente, rode uma
 vez no **Terminal** do recurso da aplicação no Coolify:
 
 ```bash
-node --experimental-strip-types scripts/seed-tenant.ts \
+DATABASE_URL="$ADMIN_DATABASE_URL" node --experimental-strip-types scripts/seed-tenant.ts \
   --tenant "Confeitaria Aurora" \
   --store "Loja Centro" \
   --email dono@aurora.com.br
@@ -213,6 +213,26 @@ node --experimental-strip-types scripts/seed-tenant.ts \
 
 O script imprime a senha gerada **uma única vez** — ela não é recuperável
 depois, porque só o hash é guardado. Anote antes de fechar o terminal.
+
+`DATABASE_URL="$ADMIN_DATABASE_URL"` porque a `DATABASE_URL` da aplicação é o
+papel `erp_app`, preso ao RLS por tenant: ele não cria tenant nenhum.
+
+### Sem acesso ao terminal: `BOOTSTRAP_*`
+
+Defina as variáveis e faça um deploy. A subida do contêiner cria tenant, loja e
+dono se o e-mail ainda não existir:
+
+```
+BOOTSTRAP_EMAIL=dono@aurora.com.br
+BOOTSTRAP_PASSWORD=<12+ caracteres, marque "Is Literal">
+BOOTSTRAP_TENANT=Confeitaria Aurora
+BOOTSTRAP_STORE=Loja Centro
+```
+
+A senha **não** vai para o log: é você quem a definiu. Rodar de novo não cria
+um segundo usuário nem troca a senha de quem já existe. Depois do primeiro
+acesso, **apague as `BOOTSTRAP_*`**: o hash fica no banco, e a senha não
+precisa ficar guardada em lugar nenhum.
 
 ### Entrar no painel
 

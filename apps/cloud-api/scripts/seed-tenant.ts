@@ -18,6 +18,11 @@
  * Idempotente: rodar de novo com o mesmo e-mail não cria um segundo usuário
  * nem troca a senha de quem já existe. Rodar duas vezes por engano num
  * servidor de produção não pode derrubar o acesso do dono.
+ *
+ * `--password-env NOME`: a senha vem da variável de ambiente NOME e **não** é
+ * impressa. É o caminho da subida do contêiner (`BOOTSTRAP_*` no
+ * `docker-entrypoint.sh`): lá o que o script imprime vai para o log de deploy,
+ * e senha em log de deploy é senha publicada para quem lê o painel do Coolify.
  */
 
 import { randomBytes } from "node:crypto";
@@ -73,7 +78,13 @@ async function main(): Promise<void> {
       return;
     }
 
-    const password = generatePassword();
+    const passwordEnv = arg("password-env");
+    const given = passwordEnv ? process.env[passwordEnv] : undefined;
+    if (passwordEnv && (!given || given.length < 12)) {
+      console.error(`${passwordEnv} ausente ou com menos de 12 caracteres.`);
+      process.exit(1);
+    }
+    const password = given ?? generatePassword();
     const passwordHash = await hashPassword(password);
 
     await sql.begin(async (tx) => {
@@ -97,10 +108,14 @@ async function main(): Promise<void> {
       console.log(`  tenant_id : ${tenant!.id}`);
       console.log(`  store_id  : ${store!.id}`);
       console.log(`  e-mail    : ${email}`);
-      console.log(`  senha     : ${password}`);
-      console.log("");
-      console.log("A senha aparece UMA vez e não é recuperável.");
-      console.log("Anote-a e troque no primeiro acesso.");
+      if (given) {
+        console.log(`  senha     : a de ${passwordEnv} (não impressa)`);
+      } else {
+        console.log(`  senha     : ${password}`);
+        console.log("");
+        console.log("A senha aparece UMA vez e não é recuperável.");
+        console.log("Anote-a e troque no primeiro acesso.");
+      }
       console.log("");
     });
   } catch (error) {
