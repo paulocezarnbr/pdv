@@ -79,23 +79,21 @@ def test_a_salon_that_cannot_start_never_takes_the_counter_down(database, monkey
 
 
 def _restrict_to_append(path: Path) -> None:
-    """A ACL que o harden.ps1 põe nos logs, aplicada ao usuário que roda o teste.
+    """O que o harden.ps1 tira do operador nos logs: escrever dados (WD).
 
-    Quem cria o arquivo é o dono, e o dono sempre pode reescrever a ACL: é
-    assim que o teste consegue desfazer a restrição no fim.
+    Negado explicitamente para Todos, e não só "concedido apenas AD": o CI roda
+    como administrador elevado, e uma concessão restrita ao usuário não o
+    prende — a primeira versão deste teste passava no balcão e não no CI. Uma
+    negação explícita vale para o administrador também. O dono continua
+    podendo reescrever a ACL, e é assim que o teste a desfaz no fim.
     """
-    me = subprocess.run(
-        ["whoami", "/user", "/fo", "csv", "/nh"], capture_output=True, text=True, check=True
-    ).stdout.strip().split(",")[-1].strip('"')
     subprocess.run(
-        ["icacls", str(path), "/inheritance:r", "/grant:r", f"*{me}:(AD,REA,RA,S,RC)"],
-        capture_output=True,
-        check=True,
+        ["icacls", str(path), "/deny", "*S-1-1-0:(WD)"], capture_output=True, check=True
     )
 
 
 def _restore(path: Path) -> None:
-    subprocess.run(["icacls", str(path), "/reset"], capture_output=True, check=False)
+    subprocess.run(["icacls", str(path), "/remove:d", "*S-1-1-0"], capture_output=True, check=False)
 
 
 @pytest.mark.skipif(os.name != "nt", reason="ACL do NTFS")
