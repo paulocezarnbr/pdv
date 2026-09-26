@@ -493,7 +493,8 @@ A arquitetura existe para que a tela seja testável:
   - **O cancelamento pelo painel avisa a tela da cozinha** depois do commit,
     pelo mesmo barramento do salão (um só no app), como o Python. Antes o
     C# só marcava o ticket; a tela o tirava da fila apenas ao reconectar.
-  - **Falta:** o painel do salão com a digital e o QR (C6f).
+  - O painel do salão com a digital entrou na C6f. O QR do endereço não
+    existe no Python; fica como melhoria, não como paridade.
   - A mensagem do commit `444a7cb` diz 30 rotas; são 28 (27 HTTP e o
     WebSocket).
   - **Baixa de insumo pelo salão (correção nos dois PDVs, 26/09/2026).** O
@@ -511,6 +512,39 @@ A arquitetura existe para que a tela seja testável:
   - **Pendências.** Reimprimir o DANFE de uma venda que não é a última
     precisa de tela (C6f). O `ui-smoke.ps1` ainda não passa pelo fluxo
     fiscal, que exige retaguarda e serviço fiscal no ar.
+- [x] **C6f (1/3). Painel do salão, F8** (`Pdv.App.SalonPanelViewModel`,
+      `Pdv.WinUI.SalonPanelPage`), o `ui/salon_panel.py`.
+  - **Janela própria**, aberta pelo F8 da venda: o caixa segue vendendo com
+    ela ao lado. O segundo F8 a traz para a frente; fechar o caixa a fecha.
+  - **Código de pareamento** em dois grupos de quatro, com contagem de um
+    segundo e "Revogar código". O texto só existe na tela que o gerou (o
+    banco guarda o hash): código vivo gerado em outra tela aparece como
+    aviso, nunca os dígitos.
+  - **Aparelhos, pessoas em turno, mesas abertas e cozinha** relidos a cada
+    dois segundos, sem tirar a seleção de baixo do dedo. Revogar aparelho e
+    encerrar turno pedem confirmação. Avançar e voltar ticket usam o mesmo
+    barramento do servidor, e a tela da cozinha recebe a mudança.
+  - **Endereço do app do garçom com a digital do certificado**; em HTTP, o
+    aviso de que PIN e token trafegam em claro; desligado, o painel diz isso.
+  - Regras a mais que o Python: papel e tipo de aparelho traduzidos, e o
+    "visto" na hora da loja (o Python mostrava UTC).
+  - Na conexão da tela, não na do servidor: o painel roda na thread da
+    interface.
+  - 19 testes; quatro regras verificadas por mutação (seleção no refresh,
+    código de outra tela, fuso do "visto", confirmação antes de revogar).
+    O `ui-smoke.ps1` abre o F8 no `PDV.exe`, gera o código e confere o
+    endereço com a digital.
+  - **Correções no caminho.**
+    - O `ui-smoke.ps1` aceitava o certificado do salão com um bloco de
+      script como callback. No PowerShell 5.1 ele roda na thread do TLS, sem
+      runspace, e a conexão caía ("Erro inesperado em um envio"). Agora é um
+      callback compilado, que aceita só 127.0.0.1.
+    - O teste de rede do mDNS mandava a consulta ao IP da máquina. No
+      Windows com o Chrome aberto, a porta 5353 tem outros donos e a
+      consulta unicast cai num deles. Agora pergunta pelo grupo multicast,
+      como o celular faz.
+  - **Falta na C6f:** mesas e recebimento da conta da mesa (F9), e F1 com os
+    atalhos e o relatório da equipe.
 - [ ] **C6. O resto da paridade.**
       - Periféricos: balança serial e impressora ESC/POS.
       - NFC-e.
@@ -550,8 +584,8 @@ Na ordem em que dá para trocar:
 | ~~4~~ | ~~C6b~~ | ~~`cashback.py`, `prepaid.py`, `credit_account.py`, `discount_tiers.py`~~ | **Feito** (o resgate de cashback segue desligado até a decisão do contador) |
 | ~~5~~ | ~~C6c~~ | ~~`hardware/printer/`, `fiscal/danfe.py`~~ | **Feito** (cupom e DANFE byte a byte; o DANFE vai ao papel com a C6d) |
 | ~~6~~ | ~~C6d~~ | ~~`fiscal/cloud.py`~~ | **Feito** (NFC-e online pedida pelo caixa, DANFE do XML autorizado). A **contingência offline** (`fiscal/service.py`, `fiscal/gateway.py`: série própria, QR v3 assinado com o A1) espera a decisão do dono |
-| 7 | C6e | `edge/` (~4.000) + `edge/webapp` | Servidor do salão para os celulares dos garçons, KDS, mesas, contas e descoberta na rede, em ASP.NET Core dentro do PDV. O app web do garçom é reaproveitado como está |
-| 8 | C6f | `ui/salon_panel.py`, `ui/tables_dialog.py`, `ui/dialogs.py`, `ui/remote_dialog.py`, `services/staff_report.py` (~2.300) | Telas do salão, mesas, relatórios de equipe e diálogos que faltam no WinUI |
+| ~~7~~ | ~~C6e~~ | ~~`edge/` + `edge/webapp`~~ | **Feito** (servidor do salão em ASP.NET Core, TLS, mDNS, KDS; o app do garçom é o mesmo) |
+| 8 | C6f | `ui/tables_dialog.py`, `ui/dialogs.py`, `services/staff_report.py` | Painel do salão (F8) **feito**. Faltam mesas e conta da mesa (F9), F1 com os atalhos e o relatório da equipe |
 | 9 | C7a | `data/database.py` (~800), `data/seed.py` | Migrations em C#: criar e atualizar o banco sem o Python, e a demonstração |
 | 10 | C7b | `provisioning/detection.py`, `selftest.py`, `smoke.py` (~1.000) | Detecção de periféricos, autoteste do pacote e fumaça pós-instalação |
 | 11 | C7c | `setup_wizard.py`, `main.py`, `packaging/` | O instalador entrega o `PDV.exe` .NET self-contained, com reparo e atualização, e o `harden.ps1` continua |

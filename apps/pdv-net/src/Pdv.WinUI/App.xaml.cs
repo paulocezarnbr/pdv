@@ -52,6 +52,9 @@ public partial class App : Application
     /// <summary>O certificado em uso, para o painel do salão mostrar a digital (C6f).</summary>
     private TlsMaterial? _salonTls;
 
+    /// <summary>A janela do painel do salão (F8), uma só: o segundo F8 a traz para a frente.</summary>
+    private Window? _salonPanel;
+
     public App()
     {
         InitializeComponent();
@@ -455,6 +458,7 @@ public partial class App : Application
                 await scale.DisposeAsync();
                 journal.Dispose();
                 printer.Dispose();
+                _salonPanel?.Close();
                 fiscalGateway?.Dispose();
             }
             _window.Closed += (_, _) => ReleaseAsync().Wait(TimeSpan.FromSeconds(2));
@@ -469,8 +473,9 @@ public partial class App : Application
                 ShowLogin(path, database);
             };
 
-            _window.ShowCounter(sale, _sync);
+            var counter = _window.ShowCounter(sale, _sync);
             await StartSalonAsync(path, profile, secret);
+            counter.SalonRequested += (_, _) => OpenSalonPanel(database, profile, ledger);
         }
         catch (Exception error) when (error is SecretVaultException or PdvDatabaseException)
         {
@@ -548,6 +553,44 @@ public partial class App : Application
         {
             database?.Dispose();
         }
+    }
+
+    /// <summary>
+    /// O painel do salão (F8), em janela própria: o caixa segue vendendo com ele
+    /// aberto ao lado, como no PDV em Python.
+    /// </summary>
+    /// <remarks>
+    /// Na conexão da tela, não na do servidor: o painel roda na thread da
+    /// interface, e o servidor atende os celulares nas dele. O barramento é o
+    /// mesmo, e o "avançar" do caixa chega à tela da cozinha. Com o salão
+    /// desligado, o painel abre dizendo isso, em vez de o F8 não fazer nada.
+    /// </remarks>
+    private void OpenSalonPanel(PdvDatabase database, TerminalProfile profile, AuditLedger ledger)
+    {
+        if (_salonPanel is not null)
+        {
+            _salonPanel.Activate();
+            return;
+        }
+        var terminal = profile.Identity;
+        var endpoint = _salon is { } server
+            ? new SalonEndpoint(server.Scheme, server.Port, SalonCertificate.LocalIpAddress(), _salonTls?.ShortFingerprint)
+            : null;
+        var page = new SalonPanelPage(new SalonPanelViewModel(
+            new EdgeAuth(database, terminal),
+            new TableOrderService(database, terminal, ledger, _salonHub),
+            new KdsService(database, terminal, _salonHub),
+            new StaffSessions(database, profile.TenantId),
+            endpoint));
+        var window = new Window { Title = "Salão — garçons, mesas e cozinha", Content = page };
+        window.AppWindow.Resize(new Windows.Graphics.SizeInt32(1180, 720));
+        window.Closed += (_, _) =>
+        {
+            page.Stop();
+            _salonPanel = null;
+        };
+        _salonPanel = window;
+        window.Activate();
     }
 
     /// <summary>Uma pergunta de texto fora da tela de venda (abertura do caixa).</summary>

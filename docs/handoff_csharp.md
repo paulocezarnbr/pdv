@@ -131,9 +131,10 @@ Tabelas `kds_tickets`, `store_tables` e afins já estão no schema.
 
 ### 3. C6f — Telas que faltam
 
-Painel do salão, mesas e recebimento da conta da mesa, relatório da equipe
-(`services/staff_report.py`) e F1 com todos os atalhos (`ui/salon_panel.py`,
-`ui/tables_dialog.py`, `ui/dialogs.py`, `ui/remote_dialog.py`).
+O painel do salão (F8) está feito. Faltam mesas e recebimento da conta da
+mesa (F9, `ui/tables_dialog.py`), e F1 com todos os atalhos e o relatório
+da equipe (`ui/dialogs.py`, `services/staff_report.py`; o
+`Pdv.Data.Edge.StaffReport` já existe).
 
 ### 4. C7a — Migrations em C#
 

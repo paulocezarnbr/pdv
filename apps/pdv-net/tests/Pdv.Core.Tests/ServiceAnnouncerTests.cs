@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.Net;
+using System.Net.Sockets;
 using Pdv.Edge;
 
 namespace Pdv.Core.Tests;
@@ -172,7 +173,11 @@ public sealed class ServiceAnnouncerNetworkTests
         MdnsMessage.Name("_pdvedge._tcp.local").CopyTo(query, 12);
         BinaryPrimitives.WriteUInt16BigEndian(query.AsSpan(query.Length - 4), MdnsMessage.TypePtr);
         BinaryPrimitives.WriteUInt16BigEndian(query.AsSpan(query.Length - 2), 1);
-        await client.SendAsync(query, new IPEndPoint(address, ServiceAnnouncer.Port));
+        // Pelo grupo, como o celular pergunta. Endereçada ao IP da máquina, a
+        // consulta cai num só dos sockets da 5353 — no Windows com Chrome aberto,
+        // no do Chrome ou no do serviço DNS, e o PDV nunca a vê.
+        client.Client.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.MulticastInterface, address.GetAddressBytes());
+        await client.SendAsync(query, new IPEndPoint(IPAddress.Parse("224.0.0.251"), ServiceAnnouncer.Port));
 
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         var received = await client.ReceiveAsync(timeout.Token);

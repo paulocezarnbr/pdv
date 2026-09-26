@@ -177,6 +177,13 @@
                         <Button.KeyboardAccelerators><KeyboardAccelerator Modifiers="Control" Key="F6" /></Button.KeyboardAccelerators>
                     </Button>
                 </Grid>
+                <!-- O salão não é da venda: a casca abre o painel em janela própria. -->
+                <Button AutomationProperties.AutomationId="OpenSalon" Content="F8  Salão (garçons e cozinha)"
+                        HorizontalAlignment="Stretch" Click="OnSalonClick">
+                    <Button.KeyboardAccelerators>
+                        <KeyboardAccelerator Key="F8" />
+                    </Button.KeyboardAccelerators>
+                </Button>
                 <Button AutomationProperties.AutomationId="Reprint" Content="Reimprimir cupom (Ctrl+P)" HorizontalAlignment="Stretch"
                         Command="{x:Bind ViewModel.ReprintCommand}">
                     <Button.KeyboardAccelerators>

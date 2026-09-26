@@ -38,6 +38,11 @@ public sealed partial class CounterPage : UserControl
 
     public bool Has(string? text) => !string.IsNullOrEmpty(text);
 
+    /// <summary>F8: o painel do salão. Quem abre é a casca, que tem os serviços do salão.</summary>
+    public event EventHandler? SalonRequested;
+
+    private void OnSalonClick(object sender, RoutedEventArgs e) => SalonRequested?.Invoke(this, EventArgs.Empty);
+
     private void OnQueryKeyDown(object sender, KeyRoutedEventArgs e)
     {
         if (e.Key != Windows.System.VirtualKey.Enter) return;

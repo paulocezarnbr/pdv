@@ -244,15 +244,32 @@ try {
     # 3b. o servidor do salão sobe com o caixa, em HTTPS com o certificado
     #     autoassinado, e serve o app do garçom. O celular confere a digital,
     #     não uma autoridade certificadora: aqui a validação é desligada só
-    #     nesta sessão do PowerShell (5.1, sem -SkipCertificateCheck).
+    #     nesta sessão do PowerShell (5.1, sem -SkipCertificateCheck), e só
+    #     para 127.0.0.1. Compilado: um bloco de script como callback roda na
+    #     thread do TLS, sem runspace, e a conexão cai com "Erro inesperado em
+    #     um envio".
+    if (-not ('SmokeTls' -as [type])) {
+        Add-Type -TypeDefinition @'
+public static class SmokeTls {
+    public static System.Net.Security.RemoteCertificateValidationCallback LocalOnly {
+        get {
+            return (sender, certificate, chain, errors) => {
+                var request = sender as System.Net.HttpWebRequest;
+                return request != null && request.RequestUri.Host == "127.0.0.1";
+            };
+        }
+    }
+}
+'@
+    }
     [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
-    [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
+    [System.Net.ServicePointManager]::ServerCertificateValidationCallback = [SmokeTls]::LocalOnly
     $deadline = (Get-Date).AddSeconds(15)
     $health = $null
     do {
-        try { $health = Invoke-RestMethod -Uri 'https://127.0.0.1:8420/health' -TimeoutSec 3 } catch { Start-Sleep -Milliseconds 300 }
+        try { $health = Invoke-RestMethod -Uri 'https://127.0.0.1:8420/health' -TimeoutSec 3 } catch { $healthError = $_.Exception; Start-Sleep -Milliseconds 300 }
     } while ($null -eq $health -and (Get-Date) -lt $deadline)
-    if ($null -eq $health -or $health.service -ne 'pdv-edge') { $failures += 'salão: /health não respondeu em https://127.0.0.1:8420' }
+    if ($null -eq $health -or $health.service -ne 'pdv-edge') { $failures += "salão: /health não respondeu em https://127.0.0.1:8420 ($(if ($healthError) { $e = $healthError; $m = @(); while ($e) { $m += $e.Message; $e = $e.InnerException }; $m -join ' <- ' }))" }
     else {
         $page = Invoke-WebRequest -Uri 'https://127.0.0.1:8420/' -UseBasicParsing -TimeoutSec 5
         if ($page.StatusCode -ne 200 -or $page.Content -notmatch '<html') { $failures += 'salão: o app do garçom não abriu em /' }
@@ -348,6 +365,28 @@ try {
     $message = NoticeText
     if ($total -notmatch '0,00' -or $message -notmatch 'Item cancelado') { $failures += "cancelamento: total '$total', aviso '$message'" }
     else { Write-Host 'ok  cancelamento do item com o PIN do gerente' }
+
+    # 5b. painel do salão pelo F8, em janela própria: o código de pareamento
+    #     aparece em dois grupos e o endereço do app do garçom está na tela
+    Click (Find $window 'OpenSalon')
+    $panelCondition = New-Object System.Windows.Automation.AndCondition(
+        (New-Object System.Windows.Automation.PropertyCondition($A::ProcessIdProperty, $process.Id)),
+        (New-Object System.Windows.Automation.PropertyCondition($A::NameProperty, 'Salão — garçons, mesas e cozinha')))
+    $deadline = (Get-Date).AddSeconds(15)
+    do { $panel = $A::RootElement.FindFirst($Tree::Children, $panelCondition); if (-not $panel) { Start-Sleep -Milliseconds 300 } } while (-not $panel -and (Get-Date) -lt $deadline)
+    if (-not $panel) { $failures += 'salão: o F8 não abriu o painel' }
+    else {
+        Click (Find $panel 'GenerateCode')
+        $deadline = (Get-Date).AddSeconds(10)
+        do { $code = Text (Find $panel 'PairingCode'); Start-Sleep -Milliseconds 200 } while ($code -notmatch '^\d{4} \d{4}$' -and (Get-Date) -lt $deadline)
+        $panelText = ($panel.FindAll($Tree::Descendants, [System.Windows.Automation.Condition]::TrueCondition) |
+            ForEach-Object { $_.Current.Name }) -join ' '
+        if ($code -notmatch '^\d{4} \d{4}$') { $failures += "salão: código '$code'" }
+        elseif ($panelText -notmatch 'App do garçom: https://' -or $panelText -notmatch 'Confira a digital' -or $panelText -notmatch 'Vence em') { $failures += "salão: painel '$panelText'" }
+        else { Write-Host 'ok  painel do salão (F8) gera o código e mostra o endereço com a digital' }
+        Click (Find $panel 'RevokeCode')
+        $panel.GetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern).Close()
+    }
 
     # 6. fechamento cego pelo F12: conta, PIN do gerente, resultado e volta ao login
     Click (Find $window 'CloseCash')
