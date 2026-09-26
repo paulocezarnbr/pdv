@@ -70,7 +70,27 @@ public sealed class SyncTests : IDisposable
         public List<TerminalHealth> Heartbeats { get; } = [];
         public long Drift { get; set; }
 
-        public Task<IReadOnlyList<ItemAck>> PushAsync(PushBatch batch, CancellationToken cancellation)
+        /// <summary>Com atraso, dois envios simultâneos se sobreporiam — e o contador acusa.</summary>
+        public bool SlowPush { get; set; }
+        public int MaxConcurrentPushes { get; private set; }
+        private int _inFlight;
+
+        public async Task<IReadOnlyList<ItemAck>> PushAsync(PushBatch batch, CancellationToken cancellation)
+        {
+            var now = Interlocked.Increment(ref _inFlight);
+            MaxConcurrentPushes = Math.Max(MaxConcurrentPushes, now);
+            try
+            {
+                if (SlowPush) await Task.Delay(20, cancellation);
+                return await PushCoreAsync(batch);
+            }
+            finally
+            {
+                Interlocked.Decrement(ref _inFlight);
+            }
+        }
+
+        private Task<IReadOnlyList<ItemAck>> PushCoreAsync(PushBatch batch)
         {
             Pushes.Add(batch);
             if (Failure is not null) throw Failure;
@@ -419,6 +439,20 @@ public sealed class SyncTests : IDisposable
         Assert.Equal(SyncWorker.ErrorInterval, await worker.TickAsync());
         Assert.Equal([true, false], online);
         Assert.NotEmpty(_cloud.Heartbeats);   // relata mesmo depois de falhar
+    }
+
+    [Fact]
+    public async Task Push_now_sends_the_queue_and_never_overlaps_a_cycle()
+    {
+        var worker = new SyncWorker(Engine(batchSize: 1));
+        Sales(2);
+        _cloud.SlowPush = true;
+
+        await Task.WhenAll(
+            Task.Run(() => worker.PushNowAsync()), Task.Run(() => worker.TickAsync()), Task.Run(() => worker.PushNowAsync()));
+
+        Assert.Equal(0, Engine().PendingCount());
+        Assert.Equal(1, _cloud.MaxConcurrentPushes);
     }
 
     [Fact]

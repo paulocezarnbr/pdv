@@ -5,6 +5,7 @@ using Pdv.App;
 using Pdv.Data;
 using Pdv.Core.Tef;
 using Pdv.Data.Auth;
+using Pdv.Data.Fiscal;
 using Pdv.Data.Provisioning;
 using Pdv.Data.Sales;
 using Pdv.Data.Secrets;
@@ -29,6 +30,12 @@ public partial class App : Application
     /// <summary>A venda na tela, para o ciclo de sincronização avisar do que o painel mudou.</summary>
     private SaleViewModel? _sale;
     private CancellationTokenSource? _syncStop;
+
+    /// <summary>O ciclo de sincronização, para o pedido de NFC-e empurrar a fila antes de pedir.</summary>
+    private SyncWorker? _syncWorker;
+
+    /// <summary>O token do terminal, lido do cofre uma vez na abertura.</summary>
+    private string? _deviceToken;
 
     public App()
     {
@@ -117,17 +124,85 @@ public partial class App : Application
         worker.ConnectionChanged += (_, online) => ui.TryEnqueue(() => _sync.Update(online: online));
         worker.QueueChanged += (_, queue) => ui.TryEnqueue(() => _sync.Update(pending: queue.Pending, quarantined: queue.Quarantined));
 
+        _syncWorker = worker;
+        _deviceToken = System.Text.Encoding.UTF8.GetString(token);
+
         _syncStop = new CancellationTokenSource();
         var stop = _syncStop.Token;
         var loop = Task.Run(() => worker.RunAsync(stop), stop);
+        var fiscal = StartFiscalChecks(path, profile, _deviceToken, stop);
         _window.Closed += (_, _) =>
         {
             _syncStop.Cancel();
             // Um ciclo em andamento termina a transação dele antes de o banco fechar.
             loop.Wait(TimeSpan.FromSeconds(5));
+            fiscal?.Wait(TimeSpan.FromSeconds(5));
             transport.Dispose();
             database.Dispose();
         };
+    }
+
+    /// <summary>
+    /// A NFC-e em segundo plano: pede de novo o que não saiu e consulta o que
+    /// ficou sem resposta. Conexão própria ao banco e prazo longo — aqui ninguém
+    /// está esperando no balcão.
+    /// </summary>
+    /// <remarks>Desligado com <c>fiscal.enabled</c> fora de 1, o padrão até a homologação na SEFAZ-RJ.</remarks>
+    private Task? StartFiscalChecks(string path, TerminalProfile profile, string token, CancellationToken stop)
+    {
+        PdvDatabase database;
+        try
+        {
+            database = new PdvDatabase(path);
+            if (!FiscalIssuance.IsEnabled(database, profile))
+            {
+                database.Dispose();
+                return null;
+            }
+        }
+        catch (PdvDatabaseException error)
+        {
+            CrashLog.Write("consulta fiscal", error);
+            return null;
+        }
+        var ui = _window!.DispatcherQueue;
+        var gateway = new HttpFiscalGateway(profile.CloudBaseUrl!, token, TimeSpan.FromSeconds(25));
+        var service = new FiscalIssuance(database, gateway, log: line => CrashLog.Write(line, null));
+        return Task.Run(async () =>
+        {
+            try
+            {
+                while (!stop.IsCancellationRequested)
+                {
+                    try
+                    {
+                        foreach (var decided in await service.CheckDueAsync(cancellation: stop))
+                        {
+                            var text = decided is { Kind: FiscalOutcomeKind.Authorized, Danfe: { } danfe }
+                                ? $"NFC-e nº {danfe.Number} autorizada."
+                                : decided.Notice;
+                            ui.TryEnqueue(() =>
+                            {
+                                if (_sale is { } sale) sale.Notice = text;
+                            });
+                        }
+                    }
+                    catch (Exception error) when (error is not OperationCanceledException)
+                    {
+                        CrashLog.Write("consulta fiscal", error);
+                    }
+                    await Task.Delay(TimeSpan.FromSeconds(30), stop);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            finally
+            {
+                gateway.Dispose();
+                database.Dispose();
+            }
+        }, CancellationToken.None);
     }
 
     /// <summary>
@@ -277,6 +352,25 @@ public partial class App : Application
             var printerSettings = Data.Hardware.PrinterSettings.Load(database, Path.Combine(Path.GetDirectoryName(path)!, "cupons"));
             var printer = new Data.Hardware.PrintService(printerSettings.Build());
             var receipts = new ReceiptComposer(database, profile, printerSettings);
+            // NFC-e: só com fiscal.enabled = 1 (desligado até a homologação). Prazo
+            // curto: o cliente está no balcão, o resto fica para o segundo plano.
+            HttpFiscalGateway? fiscalGateway = null;
+            FiscalIssuance? fiscal = null;
+            if (_deviceToken is { } deviceToken && FiscalIssuance.IsEnabled(database, profile))
+            {
+                fiscalGateway = new HttpFiscalGateway(profile.CloudBaseUrl!, deviceToken, FiscalIssuance.CounterDeadline);
+                fiscal = new FiscalIssuance(database, fiscalGateway, log: line => CrashLog.Write(line, null));
+            }
+            var worker = _syncWorker;
+            var documents = new SaleDocuments(
+                closed => receipts.Compose(closed.OrderId, closed.OperatorName, closed.Customer?.Name,
+                    closed.Result.Cashback?.AmountCents ?? 0, closed.Result.PrepaidBalanceCents),
+                (payload, job) => printer.Submit(payload, job),
+                printerSettings.Layout,
+                fiscal,
+                worker is null ? null : new Func<CancellationToken, Task>(worker.PushNowAsync),
+                line => CrashLog.Write(line, null));
+            string? lastOrderId = null;
             var scale = StartScale(database);
             // Conexão da tela: o aceite no caixa não disputa a do ciclo de sincronização.
             var remote = profile.Activated ? RemoteCommands(path, database, profile) : null;
@@ -297,13 +391,14 @@ public partial class App : Application
             _sale = sale;
             sale.RefreshRemote();
 
-            sale.SaleClosed += (_, closed) =>
+            sale.SaleClosed += async (_, closed) =>
             {
+                lastOrderId = closed.OrderId;
                 try
                 {
-                    var payload = receipts.Compose(closed.OrderId, closed.OperatorName, closed.Customer?.Name,
-                        closed.Result.Cashback?.AmountCents ?? 0, closed.Result.PrepaidBalanceCents);
-                    printer.Submit(payload, "PDV Cupom");
+                    // DANFE se a nota sair autorizada, cupom em todo o resto.
+                    var notice = await documents.PrintAsync(closed);
+                    if (notice is not null) sale.Notice = string.IsNullOrEmpty(sale.Notice) ? notice : $"{sale.Notice} {notice}";
                 }
                 catch (Exception error)
                 {
@@ -314,7 +409,8 @@ public partial class App : Application
             };
             sale.ReprintRequested += (_, _) =>
             {
-                if (printer.LastPrinted is { } last) printer.Submit(last, "PDV Cupom (2a via)");
+                // A nota autorizada em segundo plano sai aqui como DANFE.
+                if (documents.Reprint(lastOrderId, printer.LastPrinted) is { } again) printer.Submit(again, "PDV 2a via");
                 else sale.Notice = "Nenhum cupom impresso ainda nesta sessão.";
             };
 
@@ -343,6 +439,7 @@ public partial class App : Application
                 await scale.DisposeAsync();
                 journal.Dispose();
                 printer.Dispose();
+                fiscalGateway?.Dispose();
             }
             _window.Closed += (_, _) => ReleaseAsync().Wait(TimeSpan.FromSeconds(2));
 

@@ -20,6 +20,12 @@ public sealed class SyncWorker(SyncEngine engine, Action<string>? log = null)
     public const int PullEveryNCycles = 20;
 
     private readonly Action<string> _log = log ?? (_ => { });
+
+    /// <summary>
+    /// Um ciclo por vez: o laço e o "empurre agora" do pedido de nota usam a
+    /// mesma conexão, e o <see cref="SyncEngine"/> não é para duas threads.
+    /// </summary>
+    private readonly SemaphoreSlim _gate = new(1, 1);
     private int _cycle;
     private bool? _online;
 
@@ -49,8 +55,45 @@ public sealed class SyncWorker(SyncEngine engine, Action<string>? log = null)
         }
     }
 
+    /// <summary>
+    /// Envia a fila agora, fora da cadência. É o que o pedido de NFC-e chama
+    /// ao fechar a venda: a retaguarda só emite nota de venda que ela já tem.
+    /// </summary>
+    public async Task PushNowAsync(CancellationToken cancellation = default)
+    {
+        await _gate.WaitAsync(cancellation);
+        try
+        {
+            await engine.DrainAsync(maxCycles: 3, cancellation);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     /// <summary>Um ciclo. Devolve quanto esperar até o próximo.</summary>
     public async Task<TimeSpan> TickAsync(CancellationToken cancellation = default)
+    {
+        try
+        {
+            await _gate.WaitAsync(cancellation);
+        }
+        catch (OperationCanceledException)
+        {
+            return TimeSpan.Zero;
+        }
+        try
+        {
+            return await TickCoreAsync(cancellation);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    private async Task<TimeSpan> TickCoreAsync(CancellationToken cancellation)
     {
         _cycle++;
         SyncReport report;

@@ -66,7 +66,10 @@ em `apps/pdv-net`.
 
 ## O que falta, na ordem
 
-### 1. C6d — NFC-e pedida pelo caixa (online)
+### 1. C6d — NFC-e pedida pelo caixa (online) — **FEITA em 26/09/2026**
+
+Ver `docs/port_csharp.md`. Só a contingência offline (item 6 abaixo) segue
+esperando a decisão do dono. O texto original fica como registro:
 
 Nem o Python faz isso pela tela: `pdv/fiscal/cloud.py` só é usado em teste.
 A retaguarda já tem `POST /api/fiscal/issue` e `GET /api/fiscal/status`

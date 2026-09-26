@@ -384,6 +384,45 @@ A arquitetura existe para que a tela seja testável:
       que a ativação ainda não grava. Sem eles, o cupom mostra os
       marcadores do Python, que são fictícios. A retaguarda tem o CNPJ no
       cadastro fiscal e deve mandá-lo na ativação.
+- [x] **C6d. NFC-e pedida pelo caixa (online)** (`Pdv.Core.Printing.NfceProcReader`,
+      `Pdv.Data.Fiscal`, `Pdv.App.SaleDocuments`). Nem o Python fazia isto
+      pela tela: `fiscal/cloud.py` só era usado em teste.
+  - **Retaguarda.** As rotas do terminal (`/fiscal/issue` e `/fiscal/status`)
+    devolvem `processed_xml`, só com a nota autorizada.
+  - **O DANFE sai do XML autorizado, sem cálculo nenhum.** O leitor recusa:
+    nota não autorizada, protocolo de outra chave, modelo ou emissão
+    desconhecidos, `tPag` desconhecido, fração de centavo, itens − desconto
+    diferente do `vNF`, DTD e XML acima de 1 MiB. Conferido contra
+    `contracts/nfce-proc.json`, uma nota **gerada pelo motor do
+    `fiscal-net`** (assinada, validada no XSD, com QR v3 e protocolo), cuja
+    forma e cujos códigos `tPag` o `fiscal-net` exige no próprio teste. Em
+    homologação o primeiro item sai com o texto que a SEFAZ exige, porque é
+    o que está na nota.
+  - **Cliente HTTP com a classificação do `cloud.py`.** Sem conexão (TCP,
+    nome, TLS) é "offline"; timeout, 5xx, queda no meio e resposta ilegível
+    são "resultado desconhecido", que daí em diante só consulta; 401/403 é
+    autenticação; 4xx é recusa, com o `detail` da retaguarda.
+  - **Um `request_uuid` por venda, gravado antes do primeiro envio**, em
+    `fiscal_requests` (tabela do C#, `CREATE TABLE IF NOT EXISTS`, não
+    sobe). Reinício, timeout e segundo plano pedem sempre com o mesmo uuid:
+    a idempotência da retaguarda é que impede a segunda nota.
+  - **Fluxo.** A venda fecha, a fila é empurrada (`SyncWorker.PushNowAsync`,
+    serializado com o laço) e a nota é pedida com prazo curto. Autorizada →
+    DANFE no lugar do cupom. Senão → cupom, e o segundo plano (conexão
+    própria, prazo longo, espera crescente até 1 h) pede de novo o que não
+    saiu e consulta o que ficou sem resposta. A reimpressão (Ctrl+P) da
+    última venda sai como DANFE assim que a nota é autorizada. Total zero
+    não pede nada, com ou sem rede.
+  - **Desligado por padrão**: só com `fiscal.enabled = 1` em
+    `device_settings` e terminal ativado, até a homologação na SEFAZ-RJ.
+  - **Contingência offline não foi construída** (decisão pendente do dono:
+    exige o A1 em cada caixa). Sem conexão, sai o cupom e a nota é pedida
+    quando a rede voltar.
+  - 48 testes novos no PDV, 3 na retaguarda e 1 no `fiscal-net`; 22 regras
+    verificadas por mutação.
+  - **Pendências.** Reimprimir o DANFE de uma venda que não é a última
+    precisa de tela (C6f). O `ui-smoke.ps1` ainda não passa pelo fluxo
+    fiscal, que exige retaguarda e serviço fiscal no ar.
 - [ ] **C6. O resto da paridade.**
       - Periféricos: balança serial e impressora ESC/POS.
       - NFC-e.
@@ -422,7 +461,7 @@ Na ordem em que dá para trocar:
 | ~~3~~ | ~~C6a~~ | ~~`services/cash_session.py`~~ | **Feito** (abertura com fundo de troco e fechamento cego) |
 | ~~4~~ | ~~C6b~~ | ~~`cashback.py`, `prepaid.py`, `credit_account.py`, `discount_tiers.py`~~ | **Feito** (o resgate de cashback segue desligado até a decisão do contador) |
 | ~~5~~ | ~~C6c~~ | ~~`hardware/printer/`, `fiscal/danfe.py`~~ | **Feito** (cupom e DANFE byte a byte; o DANFE vai ao papel com a C6d) |
-| 6 | C6d | `fiscal/cloud.py`, `fiscal/service.py`, `fiscal/gateway.py` (~500) | NFC-e pedida pelo caixa à nuvem, e a **contingência offline** com série própria e QR Code v3 assinado com o A1 (o DFe.NET já gera) |
+| ~~6~~ | ~~C6d~~ | ~~`fiscal/cloud.py`~~ | **Feito** (NFC-e online pedida pelo caixa, DANFE do XML autorizado). A **contingência offline** (`fiscal/service.py`, `fiscal/gateway.py`: série própria, QR v3 assinado com o A1) espera a decisão do dono |
 | 7 | C6e | `edge/` (~4.000) + `edge/webapp` | Servidor do salão para os celulares dos garçons, KDS, mesas, contas e descoberta na rede, em ASP.NET Core dentro do PDV. O app web do garçom é reaproveitado como está |
 | 8 | C6f | `ui/salon_panel.py`, `ui/tables_dialog.py`, `ui/dialogs.py`, `ui/remote_dialog.py`, `services/staff_report.py` (~2.300) | Telas do salão, mesas, relatórios de equipe e diálogos que faltam no WinUI |
 | 9 | C7a | `data/database.py` (~800), `data/seed.py` | Migrations em C#: criar e atualizar o banco sem o Python, e a demonstração |
