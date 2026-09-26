@@ -177,13 +177,25 @@
                         <Button.KeyboardAccelerators><KeyboardAccelerator Modifiers="Control" Key="F6" /></Button.KeyboardAccelerators>
                     </Button>
                 </Grid>
-                <!-- O salão não é da venda: a casca abre o painel em janela própria. -->
-                <Button AutomationProperties.AutomationId="OpenSalon" Content="F8  Salão (garçons e cozinha)"
-                        HorizontalAlignment="Stretch" Click="OnSalonClick">
-                    <Button.KeyboardAccelerators>
-                        <KeyboardAccelerator Key="F8" />
-                    </Button.KeyboardAccelerators>
-                </Button>
+                <!-- O salão não é da venda: a casca abre cada tela em janela própria.
+                     F8 é de quem cuida do salão; F9 é do caixa, onde a mesa vira dinheiro. -->
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition /><ColumnDefinition />
+                    </Grid.ColumnDefinitions>
+                    <Button AutomationProperties.AutomationId="OpenSalon" Content="F8  Salão"
+                            HorizontalAlignment="Stretch" Click="OnSalonClick">
+                        <Button.KeyboardAccelerators>
+                            <KeyboardAccelerator Key="F8" />
+                        </Button.KeyboardAccelerators>
+                    </Button>
+                    <Button Grid.Column="1" AutomationProperties.AutomationId="OpenTables" Content="F9  Mesas"
+                            HorizontalAlignment="Stretch" Click="OnTablesClick">
+                        <Button.KeyboardAccelerators>
+                            <KeyboardAccelerator Key="F9" />
+                        </Button.KeyboardAccelerators>
+                    </Button>
+                </Grid>
                 <Button AutomationProperties.AutomationId="Reprint" Content="Reimprimir cupom (Ctrl+P)" HorizontalAlignment="Stretch"
                         Command="{x:Bind ViewModel.ReprintCommand}">
                     <Button.KeyboardAccelerators>

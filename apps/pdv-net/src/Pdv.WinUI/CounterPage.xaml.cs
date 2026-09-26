@@ -43,6 +43,11 @@ public sealed partial class CounterPage : UserControl
 
     private void OnSalonClick(object sender, RoutedEventArgs e) => SalonRequested?.Invoke(this, EventArgs.Empty);
 
+    /// <summary>F9: as mesas e o recebimento da conta.</summary>
+    public event EventHandler? TablesRequested;
+
+    private void OnTablesClick(object sender, RoutedEventArgs e) => TablesRequested?.Invoke(this, EventArgs.Empty);
+
     private void OnQueryKeyDown(object sender, KeyRoutedEventArgs e)
     {
         if (e.Key != Windows.System.VirtualKey.Enter) return;

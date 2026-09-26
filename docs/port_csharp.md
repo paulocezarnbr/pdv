@@ -543,8 +543,21 @@ A arquitetura existe para que a tela seja testável:
       Windows com o Chrome aberto, a porta 5353 tem outros donos e a
       consulta unicast cai num deles. Agora pergunta pelo grupo multicast,
       como o celular faz.
-  - **Falta na C6f:** mesas e recebimento da conta da mesa (F9), e F1 com os
+  - **Falta na C6f:** F1 com os
     atalhos e o relatório da equipe.
+- [x] **C6f (2/3). Mesas, F9** (`Pdv.App.TablesViewModel`, `Pdv.WinUI.TablesPage`),
+      o `ui/tables_dialog.py`: busca por mesa, área, garçom e comanda, "só
+      quem pediu a conta", receber (com confirmação se a mesa não pediu),
+      gorjeta sugerida em 10% para baixo, pagar parte, mover itens e juntar
+      comandas. O cupom da mesa sai pelo `ReceiptComposer` com o rótulo da
+      mesa no lugar do cliente. 21 testes; 8 regras verificadas por mutação.
+      Como no Python, o cartão da mesa é registrado sem o TEF (maquininha
+      avulsa): ligar o TEF na mesa é decisão de produto.
+- [ ] **Cadastro de cliente (pedido do dono, 26/09/2026).** Morador ou não
+      morador; morador vinculado a bloco e apartamento; nome, e-mail,
+      WhatsApp, CPF (com dígito verificador) e consentimento para ofertas
+      (LGPD). Exige schema 15 nos dois PDVs, migração `010` na retaguarda e o
+      campo na lista do `merge.ts`, nessa ordem de publicação.
 - [ ] **C6. O resto da paridade.**
       - Periféricos: balança serial e impressora ESC/POS.
       - NFC-e.

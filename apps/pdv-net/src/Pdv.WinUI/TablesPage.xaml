@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- As mesas do caixa (F9): o salão com busca e o recebimento da conta.
+     Só apresentação: o TablesViewModel faz o resto. -->
+<UserControl
+    x:Class="Pdv.WinUI.TablesPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:app="using:Pdv.App"
+    xmlns:local="using:Pdv.WinUI">
+
+    <Grid Padding="20" RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Grid ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBox AutomationProperties.AutomationId="TablesSearch"
+                     PlaceholderText="Buscar mesa, área, garçom ou número da comanda…"
+                     Text="{x:Bind ViewModel.Query, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+            <CheckBox Grid.Column="1" AutomationProperties.AutomationId="OnlyBilling" Content="Só quem pediu a conta"
+                      IsChecked="{x:Bind ViewModel.OnlyBilling, Mode=TwoWay}" />
+        </Grid>
+
+        <Grid Grid.Row="1" ColumnSpacing="12" Padding="12,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" /><ColumnDefinition Width="110" /><ColumnDefinition Width="130" />
+                <ColumnDefinition Width="160" /><ColumnDefinition Width="80" /><ColumnDefinition Width="50" />
+                <ColumnDefinition Width="110" /><ColumnDefinition Width="70" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="MESA" Style="{StaticResource CaptionTextBlockStyle}" />
+            <TextBlock Grid.Column="1" Text="ÁREA" Style="{StaticResource CaptionTextBlockStyle}" />
+            <TextBlock Grid.Column="2" Text="SITUAÇÃO" Style="{StaticResource CaptionTextBlockStyle}" />
+            <TextBlock Grid.Column="3" Text="GARÇOM" Style="{StaticResource CaptionTextBlockStyle}" />
+            <TextBlock Grid.Column="4" Text="COMANDA" Style="{StaticResource CaptionTextBlockStyle}" />
+            <TextBlock Grid.Column="5" Text="ITENS" Style="{StaticResource CaptionTextBlockStyle}" />
+            <TextBlock Grid.Column="6" Text="TOTAL" Style="{StaticResource CaptionTextBlockStyle}" />
+            <TextBlock Grid.Column="7" Text="TEMPO" Style="{StaticResource CaptionTextBlockStyle}" />
+        </Grid>
+
+        <ListView Grid.Row="2" AutomationProperties.AutomationId="TablesList" ItemsSource="{x:Bind ViewModel.Rows}"
+                  SelectedItem="{x:Bind ViewModel.Selected, Mode=OneWay}" SelectionChanged="OnSelected"
+                  IsDoubleTapEnabled="True" DoubleTapped="OnDoubleTapped">
+            <ListView.ItemTemplate>
+                <DataTemplate x:DataType="app:TableRow">
+                    <Grid ColumnSpacing="12" Padding="0,6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" /><ColumnDefinition Width="110" /><ColumnDefinition Width="130" />
+                            <ColumnDefinition Width="160" /><ColumnDefinition Width="80" /><ColumnDefinition Width="50" />
+                            <ColumnDefinition Width="110" /><ColumnDefinition Width="70" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="{x:Bind Table}" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                        <TextBlock Grid.Column="1" Text="{x:Bind Area}" />
+                        <TextBlock Grid.Column="2" Text="{x:Bind Status}" Foreground="{x:Bind local:TablesPage.StatusBrush(BillRequested)}" />
+                        <TextBlock Grid.Column="3" Text="{x:Bind Waiter}" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Grid.Column="4" Text="{x:Bind Number}" FontFamily="Consolas" />
+                        <TextBlock Grid.Column="5" Text="{x:Bind Items}" FontFamily="Consolas" />
+                        <TextBlock Grid.Column="6" Text="{x:Bind Total}" FontFamily="Consolas" />
+                        <TextBlock Grid.Column="7" Text="{x:Bind Elapsed}" FontFamily="Consolas" />
+                    </Grid>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
+
+        <TextBlock Grid.Row="3" AutomationProperties.AutomationId="TablesSummary" Text="{x:Bind ViewModel.Summary, Mode=OneWay}"
+                   Style="{StaticResource CaptionTextBlockStyle}" />
+
+        <InfoBar Grid.Row="4" AutomationProperties.AutomationId="TablesError" IsOpen="{x:Bind Has(ViewModel.Error), Mode=OneWay}"
+                 IsClosable="False" Severity="Error" Message="{x:Bind ViewModel.Error, Mode=OneWay}" />
+
+        <Grid Grid.Row="5" ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="2*" /><ColumnDefinition /><ColumnDefinition /><ColumnDefinition />
+            </Grid.ColumnDefinitions>
+            <Button AutomationProperties.AutomationId="ReceiveTable" Content="Receber conta da mesa" Height="46"
+                    HorizontalAlignment="Stretch" Style="{StaticResource AccentButtonStyle}" Command="{x:Bind ViewModel.ReceiveCommand}" />
+            <Button Grid.Column="1" AutomationProperties.AutomationId="ReceivePart" Content="Pagar parte" Height="46"
+                    HorizontalAlignment="Stretch" Command="{x:Bind ViewModel.ReceivePartCommand}" />
+            <Button Grid.Column="2" AutomationProperties.AutomationId="MoveItems" Content="Mover itens" Height="46"
+                    HorizontalAlignment="Stretch" Command="{x:Bind ViewModel.MoveItemsCommand}" />
+            <Button Grid.Column="3" AutomationProperties.AutomationId="MergeOrders" Content="Juntar comandas" Height="46"
+                    HorizontalAlignment="Stretch" Command="{x:Bind ViewModel.MergeCommand}" />
+        </Grid>
+    </Grid>
+</UserControl>

@@ -55,6 +55,9 @@ public partial class App : Application
     /// <summary>A janela do painel do salão (F8), uma só: o segundo F8 a traz para a frente.</summary>
     private Window? _salonPanel;
 
+    /// <summary>A janela das mesas (F9), uma só, como o painel.</summary>
+    private Window? _tablesWindow;
+
     public App()
     {
         InitializeComponent();
@@ -459,6 +462,7 @@ public partial class App : Application
                 journal.Dispose();
                 printer.Dispose();
                 _salonPanel?.Close();
+                _tablesWindow?.Close();
                 fiscalGateway?.Dispose();
             }
             _window.Closed += (_, _) => ReleaseAsync().Wait(TimeSpan.FromSeconds(2));
@@ -476,6 +480,20 @@ public partial class App : Application
             var counter = _window.ShowCounter(sale, _sync);
             await StartSalonAsync(path, profile, secret);
             counter.SalonRequested += (_, _) => OpenSalonPanel(database, profile, ledger);
+            counter.TablesRequested += (_, _) => OpenTables(database, profile, ledger, identity, settled =>
+            {
+                // A conta já está fechada no banco; papel acabado não a desfaz.
+                // O rótulo da mesa vai no lugar do cliente, como no Python.
+                try
+                {
+                    printer.Submit(receipts.Compose(settled.Order.Id, identity.Name, settled.Order.TableLabel),
+                        $"Mesa {settled.Order.LocalNumber:000000}");
+                }
+                catch (Exception error)
+                {
+                    CrashLog.Write("cupom da mesa", error);
+                }
+            });
         }
         catch (Exception error) when (error is SecretVaultException or PdvDatabaseException)
         {
@@ -590,6 +608,34 @@ public partial class App : Application
             _salonPanel = null;
         };
         _salonPanel = window;
+        window.Activate();
+    }
+
+    /// <summary>
+    /// As mesas (F9), em janela própria e na conexão da tela: o caixa recebe a
+    /// conta da mesa sem largar a venda do balcão.
+    /// </summary>
+    private void OpenTables(
+        PdvDatabase database, TerminalProfile profile, AuditLedger ledger, Identity cashier, Action<SettledOrder> print)
+    {
+        if (_tablesWindow is not null)
+        {
+            _tablesWindow.Activate();
+            return;
+        }
+        var terminal = profile.Identity;
+        var tables = new TablesViewModel(
+            new TableOrderService(database, terminal, ledger, _salonHub), new TableService(database, terminal), cashier);
+        tables.Settled += (_, settled) => print(settled);
+        var page = new TablesPage(tables);
+        var window = new Window { Title = "Mesas do salão", Content = page };
+        window.AppWindow.Resize(new Windows.Graphics.SizeInt32(1180, 720));
+        window.Closed += (_, _) =>
+        {
+            page.Stop();
+            _tablesWindow = null;
+        };
+        _tablesWindow = window;
         window.Activate();
     }
 

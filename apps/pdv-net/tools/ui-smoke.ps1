@@ -388,6 +388,21 @@ public static class SmokeTls {
         $panel.GetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern).Close()
     }
 
+    # 5c. mesas pelo F9, em janela própria, com o resumo do salão
+    Click (Find $window 'OpenTables')
+    $tablesCondition = New-Object System.Windows.Automation.AndCondition(
+        (New-Object System.Windows.Automation.PropertyCondition($A::ProcessIdProperty, $process.Id)),
+        (New-Object System.Windows.Automation.PropertyCondition($A::NameProperty, 'Mesas do salão')))
+    $deadline = (Get-Date).AddSeconds(15)
+    do { $tables = $A::RootElement.FindFirst($Tree::Children, $tablesCondition); if (-not $tables) { Start-Sleep -Milliseconds 300 } } while (-not $tables -and (Get-Date) -lt $deadline)
+    if (-not $tables) { $failures += 'mesas: o F9 não abriu a tela' }
+    else {
+        $summary = Text (Find $tables 'TablesSummary')
+        if ($summary -notmatch '^0 de 0 comandas abertas .* mesas livres') { $failures += "mesas: resumo '$summary'" }
+        else { Write-Host 'ok  mesas (F9) abrem com o resumo do salão' }
+        $tables.GetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern).Close()
+    }
+
     # 6. fechamento cego pelo F12: conta, PIN do gerente, resultado e volta ao login
     Click (Find $window 'CloseCash')
     Answer '100,00'
