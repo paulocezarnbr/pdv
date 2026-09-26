@@ -1,5 +1,7 @@
+-- Cópia congelada do schema na versão 14 (o que as lojas têm antes da 15).
+-- O teste do C# parte dele para conferir a migração 14 → 15.
 -- Gerado por apps/desktop-pdv/tests/test_schema_contract.py. Não edite à mão.
--- Schema local do PDV na versão 15, como o migrate() o deixa.
+-- Schema local do PDV na versão 14, como o migrate() o deixa.
 CREATE TABLE products (
     id                TEXT PRIMARY KEY,
     tenant_id         TEXT NOT NULL,
@@ -367,7 +369,7 @@ CREATE TABLE customers (
     created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
     client_uuid TEXT NOT NULL UNIQUE, is_synced INTEGER NOT NULL DEFAULT 0,
     synced_at TEXT
-, email TEXT, cpf TEXT, is_resident INTEGER NOT NULL DEFAULT 0, unit_block TEXT, unit_number TEXT, birth_date TEXT, marketing_opt_in INTEGER NOT NULL DEFAULT 0, marketing_opt_in_at TEXT);
+);
 
 CREATE UNIQUE INDEX idx_customers_phone
     ON customers (tenant_id, phone) WHERE phone IS NOT NULL;
@@ -659,10 +661,4 @@ CREATE TABLE edge_staff_sessions (
 CREATE INDEX idx_edge_staff_sessions_device
     ON edge_staff_sessions (device_id, revoked_at, expires_at);
 
-CREATE UNIQUE INDEX idx_customers_cpf
-    ON customers (tenant_id, cpf) WHERE cpf IS NOT NULL;
-
-CREATE INDEX idx_customers_unit
-    ON customers (tenant_id, unit_block, unit_number) WHERE is_resident = 1;
-
-PRAGMA user_version = 15;
+PRAGMA user_version = 14;

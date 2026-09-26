@@ -125,7 +125,7 @@
                 <!-- O cliente desta venda: cashback, pré-pago, fiado e nível. -->
                 <Grid ColumnSpacing="8">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
                     <Button AutomationProperties.AutomationId="IdentifyCustomer" Content="Cliente"
                             Command="{x:Bind ViewModel.IdentifyCustomerCommand}">
@@ -133,7 +133,13 @@
                             <KeyboardAccelerator Modifiers="Control" Key="K" />
                         </Button.KeyboardAccelerators>
                     </Button>
-                    <TextBlock Grid.Column="1" AutomationProperties.AutomationId="CustomerSummary" VerticalAlignment="Center"
+                    <Button Grid.Column="1" AutomationProperties.AutomationId="EditCustomer" Content="Editar cadastro"
+                            Command="{x:Bind ViewModel.EditCustomerCommand}">
+                        <Button.KeyboardAccelerators>
+                            <KeyboardAccelerator Modifiers="Control" Key="E" />
+                        </Button.KeyboardAccelerators>
+                    </Button>
+                    <TextBlock Grid.Column="2" AutomationProperties.AutomationId="CustomerSummary" VerticalAlignment="Center"
                                TextWrapping="Wrap" Text="{x:Bind ViewModel.CustomerSummary, Mode=OneWay}" />
                 </Grid>
 

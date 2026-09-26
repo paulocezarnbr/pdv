@@ -553,11 +553,53 @@ A arquitetura existe para que a tela seja testável:
       mesa no lugar do cliente. 21 testes; 8 regras verificadas por mutação.
       Como no Python, o cartão da mesa é registrado sem o TEF (maquininha
       avulsa): ligar o TEF na mesa é decisão de produto.
-- [ ] **Cadastro de cliente (pedido do dono, 26/09/2026).** Morador ou não
-      morador; morador vinculado a bloco e apartamento; nome, e-mail,
-      WhatsApp, CPF (com dígito verificador) e consentimento para ofertas
-      (LGPD). Exige schema 15 nos dois PDVs, migração `010` na retaguarda e o
-      campo na lista do `merge.ts`, nessa ordem de publicação.
+- [x] **Cadastro de cliente (pedido do dono, 26/09/2026)** — regra nova, não
+      porte (`Pdv.Data.Customers.CustomerProfile`, `CustomerLedgers.Register`,
+      `Update`, `Find`).
+  - **Os dados.** Morador ou não. O morador fica ligado ao apartamento e ao
+    bloco (opcional), e vários moradores podem dividir o mesmo apartamento.
+    O cadastro guarda ainda:
+    - nome;
+    - WhatsApp (é o `phone`, a chave do balcão);
+    - e-mail;
+    - CPF, com os dígitos verificadores;
+    - nascimento;
+    - o consentimento para ofertas (LGPD), com a hora em que foi dado. Ele
+      começa negado, e reeditar o cadastro não muda a hora.
+  - **Unicidade.** WhatsApp e CPF são únicos no caixa, e a recusa diz de
+    quem já é o cadastro.
+  - **No balcão (Ctrl+K).** A busca aceita WhatsApp, CPF, apartamento ("101",
+    "B 101", "bloco B apto 101") ou nome. Homônimos e vizinhos aparecem com o
+    apartamento e o WhatsApp para escolher. Cliente novo abre o formulário
+    com o que foi buscado já preenchido. Ctrl+E corrige o cadastro do
+    cliente da venda.
+  - **Schema 15 nos dois PDVs.** O `migrate()` do Python cria as colunas e
+    os índices. O C# atualiza sozinho um banco da 14 com o mesmo texto, e o
+    teste confere, byte a byte, que o resultado é o schema do Python
+    (`contracts/pdv-schema-v14.sql` é a 14 congelada). É o primeiro pedaço
+    da C7a.
+  - **Na nuvem, migração `020`.**
+    - As colunas entram na lista branca do `merge.ts`, e a correção do
+      cadastro entra como `update`: vence a mais nova, e o `created_at` não
+      muda.
+    - O CPF não é único na nuvem: os clientes não descem para os outros
+      caixas, e a mesma pessoa cadastrada em dois balcões chega duas vezes.
+    - **Correção de um defeito que já existia.** A colisão de WhatsApp entre
+      dois caixas derrubava o lote inteiro com 500, vendas junto. Agora
+      recusa só aquele cadastro, com o motivo.
+  - **Publicação.** Caixa mais novo que a nuvem não trava: a nuvem descarta
+    em silêncio as colunas que não conhece. Ainda assim, publique a `020`
+    antes, para os cadastros chegarem completos.
+  - **Testes.**
+    - 37 de regra e gravação e 13 de tela no C#; 17 regras verificadas por
+      mutação.
+    - 6 de integração na nuvem, contra Postgres, com a contenção da
+      colisão verificada por mutação.
+    - O `ui-smoke.ps1` cadastra uma moradora pelo formulário.
+  - **Fica para depois.**
+    - O PDV em Python só ganhou as colunas; a tela dele continua pedindo
+      nome e telefone.
+    - Não há ainda uma tela no painel para ver e juntar cadastros.
 - [ ] **C6. O resto da paridade.**
       - Periféricos: balança serial e impressora ESC/POS.
       - NFC-e.

@@ -27,6 +27,9 @@ public sealed class CustomerViewModelTests : IDisposable
     private readonly SaleViewModel _screen;
     private readonly Queue<string?> _answers = new();
     private readonly Queue<int?> _options = new();
+    private readonly Queue<Func<CustomerFormRequest, CustomerProfile?>> _forms = new();
+    private readonly List<CustomerFormRequest> _formRequests = [];
+    private readonly List<IReadOnlyList<string>> _optionLists = [];
     private readonly List<AuthorizationRequest> _requests = [];
     private (string Login, string Pin)? _credentials = ("bruno", Pin);
 
@@ -56,7 +59,16 @@ public sealed class CustomerViewModelTests : IDisposable
             tiers: _tiers)
         {
             AskText = _ => Task.FromResult(_answers.Count > 0 ? _answers.Dequeue() : null),
-            AskOption = (_, _) => Task.FromResult(_options.Count > 0 ? _options.Dequeue() : null),
+            AskOption = (_, options) =>
+            {
+                _optionLists.Add(options);
+                return Task.FromResult(_options.Count > 0 ? _options.Dequeue() : null);
+            },
+            AskCustomerForm = request =>
+            {
+                _formRequests.Add(request);
+                return Task.FromResult(_forms.Count > 0 ? _forms.Dequeue()(request) : null);
+            },
             AskAuthorizer = request =>
             {
                 _requests.Add(request);
@@ -94,12 +106,100 @@ public sealed class CustomerViewModelTests : IDisposable
     }
 
     [Fact]
-    public async Task An_unknown_phone_registers_the_customer_on_the_spot()
+    public async Task An_unknown_phone_opens_the_form_with_the_whatsapp_already_in_it()
     {
-        await Identify("21 91234 5678", "Nova Pessoa");
+        _forms.Enqueue(request => request.Initial with
+        {
+            Name = "Nova Pessoa", IsResident = true, UnitBlock = "b", UnitNumber = "101", Email = "nova@exemplo.com",
+        });
+
+        await Identify("21 91234 5678");
+
+        var asked = Assert.Single(_formRequests);
+        Assert.Equal(("Cliente novo", "21912345678", null), (asked.Title, asked.Initial.WhatsApp, asked.Error));
         Assert.Equal("Nova Pessoa", _customers.FindByPhone("21912345678")!.Name);
         Assert.Equal("Nova Pessoa", _screen.Customer!.Name);
+        Assert.StartsWith("Nova Pessoa (Bloco B · apto 101) — cashback", _screen.CustomerSummary);
     }
+
+    [Fact]
+    public async Task A_refused_form_comes_back_with_the_reason_and_what_was_typed()
+    {
+        _forms.Enqueue(request => request.Initial with { Name = "Nova Pessoa", Cpf = "529.982.247-24" });
+        _forms.Enqueue(request => request.Initial with { Cpf = "529.982.247-25" });
+
+        await Identify("21 91234 5678");
+
+        Assert.Equal(2, _formRequests.Count);
+        Assert.Equal("CPF inválido: confira os dígitos.", _formRequests[1].Error);
+        Assert.Equal(("Nova Pessoa", "529.982.247-24"), (_formRequests[1].Initial.Name, _formRequests[1].Initial.Cpf));
+        Assert.Equal("52998224725", _customers.Get(_screen.Customer!.Id)!.Profile.Cpf);
+    }
+
+    [Fact]
+    public async Task Giving_up_on_the_form_registers_nobody()
+    {
+        await Identify("21 91234 5678");
+        Assert.Single(_formRequests);
+        Assert.Null(_screen.Customer);
+        Assert.Null(_customers.FindByPhone("21912345678"));
+    }
+
+    [Fact]
+    public async Task Two_residents_of_the_same_apartment_are_told_apart_by_the_operator()
+    {
+        var lia = _customers.Register(new CustomerProfile("Lia Souza", "21998765432", IsResident: true, UnitBlock: "B", UnitNumber: "101"));
+        _customers.Register(new CustomerProfile("Rui Souza", "21912345678", IsResident: true, UnitBlock: "B", UnitNumber: "101"));
+        _options.Enqueue(0);
+
+        await Identify("bloco b 101");
+
+        Assert.Equal(["Lia Souza · Bloco B · apto 101 · (21) 99876-5432", "Rui Souza · Bloco B · apto 101 · (21) 91234-5678",
+            "Cadastrar cliente novo"], Assert.Single(_optionLists));
+        Assert.Equal(lia, _screen.Customer!.Id);
+    }
+
+    [Fact]
+    public async Task The_last_option_registers_someone_new_in_that_apartment()
+    {
+        _customers.Register(new CustomerProfile("Lia Souza", "21998765432", IsResident: true, UnitBlock: "B", UnitNumber: "101"));
+        _customers.Register(new CustomerProfile("Rui Souza", "21912345678", IsResident: true, UnitBlock: "B", UnitNumber: "101"));
+        _options.Enqueue(2);
+        _forms.Enqueue(request => request.Initial with { Name = "Ana Souza", WhatsApp = "21955554444" });
+
+        await Identify("B 101");
+
+        Assert.Equal(new CustomerProfile("", IsResident: true, UnitBlock: "B", UnitNumber: "101"), _formRequests.Single().Initial);
+        Assert.Equal("Ana Souza", _screen.Customer!.Name);
+        Assert.Equal(3, _customers.Find("B 101").Count);
+    }
+
+    [Fact]
+    public async Task Ctrl_E_edits_the_customer_of_the_sale()
+    {
+        Assert.False(_screen.EditCustomerCommand.CanExecute(null));
+        var lia = _customers.Register(new CustomerProfile("Lia", "21998765432"));
+        await Identify("21998765432");
+        Assert.True(_screen.EditCustomerCommand.CanExecute(null));
+        _forms.Enqueue(request => request.Initial with { Name = "Lia Souza", IsResident = true, UnitNumber = "302" });
+
+        await _screen.EditCustomerCommand.ExecuteAsync(null);
+
+        Assert.Equal("Cadastro de Lia", _formRequests.Single().Title);
+        Assert.Equal(("Lia Souza", "302"), (_customers.Get(lia)!.Profile.Name, _customers.Get(lia)!.Profile.UnitNumber));
+        Assert.Equal("Lia Souza", _screen.Customer!.Name);
+        Assert.StartsWith("Cadastro atualizado: Lia Souza (apto 302)", _screen.Notice);
+    }
+
+    [Theory]
+    [InlineData("(21) 99876-5432", "", "21998765432", null, false, null, null)]
+    [InlineData("529.982.247-25", "", null, "52998224725", false, null, null)]
+    [InlineData("52998224725", "", "52998224725", null, false, null, null)]
+    [InlineData("bloco c apto 12", "", null, null, true, "C", "12")]
+    [InlineData("Maria", "Maria", null, null, false, null, null)]
+    public void What_was_searched_prefills_the_form(
+        string text, string name, string? phone, string? cpf, bool resident, string? block, string? unit) =>
+        Assert.Equal(new CustomerProfile(name, phone, null, cpf, resident, block, unit), SaleViewModel.Guess(text));
 
     [Fact]
     public async Task Prepaid_is_offered_only_with_a_customer_and_pays_the_sale()

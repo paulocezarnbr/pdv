@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml.Input;
 using Pdv.App;
 using Pdv.Core.Tef;
 using Pdv.Data.Auth;
+using Pdv.Data.Customers;
 using Pdv.Data.Sales;
 
 namespace Pdv.WinUI;
@@ -24,6 +25,7 @@ public sealed partial class CounterPage : UserControl
         ViewModel.AskAuthorizer = AskAuthorizerAsync;
         ViewModel.AskRemoteDecision = AskRemoteDecisionAsync;
         ViewModel.AskOption = AskOptionAsync;
+        ViewModel.AskCustomerForm = AskCustomerFormAsync;
         Loaded += async (_, _) =>
         {
             QueryBox.Focus(FocusState.Programmatic);
@@ -85,6 +87,109 @@ public sealed partial class CounterPage : UserControl
     }
 
     private bool _confirmedByEnter;
+
+    /// <summary>
+    /// O cadastro do cliente: quem é, como falar com ele e, se mora no
+    /// condomínio, onde. A recusa volta com o que foi digitado, para corrigir.
+    /// </summary>
+    private async Task<CustomerProfile?> AskCustomerFormAsync(CustomerFormRequest request)
+    {
+        var initial = request.Initial;
+        TextBox Field(string id, string header, string? text, string placeholder = "")
+        {
+            var box = new TextBox { Header = header, Text = text ?? "", PlaceholderText = placeholder };
+            AutomationProperties.SetAutomationId(box, id);
+            return box;
+        }
+        var name = Field("CustomerName", "Nome completo", initial.Name);
+        var phone = Field("CustomerWhatsApp", "WhatsApp (com DDD)",
+            initial.WhatsApp is { } digits ? CustomerRules.FormatPhone(digits) : "", "(21) 99876-5432");
+        var cpf = Field("CustomerCpf", "CPF", initial.Cpf is { } number ? CustomerRules.FormatCpf(number) : "", "000.000.000-00");
+        var email = Field("CustomerEmail", "E-mail", initial.Email, "nome@exemplo.com");
+        var birth = Field("CustomerBirth", "Nascimento (opcional)",
+            initial.BirthDate?.ToString("dd/MM/yyyy", System.Globalization.CultureInfo.InvariantCulture), "dd/mm/aaaa");
+        var resident = new CheckBox { Content = "Morador do condomínio", IsChecked = initial.IsResident };
+        var block = Field("CustomerBlock", "Bloco / torre", initial.UnitBlock, "vazio se houver um só");
+        var unit = Field("CustomerUnit", "Apartamento", initial.UnitNumber, "101");
+        var marketing = new CheckBox
+        {
+            Content = "Aceita receber ofertas por WhatsApp e e-mail",
+            IsChecked = initial.MarketingOptIn,
+        };
+        var error = new TextBlock
+        {
+            Text = request.Error ?? "",
+            Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["SystemFillColorCriticalBrush"],
+            TextWrapping = TextWrapping.Wrap,
+        };
+        AutomationProperties.SetAutomationId(resident, "CustomerResident");
+        AutomationProperties.SetAutomationId(marketing, "CustomerMarketing");
+        AutomationProperties.SetAutomationId(error, "CustomerError");
+
+        // Apartamento só para morador: o campo apagado diz que não se aplica.
+        void Toggle() => block.IsEnabled = unit.IsEnabled = resident.IsChecked == true;
+        resident.Checked += (_, _) => Toggle();
+        resident.Unchecked += (_, _) => Toggle();
+        Toggle();
+
+        Grid Row(params FrameworkElement[] cells)
+        {
+            var grid = new Grid { ColumnSpacing = 12 };
+            for (var i = 0; i < cells.Length; i++)
+            {
+                grid.ColumnDefinitions.Add(new ColumnDefinition());
+                Grid.SetColumn(cells[i], i);
+                grid.Children.Add(cells[i]);
+            }
+            return grid;
+        }
+
+        CustomerProfile? typed = null;
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = request.Title,
+            Content = new ScrollViewer
+            {
+                Content = new StackPanel
+                {
+                    Spacing = 12,
+                    MinWidth = 460,
+                    Children =
+                    {
+                        name,
+                        Row(phone, cpf),
+                        Row(email, birth),
+                        resident,
+                        Row(block, unit),
+                        marketing,
+                        new TextBlock
+                        {
+                            Text = "Só marque com o sim do cliente. Os dados servem ao cadastro, ao cashback e à nota fiscal.",
+                            TextWrapping = TextWrapping.Wrap,
+                            Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+                        },
+                        error,
+                    },
+                },
+            },
+            PrimaryButtonText = "Salvar",
+            CloseButtonText = "Cancelar",
+            DefaultButton = ContentDialogButton.Primary,
+        };
+        dialog.PrimaryButtonClick += (_, args) =>
+        {
+            if (!CustomerRules.TryParseBirthDate(birth.Text, out var date))
+            {
+                error.Text = "Nascimento em dd/mm/aaaa, como 26/09/1990.";
+                args.Cancel = true;
+                return;
+            }
+            typed = new CustomerProfile(name.Text, phone.Text, email.Text, cpf.Text, resident.IsChecked == true,
+                block.Text, unit.Text, date, marketing.IsChecked == true);
+        };
+        return await dialog.ShowAsync() == ContentDialogResult.Primary ? typed : null;
+    }
 
     /// <summary>
     /// Login e PIN de quem libera. O PIN é conferido aqui dentro, com o freio:

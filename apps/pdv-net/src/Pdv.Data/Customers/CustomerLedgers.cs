@@ -79,6 +79,179 @@ public sealed class CustomerLedgers(
         return reader.Read() ? new Customer(reader.GetString(0), reader.GetString(1), reader.IsDBNull(2) ? null : reader.GetString(2)) : null;
     }
 
+    // -- cadastro completo (schema 15) -----------------------------------------
+
+    private const string ProfileColumns =
+        "id, name, phone, email, cpf, is_resident, unit_block, unit_number, birth_date, marketing_opt_in, marketing_opt_in_at";
+
+    /// <summary>Cadastra com o perfil inteiro — morador ou não, contato, CPF e consentimento.</summary>
+    /// <exception cref="CustomerException">Dado inválido, ou WhatsApp/CPF de outro cliente.</exception>
+    public string Register(CustomerProfile profile)
+    {
+        var clean = CustomerRules.Normalize(profile, Today());
+        var id = Iso.NewId();
+        var clientUuid = Iso.NewId();
+        var now = Iso.Now(_clock);
+        database.InTransaction(transaction =>
+        {
+            RefuseDuplicate(transaction, clean, exceptId: null);
+            var optInAt = clean.MarketingOptIn ? now : null;
+            transaction.Command(
+                "INSERT INTO customers (id, tenant_id, name, phone, email, cpf, is_resident, unit_block, unit_number, " +
+                "birth_date, marketing_opt_in, marketing_opt_in_at, created_at, updated_at, client_uuid) " +
+                "VALUES ($id, $tenant, $name, $phone, $email, $cpf, $resident, $block, $unit, $birth, $optIn, $optInAt, " +
+                "$now, $now, $uuid)",
+                [("$id", id), ("$tenant", terminal.TenantId), ("$uuid", clientUuid), ("$now", now), ("$optInAt", optInAt),
+                 .. ProfileParameters(clean)]).ExecuteNonQuery();
+            _outbox.Enqueue(transaction, "customers", id, clientUuid, "insert",
+                ProfilePayload(id, clean, optInAt, now, createdAt: now));
+        });
+        return id;
+    }
+
+    /// <summary>Corrige o cadastro. Vai à nuvem como mudança, e a mais nova vence.</summary>
+    /// <remarks>
+    /// A hora do consentimento só muda quando ele muda: reeditar o e-mail não
+    /// pode fingir que a pessoa autorizou de novo hoje, e retirar o
+    /// consentimento apaga a hora.
+    /// </remarks>
+    /// <exception cref="CustomerException">Dado inválido, cliente inexistente, ou WhatsApp/CPF de outro cliente.</exception>
+    public void Update(string customerId, CustomerProfile profile)
+    {
+        var clean = CustomerRules.Normalize(profile, Today());
+        var now = Iso.Now(_clock);
+        database.InTransaction(transaction =>
+        {
+            var current = Get(customerId, transaction) ?? throw new CustomerException("Cliente não encontrado.");
+            RefuseDuplicate(transaction, clean, exceptId: customerId);
+            var optInAt = !clean.MarketingOptIn ? null
+                : current.Profile.MarketingOptIn ? current.MarketingOptInAt ?? now
+                : now;
+            transaction.Command(
+                "UPDATE customers SET name = $name, phone = $phone, email = $email, cpf = $cpf, is_resident = $resident, " +
+                "unit_block = $block, unit_number = $unit, birth_date = $birth, marketing_opt_in = $optIn, " +
+                "marketing_opt_in_at = $optInAt, updated_at = $now, is_synced = 0 WHERE id = $id AND tenant_id = $tenant",
+                [("$id", customerId), ("$tenant", terminal.TenantId), ("$now", now), ("$optInAt", optInAt),
+                 .. ProfileParameters(clean)]).ExecuteNonQuery();
+            // Uuid novo por mudança, como os outros cadastros: o da criação já foi usado.
+            _outbox.Enqueue(transaction, "customers", customerId, Iso.NewId(), "update",
+                ProfilePayload(customerId, clean, optInAt, now, createdAt: null));
+        });
+    }
+
+    public CustomerRecord? Get(string customerId) => Get(customerId, null);
+
+    private CustomerRecord? Get(string customerId, SqliteTransaction? transaction)
+    {
+        using var command = Sql.Command(database.Connection, transaction,
+            $"SELECT {ProfileColumns} FROM customers WHERE id = $id AND tenant_id = $tenant",
+            ("$id", customerId), ("$tenant", terminal.TenantId));
+        using var reader = command.ExecuteReader();
+        return reader.Read() ? Record(reader) : null;
+    }
+
+    /// <summary>
+    /// O que o operador tem em mãos: WhatsApp, CPF, apartamento ("101", "B 101",
+    /// "bloco B apto 101") ou parte do nome. Só clientes ativos, por nome.
+    /// </summary>
+    public IReadOnlyList<CustomerRecord> Find(string text, int limit = 20)
+    {
+        var query = (text ?? "").Trim();
+        if (query.Length == 0) return [];
+        // Com letra no meio ("B 101", "Lia 2") não é telefone nem CPF.
+        var digits = query.Any(char.IsLetter) ? "" : CustomerRules.Digits(query);
+        if (digits.Length is 12 or 13 && digits.StartsWith("55", StringComparison.Ordinal)) digits = digits[2..];
+        var (block, unit) = ParseUnit(query);
+        using var command = Sql.Command(database.Connection, null,
+            $"SELECT {ProfileColumns} FROM customers WHERE tenant_id = $tenant AND is_active = 1 AND (" +
+            "($digits <> '' AND (phone = $digits OR cpf = $digits)) " +
+            "OR name LIKE $name ESCAPE '!' " +
+            "OR (is_resident = 1 AND $unit IS NOT NULL AND unit_number = $unit AND ($block IS NULL OR unit_block = $block))" +
+            ") ORDER BY name LIMIT $limit",
+            ("$tenant", terminal.TenantId), ("$digits", digits),
+            ("$name", "%" + query.Replace("!", "!!").Replace("%", "!%").Replace("_", "!_") + "%"),
+            ("$unit", unit), ("$block", block), ("$limit", limit));
+        using var reader = command.ExecuteReader();
+        var found = new List<CustomerRecord>();
+        while (reader.Read()) found.Add(Record(reader));
+        return found;
+    }
+
+    /// <summary>"bloco B apto 101" → (B, 101); "101" → (null, 101); "Lia" → (null, null).</summary>
+    public static (string? Block, string? Unit) ParseUnit(string text)
+    {
+        var noise = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "bloco", "bl", "torre", "apto", "apt", "ap", "apartamento", "unidade" };
+        var tokens = text.Split([' ', '/', '-', ','], StringSplitOptions.RemoveEmptyEntries)
+            .Select(token => token.Trim('.')).Where(token => token.Length > 0 && !noise.Contains(token))
+            .Select(token => token.ToUpperInvariant()).ToList();
+        // O apartamento tem número: "Lia" não é apartamento nenhum.
+        if (tokens.Count is 0 or > 2 || !tokens[^1].Any(char.IsAsciiDigit)) return (null, null);
+        return tokens.Count == 2 ? (tokens[0], tokens[1]) : (null, tokens[0]);
+    }
+
+    private static CustomerRecord Record(SqliteDataReader reader)
+    {
+        string? Text(int i) => reader.IsDBNull(i) ? null : reader.GetString(i);
+        var birth = Text(8) is { } date &&
+                    DateOnly.TryParseExact(date, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture,
+                        System.Globalization.DateTimeStyles.None, out var parsed)
+            ? parsed
+            : (DateOnly?)null;
+        return new CustomerRecord(reader.GetString(0), new CustomerProfile(
+            reader.GetString(1), Text(2), Text(3), Text(4), reader.GetInt64(5) != 0, Text(6), Text(7), birth,
+            reader.GetInt64(9) != 0), Text(10));
+    }
+
+    /// <summary>WhatsApp e CPF são únicos na loja. A recusa diz de quem é, para o operador achar o cadastro certo.</summary>
+    private void RefuseDuplicate(SqliteTransaction transaction, CustomerProfile profile, string? exceptId)
+    {
+        foreach (var (column, value, label) in new[] { ("phone", profile.WhatsApp, "WhatsApp"), ("cpf", profile.Cpf, "CPF") })
+        {
+            if (value is null) continue;
+            if (transaction.Command(
+                    $"SELECT name FROM customers WHERE tenant_id = $tenant AND {column} = $value AND id <> $except",
+                    ("$tenant", terminal.TenantId), ("$value", value), ("$except", exceptId ?? "")).ExecuteScalar() is string owner)
+            {
+                throw new CustomerException($"Este {label} já está no cadastro de {owner}.");
+            }
+        }
+    }
+
+    private static (string, object?)[] ProfileParameters(CustomerProfile profile) =>
+    [
+        ("$name", profile.Name), ("$phone", profile.WhatsApp), ("$email", profile.Email), ("$cpf", profile.Cpf),
+        ("$resident", profile.IsResident ? 1 : 0), ("$block", profile.UnitBlock), ("$unit", profile.UnitNumber),
+        ("$birth", profile.BirthDate?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture)),
+        ("$optIn", profile.MarketingOptIn ? 1 : 0),
+    ];
+
+    /// <summary>Booleano como booleano: a coluna da nuvem é <c>BOOLEAN</c>.</summary>
+    private static Dictionary<string, object?> ProfilePayload(
+        string id, CustomerProfile profile, string? optInAt, string now, string? createdAt)
+    {
+        var payload = new Dictionary<string, object?>
+        {
+            ["id"] = id,
+            ["name"] = profile.Name,
+            ["phone"] = profile.WhatsApp,
+            ["email"] = profile.Email,
+            ["cpf"] = profile.Cpf,
+            ["is_resident"] = profile.IsResident,
+            ["unit_block"] = profile.UnitBlock,
+            ["unit_number"] = profile.UnitNumber,
+            ["birth_date"] = profile.BirthDate?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
+            ["marketing_opt_in"] = profile.MarketingOptIn,
+            ["marketing_opt_in_at"] = optInAt,
+        };
+        if (createdAt is not null) payload["created_at"] = createdAt;
+        payload["updated_at"] = now;
+        return payload;
+    }
+
+    /// <summary>O dia na loja, para recusar nascimento no futuro.</summary>
+    private DateOnly Today() => DateOnly.FromDateTime(_clock.GetLocalNow().DateTime);
+
     // -- cashback ------------------------------------------------------------
 
     /// <summary>A regra da loja. Mudar a regra é evento de auditoria (<c>warning</c>).</summary>

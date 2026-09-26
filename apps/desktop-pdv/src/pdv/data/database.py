@@ -25,7 +25,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Final
 
-SCHEMA_VERSION: Final[int] = 14
+SCHEMA_VERSION: Final[int] = 15
 _SCHEMA_FILE: Final[Path] = Path(__file__).with_name("schema.sql")
 
 #: Migration 2 — tabelas do servidor local (Fase 3).
@@ -597,13 +597,49 @@ _MIGRATION_14_COLUMNS: Final[tuple[tuple[str, str, str], ...]] = (
     ("remote_commands", "confirmation_reported_at", "TEXT"),
 )
 
+#: Versão 15 — o cadastro do cliente (26/09/2026). A loja atende um
+#: condomínio: o morador fica ligado ao apartamento (e ao bloco, quando o
+#: prédio tem mais de um), e o cadastro guarda como falar com a pessoa.
+#:
+#: * `phone` continua sendo a chave do balcão e passa a ser o WhatsApp.
+#: * `cpf` — só dígitos, único na loja quando informado: é o que o cliente dita
+#:   na NFC-e e o que separa dois clientes de mesmo nome.
+#: * `is_resident`, `unit_block`, `unit_number` — morador e onde mora. Vários
+#:   moradores podem dividir o mesmo apartamento; por isso é coluna, e não uma
+#:   tabela de unidades com dono.
+#: * `birth_date` — `AAAA-MM-DD`, opcional.
+#: * `marketing_opt_in` e `marketing_opt_in_at` — o consentimento para ofertas
+#:   por WhatsApp e e-mail (LGPD), com a hora em que foi dado. Começa negado:
+#:   cadastro para cashback não é autorização para mensagem.
+#:
+#: O PDV em C# aplica a mesma migração sozinho (`PdvDatabase`), e o teste de
+#: lá confere que o resultado é este schema, byte a byte.
+_MIGRATION_15_CUSTOMER_COLUMNS: Final[tuple[tuple[str, str, str], ...]] = (
+    ("customers", "email", "TEXT"),
+    ("customers", "cpf", "TEXT"),
+    ("customers", "is_resident", "INTEGER NOT NULL DEFAULT 0"),
+    ("customers", "unit_block", "TEXT"),
+    ("customers", "unit_number", "TEXT"),
+    ("customers", "birth_date", "TEXT"),
+    ("customers", "marketing_opt_in", "INTEGER NOT NULL DEFAULT 0"),
+    ("customers", "marketing_opt_in_at", "TEXT"),
+)
+
+_MIGRATION_15_CUSTOMER_INDEXES: Final[str] = """
+CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_cpf
+    ON customers (tenant_id, cpf) WHERE cpf IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_customers_unit
+    ON customers (tenant_id, unit_block, unit_number) WHERE is_resident = 1;
+"""
+
 
 def _add_column(
     connection: sqlite3.Connection, table: str, column: str, declaration: str
 ) -> None:
     """Acrescenta a coluna se ela ainda não existir.
 
-    Os nomes vêm de `_MIGRATION_6_COLUMNS` e `_MIGRATION_14_COLUMNS`,
+    Os nomes vêm de `_MIGRATION_6_COLUMNS`, `_MIGRATION_14_COLUMNS` e
+    `_MIGRATION_15_CUSTOMER_COLUMNS`,
     constantes deste módulo, e nunca de
     entrada — não há interpolação de dado externo aqui. O SQLite não aceita
     parâmetro em DDL, então a interpolação é a única forma.
@@ -743,6 +779,11 @@ class Database:
         if current < 14:
             for table, column, declaration in _MIGRATION_14_COLUMNS:
                 _add_column(connection, table, column, declaration)
+
+        if current < 15:
+            for table, column, declaration in _MIGRATION_15_CUSTOMER_COLUMNS:
+                _add_column(connection, table, column, declaration)
+            connection.executescript(_MIGRATION_15_CUSTOMER_INDEXES)
 
         if current < SCHEMA_VERSION:
             connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")

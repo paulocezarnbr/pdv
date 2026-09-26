@@ -40,6 +40,9 @@ public sealed record AuthorizationRequest(string Operation, IReadOnlyList<string
 public sealed record RemoteDecisionRequest(
     string Note, IReadOnlyList<string> Logins, Func<string, string, string> Accept, Action<string, string, string> Decline);
 
+/// <summary>O formulário do cadastro: o título, o que já vem preenchido e a recusa da última tentativa.</summary>
+public sealed record CustomerFormRequest(string Title, CustomerProfile Initial, string? Error);
+
 public static class Money
 {
     private static readonly CultureInfo Brazil = CultureInfo.GetCultureInfo("pt-BR");
@@ -230,7 +233,7 @@ public sealed partial class SaleViewModel : ObservableObject, ITefInteraction
     [NotifyCanExecuteChangedFor(nameof(PayCashCommand), nameof(PayCardCommand), nameof(CancelItemCommand), nameof(DiscountCommand),
         nameof(CloseCashCommand), nameof(ReviewRemoteCommand), nameof(PayPrepaidCommand), nameof(PayCreditAccountCommand),
         nameof(IdentifyCustomerCommand), nameof(ConfigureCashbackCommand), nameof(DepositPrepaidCommand),
-        nameof(ManageCreditAccountCommand), nameof(ManageTiersCommand))]
+        nameof(ManageCreditAccountCommand), nameof(ManageTiersCommand), nameof(EditCustomerCommand))]
     public partial bool IsPaying { get; set; }
 
     // -- itens ---------------------------------------------------------------
@@ -316,7 +319,7 @@ public sealed partial class SaleViewModel : ObservableObject, ITefInteraction
     /// <summary>O cliente desta venda: cashback, pré-pago, fiado e nível de desconto.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CustomerSummary))]
-    [NotifyCanExecuteChangedFor(nameof(PayPrepaidCommand), nameof(PayCreditAccountCommand))]
+    [NotifyCanExecuteChangedFor(nameof(PayPrepaidCommand), nameof(PayCreditAccountCommand), nameof(EditCustomerCommand))]
     public partial Customer? Customer { get; set; }
 
     /// <summary>"Lia — cashback R$ 1,45 · pré-pago R$ 20,00 · fiado disponível R$ 50,00".</summary>
@@ -330,33 +333,115 @@ public sealed partial class SaleViewModel : ObservableObject, ITefInteraction
             if (prepaid > 0) parts.Add($"pré-pago {Money.Format(prepaid)}");
             var credit = _customers.CreditPositionOf(Customer.Id);
             if (credit.LimitCents > 0) parts.Add($"fiado disponível {Money.Format(credit.AvailableCents)}");
-            return $"{Customer.Name} — {string.Join(" · ", parts)}";
+            var unit = _customers.Get(Customer.Id)?.Profile.Unit;
+            return string.IsNullOrEmpty(unit)
+                ? $"{Customer.Name} — {string.Join(" · ", parts)}"
+                : $"{Customer.Name} ({unit}) — {string.Join(" · ", parts)}";
         }
     }
 
     /// <summary>Uma escolha numa lista (operação, nível). A casca liga a um diálogo; <c>null</c> é cancelar.</summary>
     public Func<string, IReadOnlyList<string>, Task<int?>> AskOption { get; set; } = (_, _) => Task.FromResult<int?>(null);
 
-    /// <summary>Pelo telefone: acha o cliente ou cadastra na hora. <c>null</c> se o operador desistiu.</summary>
+    /// <summary>
+    /// O formulário do cadastro. A casca liga a um diálogo; <c>null</c> é
+    /// desistir. Volta com a recusa em <see cref="CustomerFormRequest.Error"/> e
+    /// o que foi digitado, para o operador corrigir sem redigitar.
+    /// </summary>
+    public Func<CustomerFormRequest, Task<CustomerProfile?>> AskCustomerForm { get; set; } =
+        _ => Task.FromResult<CustomerProfile?>(null);
+
+    /// <summary>
+    /// Pelo que o cliente disser — WhatsApp, CPF, apartamento ou nome: acha ou
+    /// cadastra na hora. <c>null</c> se o operador desistiu.
+    /// </summary>
     private async Task<Customer?> FindOrCreateCustomerAsync()
     {
-        var phone = await AskText("Telefone do cliente:");
-        if (string.IsNullOrWhiteSpace(phone)) return null;
-        if (_customers!.FindByPhone(phone) is { } found) return found;
-
-        var name = await AskText("Cliente novo. Nome:");
-        if (string.IsNullOrWhiteSpace(name)) return null;
-        try
+        var text = await AskText("Cliente: WhatsApp, CPF, apartamento ou nome");
+        if (string.IsNullOrWhiteSpace(text)) return null;
+        var found = _customers!.Find(text);
+        if (found.Count == 1) return found[0].Customer;
+        if (found.Count > 1)
         {
-            var id = _customers.CreateCustomer(name, phone);
-            return new Customer(id, name.Trim(), new string(phone.Where(char.IsAsciiDigit).ToArray()));
+            // Mesmo apartamento, mesmo sobrenome: o operador escolhe lendo o
+            // apartamento e o WhatsApp, não só o nome.
+            var choice = await AskOption("Qual cliente?", [.. found.Select(Describe), "Cadastrar cliente novo"]);
+            if (choice is not { } index) return null;
+            if (index < found.Count) return found[index].Customer;
         }
-        catch (CustomerException error)
+        return await RegisterCustomerAsync(Guess(text));
+    }
+
+    /// <summary>"Lia Cliente · Bloco B · apto 101 · (21) 99876-5432".</summary>
+    public static string Describe(CustomerRecord record)
+    {
+        var parts = new List<string> { record.Profile.Name };
+        if (record.Profile.Unit.Length > 0) parts.Add(record.Profile.Unit);
+        if (record.Profile.WhatsApp is { } phone) parts.Add(CustomerRules.FormatPhone(phone));
+        else if (record.Profile.Cpf is { } cpf) parts.Add("CPF " + CustomerRules.FormatCpf(cpf));
+        return string.Join(" · ", parts);
+    }
+
+    /// <summary>O que foi buscado já entra no formulário: ninguém redigita o WhatsApp que acabou de ditar.</summary>
+    public static CustomerProfile Guess(string text)
+    {
+        var trimmed = text.Trim();
+        var digits = CustomerRules.Digits(trimmed);
+        if (!trimmed.Any(char.IsLetter) && digits.Length > 0)
         {
-            Error = error.Message;
-            return null;
+            // CPF se veio escrito como CPF (123.456.789-09) ou se só pode ser
+            // CPF; celular também tem 11 dígitos, e na dúvida é WhatsApp.
+            var looksLikeCpf = trimmed.Count(c => c == '.') == 2 && trimmed.Contains('-');
+            if (looksLikeCpf && CustomerRules.IsValidCpf(digits)) return new CustomerProfile("", Cpf: digits);
+            if (digits.Length is 10 or 11 or 12 or 13) return new CustomerProfile("", WhatsApp: digits);
+        }
+        var (block, unit) = CustomerLedgers.ParseUnit(trimmed);
+        if (unit is not null) return new CustomerProfile("", IsResident: true, UnitBlock: block, UnitNumber: unit);
+        return new CustomerProfile(trimmed);
+    }
+
+    private async Task<Customer?> RegisterCustomerAsync(CustomerProfile initial)
+    {
+        var request = new CustomerFormRequest("Cliente novo", initial, null);
+        while (await AskCustomerForm(request) is { } typed)
+        {
+            try
+            {
+                var id = _customers!.Register(typed);
+                return _customers.Get(id)!.Customer;
+            }
+            catch (CustomerException error)
+            {
+                request = request with { Initial = typed, Error = error.Message };
+            }
+        }
+        return null;
+    }
+
+    /// <summary>Ctrl+E: corrigir o cadastro do cliente da venda (apartamento, e-mail, consentimento).</summary>
+    [RelayCommand(CanExecute = nameof(CanEditCustomer))]
+    private async Task EditCustomerAsync()
+    {
+        Error = null;
+        if (Customer is null || _customers!.Get(Customer.Id) is not { } record) return;
+        var request = new CustomerFormRequest($"Cadastro de {record.Profile.Name}", record.Profile, null);
+        while (await AskCustomerForm(request) is { } typed)
+        {
+            try
+            {
+                _customers.Update(record.Id, typed);
+                Customer = _customers.Get(record.Id)!.Customer;
+                Notice = "Cadastro atualizado: " + CustomerSummary;
+                return;
+            }
+            catch (CustomerException error)
+            {
+                request = request with { Initial = typed, Error = error.Message };
+            }
         }
     }
+
+    private bool CanEditCustomer() => Customer is not null && _customers is not null && !IsPaying;
 
     private bool HasCustomers() => _customers is not null && !IsPaying;
 

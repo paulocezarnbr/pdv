@@ -7,10 +7,11 @@ public sealed class PdvDatabaseException(string message) : Exception(message);
 /// <summary>O <c>pdv_local.db</c> — o mesmo arquivo que o PDV em Python usa.</summary>
 /// <remarks>
 /// <para>
-/// Até a fase C7 do porte as migrations continuam no Python. Este lado só abre
-/// um banco na versão que conhece (<see cref="SupportedSchemaVersion"/>) e recusa
-/// o resto com uma mensagem que diz o que fazer — um PDV que abre um schema que
-/// não conhece grava venda onde não devia.
+/// Até a fase C7 do porte as migrations continuam no Python. Este lado abre um
+/// banco na versão que conhece (<see cref="SupportedSchemaVersion"/>), aplica
+/// sozinho a última migração (da versão anterior para esta — o primeiro passo
+/// da C7a) e recusa o resto com uma mensagem que diz o que fazer: um PDV que
+/// abre um schema que não conhece grava venda onde não devia.
 /// </para>
 /// <para>
 /// Os PRAGMAs são os mesmos do Python: WAL, <c>synchronous=FULL</c> (a venda
@@ -21,7 +22,33 @@ public sealed class PdvDatabaseException(string message) : Exception(message);
 public sealed class PdvDatabase : IDisposable
 {
     /// <summary>O <c>SCHEMA_VERSION</c> do Python que este código foi testado contra.</summary>
-    public const int SupportedSchemaVersion = 14;
+    public const int SupportedSchemaVersion = 15;
+
+    /// <summary>
+    /// A migração 15 do Python (<c>_MIGRATION_15_CUSTOMER_COLUMNS</c>): o
+    /// cadastro do cliente. Mesmo texto, porque o SQLite guarda a declaração
+    /// como foi escrita, e o teste compara o schema resultante com o do Python.
+    /// </summary>
+    private static readonly (string Column, string Declaration)[] CustomerProfileColumns =
+    [
+        ("email", "TEXT"),
+        ("cpf", "TEXT"),
+        ("is_resident", "INTEGER NOT NULL DEFAULT 0"),
+        ("unit_block", "TEXT"),
+        ("unit_number", "TEXT"),
+        ("birth_date", "TEXT"),
+        ("marketing_opt_in", "INTEGER NOT NULL DEFAULT 0"),
+        ("marketing_opt_in_at", "TEXT"),
+    ];
+
+    private const string CustomerProfileIndexes = """
+
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_cpf
+            ON customers (tenant_id, cpf) WHERE cpf IS NOT NULL;
+        CREATE INDEX IF NOT EXISTS idx_customers_unit
+            ON customers (tenant_id, unit_block, unit_number) WHERE is_resident = 1;
+
+        """;
 
     public PdvDatabase(string path)
     {
@@ -70,6 +97,11 @@ public sealed class PdvDatabase : IDisposable
     private void EnsureCompatible()
     {
         var version = SchemaVersion;
+        if (version == SupportedSchemaVersion - 1)
+        {
+            UpgradeToCustomerProfile();
+            version = SchemaVersion;
+        }
         if (version == SupportedSchemaVersion) return;
 
         Connection.Dispose();
@@ -82,6 +114,36 @@ public sealed class PdvDatabase : IDisposable
             _ =>
                 $"O banco está na versão {version}, mais nova que a {SupportedSchemaVersion} que esta versão " +
                 "do PDV conhece. Atualize o PDV antes de abrir o caixa — nenhuma venda foi perdida.",
+        });
+    }
+
+    /// <summary>A versão 14 → 15, numa transação, como o <c>migrate()</c> do Python faria.</summary>
+    /// <remarks>
+    /// O caixa, o ciclo de sincronização e o salão abrem conexões próprias ao
+    /// mesmo arquivo. A trava de escrita é pega antes de reler a versão: quem
+    /// chega depois encontra o banco já na 15 e não faz nada.
+    /// </remarks>
+    private void UpgradeToCustomerProfile()
+    {
+        InTransaction(transaction =>
+        {
+            if (Convert.ToInt32(transaction.Command("PRAGMA user_version").ExecuteScalar()) != SupportedSchemaVersion - 1) return;
+            var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            using (var info = transaction.Command("PRAGMA table_info(customers)"))
+            using (var reader = info.ExecuteReader())
+            {
+                while (reader.Read()) existing.Add(reader.GetString(1));
+            }
+            foreach (var (column, declaration) in CustomerProfileColumns)
+            {
+                // Nomes desta classe, nunca de entrada: o SQLite não aceita parâmetro em DDL.
+                if (!existing.Contains(column))
+                {
+                    transaction.Command($"ALTER TABLE customers ADD COLUMN {column} {declaration}").ExecuteNonQuery();
+                }
+            }
+            transaction.Command(CustomerProfileIndexes).ExecuteNonQuery();
+            transaction.Command($"PRAGMA user_version = {SupportedSchemaVersion}").ExecuteNonQuery();
         });
     }
 

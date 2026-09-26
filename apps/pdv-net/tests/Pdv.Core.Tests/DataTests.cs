@@ -32,7 +32,7 @@ public sealed class DataTests : IDisposable
     [Theory]
     [InlineData(0, "não foi inicializado")]
     [InlineData(13, "Abra uma vez o PDV atual")]
-    [InlineData(15, "Atualize o PDV")]
+    [InlineData(16, "Atualize o PDV")]
     public void Refuses_a_schema_it_does_not_know(int version, string advice)
     {
         using var other = new TestDatabase(version);

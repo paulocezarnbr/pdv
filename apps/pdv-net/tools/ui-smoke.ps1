@@ -311,7 +311,13 @@ public static class SmokeTls {
     #     gerente e uma venda paga com o pré-pago
     Click (Find $window 'IdentifyCustomer')
     Answer '(21) 99999-0000'
-    Answer 'Lia Cliente'
+    # Cliente novo: o formulário abre com o WhatsApp já preenchido.
+    $formPhone = (Find $window 'CustomerWhatsApp').GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).Current.Value
+    SetText (Find $window 'CustomerName') 'Lia Cliente' 'o nome do cliente'
+    (Find $window 'CustomerResident').GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Toggle()
+    SetText (Find $window 'CustomerUnit') '101' 'o apartamento'
+    Click (Named 'Salvar')
+    Start-Sleep -Milliseconds 400
     $summary = Text (Find $window 'CustomerSummary')
     Click (Find $window 'DepositPrepaid')
     Answer '20,00'
@@ -322,9 +328,10 @@ public static class SmokeTls {
     Click (Find $window 'PayPrepaid')
     $deadline = (Get-Date).AddSeconds(10)
     do { $message = NoticeText; Start-Sleep -Milliseconds 200 } while ($message -notmatch 'Saldo pré-pago' -and (Get-Date) -lt $deadline)
-    if ($summary -notmatch '^Lia Cliente') { $failures += "cliente: '$summary'" }
+    if ($formPhone -ne '(21) 99999-0000') { $failures += "cliente: o formulário veio com o WhatsApp '$formPhone'" }
+    elseif ($summary -notmatch '^Lia Cliente \(apto 101\)') { $failures += "cliente: '$summary'" }
     elseif ($message -notmatch 'Saldo pré-pago: R\$ 5,50') { $failures += "pré-pago: '$message'" }
-    else { Write-Host 'ok  cliente pelo telefone, carga com PIN e venda no pré-pago' }
+    else { Write-Host 'ok  cliente pelo WhatsApp, cadastro de morador, carga com PIN e venda no pré-pago' }
 
     # 5. item pesado pela balança simulada (847 g), desconto de 10% com o PIN
     #    do gerente e cancelamento do item, pelos diálogos da tela.

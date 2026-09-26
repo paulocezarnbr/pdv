@@ -90,6 +90,9 @@ const WRITABLE: Readonly<Record<string, readonly string[]>> = {
   ],
   customers: [
     "id", "client_uuid", "name", "phone", "is_active", "created_at", "updated_at",
+    // Schema 15 do caixa: o cadastro completo (migração 020).
+    "email", "cpf", "is_resident", "unit_block", "unit_number", "birth_date",
+    "marketing_opt_in", "marketing_opt_in_at",
   ],
   cashback_ledger: [
     "id", "store_id", "client_uuid", "customer_id", "order_id", "entry_type",
@@ -227,6 +230,17 @@ const UPDATABLE: Readonly<Record<string, Mutable>> = {
     newer: "updated_at",
     upsert: true,
   },
+  // O caixa corrige o cadastro (apartamento, e-mail, consentimento). A mudança
+  // mais nova vence; o `created_at` não muda nunca.
+  customers: {
+    key: "id",
+    columns: [
+      "name", "phone", "email", "cpf", "is_resident", "unit_block", "unit_number",
+      "birth_date", "marketing_opt_in", "marketing_opt_in_at", "is_active", "updated_at",
+    ],
+    newer: "updated_at",
+    upsert: true,
+  },
 };
 
 /** Estados de comanda que não voltam: pago é dinheiro, cancelado é trilha. */
@@ -275,6 +289,8 @@ export class SyncMerger {
       const adapted = adapt(item);
       if (adapted.entity_table === "audit_ledger") {
         results.push(await this.applyAuditEntry(adapted, tx));
+      } else if (adapted.entity_table === "customers") {
+        results.push(await this.applyCustomer(adapted, tx));
       } else if (adapted.operation === "update" && adapted.entity_table in UPDATABLE) {
         results.push(await this.applyUpdate(adapted, tx));
       } else {
@@ -395,6 +411,30 @@ export class SyncMerger {
     `;
 
     return { client_uuid: item.client_uuid, status: "applied", server_seq: serverSeq };
+  }
+
+  // -- cadastro de cliente ------------------------------------------------- //
+
+  /**
+   * O cliente, com a colisão de WhatsApp contida neste item.
+   *
+   * Os clientes não descem da nuvem para os outros caixas: a mesma pessoa
+   * cadastrada em dois balcões chega aqui duas vezes, com o mesmo WhatsApp, e
+   * o índice único recusa a segunda. Sem o savepoint, essa recusa derrubava o
+   * lote inteiro — e com ele as vendas do caixa, que ficavam presas atrás de
+   * um cadastro repetido.
+   */
+  private async applyCustomer(item: SyncItem, tx: Tx): Promise<ItemResult> {
+    try {
+      return await tx.savepoint((sp) =>
+        item.operation === "update" && item.entity_table in UPDATABLE
+          ? this.applyUpdate(item, sp as never)
+          : this.applyGeneric(item, sp as never),
+      ) as ItemResult;
+    } catch (error) {
+      if ((error as { code?: string }).code !== "23505") throw error;
+      return reject(item, "este WhatsApp já está no cadastro de outro cliente, feito em outro caixa");
+    }
   }
 
   // -- demais entidades ---------------------------------------------------- //
