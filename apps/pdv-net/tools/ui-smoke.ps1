@@ -241,6 +241,25 @@ try {
     if ($greeting -ne 'Olá, Ana') { $failures += "entrada: esperado 'Olá, Ana', veio '$greeting'" }
     else { Write-Host 'ok  PIN certo entra no caixa' }
 
+    # 3b. o servidor do salão sobe com o caixa, em HTTPS com o certificado
+    #     autoassinado, e serve o app do garçom. O celular confere a digital,
+    #     não uma autoridade certificadora: aqui a validação é desligada só
+    #     nesta sessão do PowerShell (5.1, sem -SkipCertificateCheck).
+    [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+    [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
+    $deadline = (Get-Date).AddSeconds(15)
+    $health = $null
+    do {
+        try { $health = Invoke-RestMethod -Uri 'https://127.0.0.1:8420/health' -TimeoutSec 3 } catch { Start-Sleep -Milliseconds 300 }
+    } while ($null -eq $health -and (Get-Date) -lt $deadline)
+    if ($null -eq $health -or $health.service -ne 'pdv-edge') { $failures += 'salão: /health não respondeu em https://127.0.0.1:8420' }
+    else {
+        $page = Invoke-WebRequest -Uri 'https://127.0.0.1:8420/' -UseBasicParsing -TimeoutSec 5
+        if ($page.StatusCode -ne 200 -or $page.Content -notmatch '<html') { $failures += 'salão: o app do garçom não abriu em /' }
+        else { Write-Host 'ok  servidor do salão em HTTPS com o app do garçom' }
+    }
+    [System.Net.ServicePointManager]::ServerCertificateValidationCallback = $null
+
     # 4. bipa o código de barras e vende no débito (TEF simulado)
     $query = Find $window 'Query'
     $query.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue('7890000000011')
@@ -427,4 +446,4 @@ if ($failures.Count -gt 0) {
     }
     exit 1
 }
-Write-Host 'Caixa: ok (login, abertura, venda, TEF, cliente, pré-pago, balança, desconto, cancelamento, fechamento e ativação)'
+Write-Host 'Caixa: ok (login, abertura, salão, venda, TEF, cliente, pré-pago, balança, desconto, cancelamento, fechamento e ativação)'

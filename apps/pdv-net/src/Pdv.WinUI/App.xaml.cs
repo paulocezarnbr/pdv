@@ -5,11 +5,13 @@ using Pdv.App;
 using Pdv.Data;
 using Pdv.Core.Tef;
 using Pdv.Data.Auth;
+using Pdv.Data.Edge;
 using Pdv.Data.Fiscal;
 using Pdv.Data.Provisioning;
 using Pdv.Data.Sales;
 using Pdv.Data.Secrets;
 using Pdv.Data.Sync;
+using Pdv.Edge;
 
 namespace Pdv.WinUI;
 
@@ -36,6 +38,12 @@ public partial class App : Application
 
     /// <summary>O token do terminal, lido do cofre uma vez na abertura.</summary>
     private string? _deviceToken;
+
+    /// <summary>O servidor do salão: um por execução do app, não por abertura de caixa.</summary>
+    private SalonServer? _salon;
+
+    /// <summary>O certificado em uso, para o painel do salão mostrar a digital (C6f).</summary>
+    private TlsMaterial? _salonTls;
 
     public App()
     {
@@ -330,7 +338,8 @@ public partial class App : Application
         try
         {
             var vault = new SecretVault(Path.Combine(Path.GetDirectoryName(path)!, "secrets"));
-            var ledger = new AuditLedger(profile.TenantId, profile.StoreId, profile.DeviceId, vault.EnsureDeviceSecret());
+            var secret = vault.EnsureDeviceSecret();
+            var ledger = new AuditLedger(profile.TenantId, profile.StoreId, profile.DeviceId, secret);
             var terminal = profile.Identity;
 
             // A gaveta antes da venda: fundo de troco na abertura, e a de outro
@@ -454,11 +463,71 @@ public partial class App : Application
             };
 
             _window.ShowCounter(sale, _sync);
+            await StartSalonAsync(path, profile, secret);
         }
         catch (Exception error) when (error is SecretVaultException or PdvDatabaseException)
         {
             CrashLog.Write("abertura do caixa", error);
             _window!.ShowFatal(error.Message);
+        }
+    }
+
+    /// <summary>
+    /// O servidor do salão para os celulares dos garçons e a tela da cozinha,
+    /// depois de o caixa abrir — como o PDV em Python.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>PDV_EDGE=0</c> desliga: uma loja só de balcão não precisa abrir porta
+    /// na rede, e superfície que não serve a ninguém é só risco.
+    /// <c>PDV_EDGE_TLS=0</c> sobe em HTTP, para diagnóstico de rede — e avisa no
+    /// log, porque token de aparelho e PIN passam a trafegar em claro.
+    /// </para>
+    /// <para>
+    /// Conexão própria ao banco, como o ciclo de sincronização. Porta ocupada,
+    /// certificado que não se gera ou banco que não abre: o salão fica fora e o
+    /// balcão segue vendendo.
+    /// </para>
+    /// </remarks>
+    private async Task StartSalonAsync(string path, TerminalProfile profile, byte[] secret)
+    {
+        if (_salon is not null || Environment.GetEnvironmentVariable("PDV_EDGE") == "0") return;
+        PdvDatabase? database = null;
+        try
+        {
+            database = new PdvDatabase(path);
+            var ledger = new AuditLedger(profile.TenantId, profile.StoreId, profile.DeviceId, secret);
+            var services = new SalonServices(database, profile, ledger, new EventHub());
+            if (Environment.GetEnvironmentVariable("PDV_EDGE_TLS") == "0")
+            {
+                CrashLog.Write("PDV_EDGE_TLS=0: o salão sobe em HTTP. Token de aparelho e PIN trafegam em claro na rede da loja.", null);
+            }
+            else
+            {
+                _salonTls = SalonCertificate.Ensure(Path.Combine(Path.GetDirectoryName(path)!, "tls"), profile.StoreName,
+                    SalonCertificate.DefaultHosts(), log: line => CrashLog.Write(line, null));
+            }
+            var server = new SalonServer(services, line => CrashLog.Write(line, null));
+            if (!await server.StartAsync(certificate: _salonTls?.Certificate)) return;
+            _salon = server;
+            var connection = database;
+            database = null;
+            if (_salonTls is { } tls) CrashLog.Write($"Salão: digital do certificado {tls.ShortFingerprint}.", null);
+            _window!.Closed += (_, _) =>
+            {
+                // Primeiro o que fala com a rede, depois o banco. Fora da thread da
+                // tela: esperar nela a continuação que volta para ela travaria.
+                Task.Run(server.StopAsync).Wait(TimeSpan.FromSeconds(5));
+                connection.Dispose();
+            };
+        }
+        catch (PdvDatabaseException error)
+        {
+            CrashLog.Write("servidor do salão", error);
+        }
+        finally
+        {
+            database?.Dispose();
         }
     }
 

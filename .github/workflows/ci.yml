@@ -98,20 +98,27 @@ jobs:
         with:
           python-version: "3.14"
 
-      # Só os dois pacotes que o crosscheck usa, nos pins do requirements.txt
-      # do PDV: argon2-cffi (PIN) e pywin32 (DPAPI do cofre).
+      # Só os pacotes que o crosscheck usa, nos pins do requirements.txt do
+      # PDV: argon2-cffi (PIN), pywin32 (DPAPI do cofre) e cryptography
+      # (certificado do salão).
       - name: Pins do PDV em Python usados na conferência
-        run: python -m pip install argon2-cffi==25.1.0 pywin32==312
+        run: python -m pip install argon2-cffi==25.1.0 pywin32==312 cryptography==47.0.0
 
       # DPAPI prende o blob à máquina: o cofre do Python é gravado aqui, neste
       # runner, para o C# ler na suíte (SecretVaultTests).
       - name: Cofre gravado pelo PDV em Python
         run: python crosscheck.py write-vault "${{ runner.temp }}\py-vault"
 
+      # O certificado do salão gerado pelo Python: o C# precisa reaproveitá-lo
+      # (SalonCertificateTests), senão a digital conferida no pareamento muda.
+      - name: Certificado do salão gerado pelo PDV em Python
+        run: python crosscheck.py write-tls "${{ runner.temp }}\py-tls"
+
       - name: Build e testes
         env:
           PDV_CROSSCHECK_OUT: ${{ runner.temp }}\crosscheck.db
           PDV_PY_VAULT_DIR: ${{ runner.temp }}\py-vault
+          PDV_PY_TLS_DIR: ${{ runner.temp }}\py-tls
         run: dotnet test --logger "trx;LogFileName=report.trx" --results-directory TestResults
 
       # A volta dos contratos: o ledger, o hash de PIN e o cofre que o C#

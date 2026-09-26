@@ -26,6 +26,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Pdv.App\Pdv.App.csproj" />
+    <ProjectReference Include="..\Pdv.Edge\Pdv.Edge.csproj" />
   </ItemGroup>
 
 </Project>

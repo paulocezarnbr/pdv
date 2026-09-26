@@ -442,7 +442,7 @@ A arquitetura existe para que a tela seja testável:
     casos) e a gorjeta somada sem filtrar comanda paga (comanda aberta
     nunca tem gorjeta). As mensagens dos commits `d3081b4` e `00ce757` citam
     84 e 72 passos; os números certos são 69 e 70.
-  - **Servidor HTTP** (`Pdv.Edge`: Kestrel dentro do PDV). As 30 rotas do
+  - **Servidor HTTP** (`Pdv.Edge`: Kestrel dentro do PDV). As 28 rotas do
     `edge/server.py` e o WebSocket da cozinha, conferidos contra
     `contracts/salon-http.json`, gerado pelo FastAPI com o `TestClient`
     (`tests/salon_http_script.py`, 114 requisições): status, tipo do
@@ -466,8 +466,26 @@ A arquitetura existe para que a tela seja testável:
       que nenhuma rota responda 500.
     - 22 mutações na camada HTTP, todas mortas (duas depois de acrescentar
       os passos de ordem de conferência).
-  - **Falta:** TLS (`edge/tls.py`), anúncio na rede (`edge/discovery.py`) e
-    a ligação do servidor no caixa (WinUI), com o painel do salão (C6f).
+  - **TLS** (`SalonCertificate`, o `edge/tls.py`): autoassinado ECDSA P-256,
+    398 dias, SAN com `localhost`, `127.0.0.1` e o IP da LAN, renovado 30
+    dias antes e quando o IP muda. Mesmos arquivos PEM (`tls/edge-cert.pem`,
+    `tls/edge-key.pem`) na mesma pasta: **cada PDV reaproveita o certificado
+    do outro**, com a mesma digital — trocar obrigaria a loja a conferir a
+    digital de novo em todo celular. O CI prova os dois sentidos
+    (`crosscheck.py write-tls` → `SalonCertificateTests`, e a volta). No
+    Windows a chave lida de PEM passa por PKCS#12: o SChannel recusa chave
+    efêmera no servidor.
+  - **No caixa** (`App.xaml.cs`): o salão sobe depois de o caixa abrir, uma
+    vez por execução, com conexão própria ao banco. `PDV_EDGE=0` desliga e
+    `PDV_EDGE_TLS=0` sobe em HTTP (com aviso no log), como no Python. O
+    `ui-smoke.ps1` confere `/health` e o app do garçom em HTTPS na 8420.
+  - **Falta:** anúncio na rede (`edge/discovery.py`, mDNS — sem cliente no
+    repositório ainda: é para o app nativo) e o painel do salão com a
+    digital e o QR (C6f). O cancelamento remoto em C# marca os tickets da
+    cozinha como cancelados, mas não avisa a tela da cozinha pelo
+    barramento, como o Python avisa — entra junto com o painel.
+  - A mensagem do commit `444a7cb` diz 30 rotas; são 28 (27 HTTP e o
+    WebSocket).
   - **Baixa de insumo pelo salão (correção nos dois PDVs, 26/09/2026).** O
     item lançado pelo garçom não baixava estoque: `add_item` gravava
     `consumptions=()`. Agora baixa **no lançamento**, pela mesma ficha do

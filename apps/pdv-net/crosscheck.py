@@ -80,6 +80,41 @@ def read_vault(folder: str) -> int:
     return 0
 
 
+#: Os mesmos de SalonCertificateTests (C#).
+TLS_STORE = "Loja"
+TLS_HOSTS = ("localhost", "127.0.0.1")
+
+
+def write_tls(folder: str) -> int:
+    """Gera o certificado do salão pelo PDV em Python, para o C# reaproveitar."""
+    from pdv.edge.tls import ensure_certificate
+
+    material = ensure_certificate(Path(folder), store_name=TLS_STORE, hosts=TLS_HOSTS)
+    if material is None:
+        print("FALHOU: o PDV em Python não gerou o certificado do salão")
+        return 1
+    (Path(folder) / "fingerprint.txt").write_text(material.fingerprint, encoding="ascii")
+    print(f"ok: certificado do salão gerado pelo Python em {folder}")
+    return 0
+
+
+def read_tls(folder: Path) -> int:
+    """O certificado que o C# gerou é REAPROVEITADO pelo Python, não trocado.
+
+    Trocar mudaria a digital que o garçom conferiu no pareamento: na transição
+    entre os dois PDVs, cada troca faria a loja inteira conferir de novo.
+    """
+    from pdv.edge.tls import ensure_certificate
+
+    expected = (folder / "fingerprint.txt").read_text(encoding="ascii").strip()
+    material = ensure_certificate(folder, store_name=TLS_STORE, hosts=TLS_HOSTS)
+    if material is None or material.fingerprint != expected:
+        print("FALHOU: o PDV em Python não reaproveitou o certificado do salão gerado pelo C#")
+        return 1
+    print("ok: certificado do salão gerado pelo C# reaproveitado pelo PDV em Python")
+    return 0
+
+
 def read_activation(folder: Path) -> int:
     """Abre, pelo PDV em Python, o terminal que o C# ativou (ActivationTests)."""
     from pdv.data.database import Database
@@ -133,9 +168,13 @@ def read_activation(folder: Path) -> int:
 if __name__ == "__main__":
     if sys.argv[1] == "write-vault":
         sys.exit(write_vault(sys.argv[2]))
+    if sys.argv[1] == "write-tls":
+        sys.exit(write_tls(sys.argv[2]))
     status = main(sys.argv[1])
     if status == 0 and len(sys.argv) > 2:
         status = read_vault(sys.argv[2])
     if status == 0:
         status = read_activation(Path(sys.argv[1]).parent / "activation")
+    if status == 0:
+        status = read_tls(Path(sys.argv[1]).parent / "tls")
     sys.exit(status)
