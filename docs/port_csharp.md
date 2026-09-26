@@ -479,9 +479,18 @@ A arquitetura existe para que a tela seja testável:
     vez por execução, com conexão própria ao banco. `PDV_EDGE=0` desliga e
     `PDV_EDGE_TLS=0` sobe em HTTP (com aviso no log), como no Python. O
     `ui-smoke.ps1` confere `/health` e o app do garçom em HTTPS na 8420.
-  - **Falta:** anúncio na rede (`edge/discovery.py`, mDNS — sem cliente no
-    repositório ainda: é para o app nativo) e o painel do salão com a
-    digital e o QR (C6f). O cancelamento remoto em C# marca os tickets da
+  - **Anúncio na rede** (`ServiceAnnouncer`, o `edge/discovery.py`): mDNS
+    `_pdvedge._tcp` com um responder próprio (sem pacote de terceiros),
+    PTR, SRV, TXT e A com as propriedades e os TTLs do `zeroconf`, anúncio
+    duas vezes na subida e despedida (TTL zero) na saída, consulta "legada"
+    respondida direto a quem perguntou. O CI prova o formato pelo parser do
+    próprio `zeroconf` (`crosscheck.py write-mdns` → resposta do C# → leitura
+    pelo `DNSIncoming`) e o laço de rede com uma consulta UDP de verdade.
+    Pacote malformado, com ponteiro em laço ou resposta de outro aparelho
+    não vira pergunta. 9 mutações, 8 mortas; a que sobrevive (teto de
+    saltos maior) é equivalente, o laço termina de todo jeito. Nome de loja
+    com ponto vira um rótulo só (o Python o partiria em dois).
+  - **Falta:** o painel do salão com a digital e o QR (C6f). O cancelamento remoto em C# marca os tickets da
     cozinha como cancelados, mas não avisa a tela da cozinha pelo
     barramento, como o Python avisa — entra junto com o painel.
   - A mensagem do commit `444a7cb` diz 30 rotas; são 28 (27 HTTP e o

@@ -115,6 +115,79 @@ def read_tls(folder: Path) -> int:
     return 0
 
 
+#: Os mesmos de ServiceAnnouncerTests (C#).
+MDNS = {
+    "store_id": "bbbbbbbb-0000-0000-0000-000000000002",
+    "store_name": "Confeitaria Aurora",
+    "device_id": "cccccccc-0000-0000-0000-000000000003",
+    "port": 8420,
+    "scheme": "https",
+    "address": "192.168.0.14",
+}
+
+
+def write_mdns(folder: str) -> int:
+    """A consulta que um cliente `zeroconf` faz pelo serviço, para o C# responder."""
+    from zeroconf import DNSOutgoing, DNSQuestion
+    from zeroconf.const import _CLASS_IN, _FLAGS_QR_QUERY, _TYPE_PTR
+
+    from pdv.edge.discovery import SERVICE_TYPE
+
+    out = DNSOutgoing(_FLAGS_QR_QUERY)
+    out.add_question(DNSQuestion(SERVICE_TYPE, _TYPE_PTR, _CLASS_IN))
+    target = Path(folder)
+    target.mkdir(parents=True, exist_ok=True)
+    (target / "query.bin").write_bytes(out.packets()[0])
+    print(f"ok: consulta mDNS gerada pelo zeroconf em {folder}")
+    return 0
+
+
+def read_mdns(folder: Path) -> int:
+    """A resposta, o anúncio e a despedida do C#, lidos pelo parser do `zeroconf`."""
+    import socket as net
+
+    from zeroconf import DNSIncoming
+    from zeroconf.const import _TYPE_A, _TYPE_PTR, _TYPE_SRV, _TYPE_TXT
+
+    from pdv.edge.discovery import SERVICE_TYPE
+
+    instance = f"{MDNS['store_name']}.{SERVICE_TYPE}"
+    host = f"pdv-{MDNS['device_id'][:8]}.local."
+    for name, ttl in (("answer.bin", True), ("announcement.bin", True), ("goodbye.bin", False)):
+        incoming = DNSIncoming((folder / name).read_bytes())
+        if not incoming.valid or not incoming.is_response():
+            print(f"FALHOU: {name} do C# não é uma resposta mDNS válida para o zeroconf")
+            return 1
+        by_type = {record.type: record for record in incoming.answers()}
+        ptr, srv, txt, a = (by_type.get(t) for t in (_TYPE_PTR, _TYPE_SRV, _TYPE_TXT, _TYPE_A))
+        problems = []
+        if ptr is None or ptr.name != SERVICE_TYPE or ptr.alias != instance:
+            problems.append("PTR")
+        if srv is None or srv.name != instance or srv.port != MDNS["port"] or srv.server != host:
+            problems.append("SRV")
+        if txt is None or _txt(txt.text) != {k: MDNS[k] for k in ("store_id", "store_name", "device_id", "scheme")} | {"version": "1.0.0"}:
+            problems.append("TXT")
+        if a is None or a.name != host or net.inet_ntoa(a.address) != MDNS["address"]:
+            problems.append("A")
+        if any((record.ttl > 0) != ttl for record in (ptr, srv, txt, a) if record is not None):
+            problems.append("TTL")
+        if problems:
+            print(f"FALHOU: {name} do C# lido pelo zeroconf com erro em {', '.join(problems)}")
+            return 1
+    print("ok: resposta, anúncio e despedida mDNS do C# lidos pelo zeroconf")
+    return 0
+
+
+def _txt(raw: bytes) -> dict[str, str]:
+    entries, index = {}, 0
+    while index < len(raw):
+        size = raw[index]
+        key, _, value = raw[index + 1:index + 1 + size].decode("utf-8").partition("=")
+        entries[key] = value
+        index += 1 + size
+    return entries
+
+
 def read_activation(folder: Path) -> int:
     """Abre, pelo PDV em Python, o terminal que o C# ativou (ActivationTests)."""
     from pdv.data.database import Database
@@ -170,6 +243,8 @@ if __name__ == "__main__":
         sys.exit(write_vault(sys.argv[2]))
     if sys.argv[1] == "write-tls":
         sys.exit(write_tls(sys.argv[2]))
+    if sys.argv[1] == "write-mdns":
+        sys.exit(write_mdns(sys.argv[2]))
     status = main(sys.argv[1])
     if status == 0 and len(sys.argv) > 2:
         status = read_vault(sys.argv[2])
@@ -177,4 +252,6 @@ if __name__ == "__main__":
         status = read_activation(Path(sys.argv[1]).parent / "activation")
     if status == 0:
         status = read_tls(Path(sys.argv[1]).parent / "tls")
+    if status == 0:
+        status = read_mdns(Path(sys.argv[1]).parent / "mdns")
     sys.exit(status)

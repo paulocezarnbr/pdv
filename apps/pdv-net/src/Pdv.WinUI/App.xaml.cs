@@ -513,10 +513,22 @@ public partial class App : Application
             var connection = database;
             database = null;
             if (_salonTls is { } tls) CrashLog.Write($"Salão: digital do certificado {tls.ShortFingerprint}.", null);
+            // O anúncio na rede é conveniência: sem ele o celular chega pelo QR ou
+            // pelo endereço digitado. Sem rede (só 127.0.0.1), não há a quem anunciar.
+            ServiceAnnouncer? announcer = null;
+            var address = System.Net.IPAddress.Parse(SalonCertificate.LocalIpAddress());
+            if (!System.Net.IPAddress.IsLoopback(address))
+            {
+                announcer = new ServiceAnnouncer(
+                    new ServiceInfo(profile.StoreId, profile.StoreName, profile.DeviceId, server.Port, server.Scheme, address),
+                    line => CrashLog.Write(line, null));
+                if (!announcer.Start()) announcer = null;
+            }
             _window!.Closed += (_, _) =>
             {
                 // Primeiro o que fala com a rede, depois o banco. Fora da thread da
                 // tela: esperar nela a continuação que volta para ela travaria.
+                announcer?.Dispose();
                 Task.Run(server.StopAsync).Wait(TimeSpan.FromSeconds(5));
                 connection.Dispose();
             };
