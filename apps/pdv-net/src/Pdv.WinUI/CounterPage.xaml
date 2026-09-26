@@ -33,8 +33,12 @@
                      Title="Painel" Message="{x:Bind ViewModel.RemoteNotice, Mode=OneWay}"
                      IsOpen="{x:Bind Has(ViewModel.RemoteNotice), Mode=OneWay}">
                 <InfoBar.ActionButton>
-                    <Button AutomationProperties.AutomationId="ReviewRemote" Content="Ver pedidos"
-                            Command="{x:Bind ViewModel.ReviewRemoteCommand}" />
+                    <Button AutomationProperties.AutomationId="ReviewRemote" Content="Ver pedidos (Ctrl+F4)"
+                            Command="{x:Bind ViewModel.ReviewRemoteCommand}">
+                        <Button.KeyboardAccelerators>
+                            <KeyboardAccelerator Modifiers="Control" Key="F4" />
+                        </Button.KeyboardAccelerators>
+                    </Button>
                 </InfoBar.ActionButton>
             </InfoBar>
             <ItemsControl AutomationProperties.AutomationId="Recoveries" ItemsSource="{x:Bind ViewModel.Recoveries}">
@@ -202,6 +206,12 @@
                         </Button.KeyboardAccelerators>
                     </Button>
                 </Grid>
+                <Button AutomationProperties.AutomationId="ShowShortcuts" Content="F1  Todos os atalhos" HorizontalAlignment="Stretch"
+                        Click="OnShortcutsClick">
+                    <Button.KeyboardAccelerators>
+                        <KeyboardAccelerator Key="F1" />
+                    </Button.KeyboardAccelerators>
+                </Button>
                 <Button AutomationProperties.AutomationId="Reprint" Content="Reimprimir cupom (Ctrl+P)" HorizontalAlignment="Stretch"
                         Command="{x:Bind ViewModel.ReprintCommand}">
                     <Button.KeyboardAccelerators>

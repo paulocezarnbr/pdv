@@ -553,6 +553,14 @@ A arquitetura existe para que a tela seja testável:
       mesa no lugar do cliente. 21 testes; 8 regras verificadas por mutação.
       Como no Python, o cartão da mesa é registrado sem o TEF (maquininha
       avulsa): ligar o TEF na mesa é decisão de produto.
+- [x] **C6f (3/3). F1, a ajuda com todos os atalhos** (`Pdv.App.Shortcuts`), a
+      tabela `SHORTCUTS` do `counter_window.py`. Um teste lê o
+      `CounterPage.xaml` e exige que as teclas ligadas na tela sejam
+      exatamente as da ajuda. Entrou o Ctrl+F4 do Python (aceite do pedido do
+      painel). O relatório da equipe não tem tela no caixa do Python; ele sai
+      pela rota do salão, já portada na C6e. F2, F3 e F10 do Python não
+      existem no C#: a busca é um campo só, e o recebimento são os botões de
+      cada forma.
 - [x] **Cadastro de cliente (pedido do dono, 26/09/2026)** — regra nova, não
       porte (`Pdv.Data.Customers.CustomerProfile`, `CustomerLedgers.Register`,
       `Update`, `Find`).
@@ -640,7 +648,7 @@ Na ordem em que dá para trocar:
 | ~~5~~ | ~~C6c~~ | ~~`hardware/printer/`, `fiscal/danfe.py`~~ | **Feito** (cupom e DANFE byte a byte; o DANFE vai ao papel com a C6d) |
 | ~~6~~ | ~~C6d~~ | ~~`fiscal/cloud.py`~~ | **Feito** (NFC-e online pedida pelo caixa, DANFE do XML autorizado). A **contingência offline** (`fiscal/service.py`, `fiscal/gateway.py`: série própria, QR v3 assinado com o A1) espera a decisão do dono |
 | ~~7~~ | ~~C6e~~ | ~~`edge/` + `edge/webapp`~~ | **Feito** (servidor do salão em ASP.NET Core, TLS, mDNS, KDS; o app do garçom é o mesmo) |
-| 8 | C6f | `ui/tables_dialog.py`, `ui/dialogs.py`, `services/staff_report.py` | Painel do salão (F8) **feito**. Faltam mesas e conta da mesa (F9), F1 com os atalhos e o relatório da equipe |
+| ~~8~~ | ~~C6f~~ | ~~`ui/salon_panel.py`, `ui/tables_dialog.py`, F1~~ | **Feito** (painel do salão F8, mesas F9, ajuda F1) |
 | 9 | C7a | `data/database.py` (~800), `data/seed.py` | Migrations em C#: criar e atualizar o banco sem o Python, e a demonstração |
 | 10 | C7b | `provisioning/detection.py`, `selftest.py`, `smoke.py` (~1.000) | Detecção de periféricos, autoteste do pacote e fumaça pós-instalação |
 | 11 | C7c | `setup_wizard.py`, `main.py`, `packaging/` | O instalador entrega o `PDV.exe` .NET self-contained, com reparo e atualização, e o `harden.ps1` continua |

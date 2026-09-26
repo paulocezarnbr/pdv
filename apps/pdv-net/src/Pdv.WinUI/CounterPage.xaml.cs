@@ -40,6 +40,40 @@ public sealed partial class CounterPage : UserControl
 
     public bool Has(string? text) => !string.IsNullOrEmpty(text);
 
+    /// <summary>F1: a lista completa, para quem ainda não decorou.</summary>
+    private async void OnShortcutsClick(object sender, RoutedEventArgs e)
+    {
+        var grid = new Grid { ColumnSpacing = 24, RowSpacing = 6 };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition());
+        foreach (var (shortcut, row) in Shortcuts.All.Select((s, i) => (s, i)))
+        {
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            var key = new TextBlock
+            {
+                Text = shortcut.Key,
+                FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Consolas"),
+                Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"],
+            };
+            var what = new TextBlock { Text = shortcut.Description, TextWrapping = TextWrapping.Wrap };
+            Grid.SetRow(key, row);
+            Grid.SetRow(what, row);
+            Grid.SetColumn(what, 1);
+            grid.Children.Add(key);
+            grid.Children.Add(what);
+        }
+        // O Grid não aparece na automação do Windows; o ScrollViewer aparece.
+        var list = new ScrollViewer { Content = grid, MaxHeight = 520 };
+        AutomationProperties.SetAutomationId(list, "ShortcutList");
+        await new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = "Atalhos do caixa",
+            Content = list,
+            CloseButtonText = "Fechar",
+        }.ShowAsync();
+    }
+
     /// <summary>F8: o painel do salão. Quem abre é a casca, que tem os serviços do salão.</summary>
     public event EventHandler? SalonRequested;
 

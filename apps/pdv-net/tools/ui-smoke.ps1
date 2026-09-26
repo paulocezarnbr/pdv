@@ -410,6 +410,15 @@ public static class SmokeTls {
         $tables.GetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern).Close()
     }
 
+    # 5d. F1: a ajuda com todos os atalhos
+    Click (Find $window 'ShowShortcuts')
+    $close = Named 'Fechar' 10
+    $help = ((Find $window 'ShortcutList').FindAll($Tree::Descendants, [System.Windows.Automation.Condition]::TrueCondition) |
+        ForEach-Object { $_.Current.Name }) -join ' | '
+    Click $close
+    if ($help -notmatch 'F9 \| Mesas e conta da mesa' -or $help -notmatch 'Ctrl\+E \| Editar o cadastro') { $failures += "ajuda: '$help'" }
+    else { Write-Host 'ok  F1 mostra todos os atalhos' }
+
     # 6. fechamento cego pelo F12: conta, PIN do gerente, resultado e volta ao login
     Click (Find $window 'CloseCash')
     Answer '100,00'

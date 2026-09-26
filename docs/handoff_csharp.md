@@ -131,15 +131,13 @@ Tabelas `kds_tickets`, `store_tables` e afins já estão no schema.
 
 ### 3. C6f — Telas que faltam
 
-O painel do salão (F8) está feito. Faltam mesas e recebimento da conta da
-mesa (F9, `ui/tables_dialog.py`), e F1 com todos os atalhos e o relatório
-da equipe (`ui/dialogs.py`, `services/staff_report.py`; o
-`Pdv.Data.Edge.StaffReport` já existe).
+Feito: painel do salão (F8), mesas (F9) e ajuda (F1). Depois disso entrou o
+cadastro de cliente pedido pelo dono (schema 15; ver `port_csharp.md`).
 
 ### 4. C7a — Migrations em C#
 
-Hoje o banco nasce do `migrate()` do Python (`data/database.py`), e o C# só
-abre a versão 14. O C# precisa:
+Hoje o banco nasce do `migrate()` do Python (`data/database.py`). O C# abre
+a versão 15 e já sobe sozinho da 14 (o cadastro de cliente). O C# precisa:
 - criar o banco;
 - atualizar das versões antigas;
 - carregar a demonstração (`data/seed.py`).
