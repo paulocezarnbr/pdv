@@ -242,6 +242,44 @@ describeDb("emissão fiscal contra PostgreSQL real", () => {
     expect(Number(series!.next_number)).toBe(2);
   });
 
+  it("a nota autorizada volta ao caixa com o nfeProc, para o DANFE sair dele", async () => {
+    const xml = '<nfeProc versao="4.00"><NFe/><protNFe/></nfeProc>';
+    const order = await paidOrder();
+    const provider = new FakeProvider({ ...AUTHORIZED, accessKey: "6".repeat(44), processedXml: xml });
+    const request = randomUUID();
+
+    const issuedNow = issued((await issueFiscalDocument(context, request, order, provider)).document);
+    const repeated = issued((await issueFiscalDocument(context, request, order, provider)).document);
+    const queried = await fiscalDocumentStatus(context, request, provider);
+
+    expect(issuedNow.processed_xml).toBe(xml);
+    expect(repeated.processed_xml).toBe(xml);
+    expect(queried.processed_xml).toBe(xml);
+  });
+
+  it("nota recusada não devolve XML nenhum", async () => {
+    const order = await paidOrder();
+    const provider = new FakeProvider({
+      status: "rejected", code: "539", reason: "Duplicidade", processedXml: "<retEnviNFe/>",
+    });
+
+    const result = issued((await issueFiscalDocument(context, randomUUID(), order, provider)).document);
+
+    expect(result.status).toBe("rejected");
+    expect(result.processed_xml).toBeNull();
+  });
+
+  it("o XML de um terminal não sai pela consulta de outro", async () => {
+    const xml = '<nfeProc versao="4.00"><NFe/><protNFe/></nfeProc>';
+    const order = await paidOrder();
+    const request = randomUUID();
+    await issueFiscalDocument(context, request, order,
+      new FakeProvider({ ...AUTHORIZED, accessKey: "7".repeat(44), processedXml: xml }));
+
+    await expect(fiscalDocumentStatus({ ...context, deviceId: randomUUID() }, request))
+      .rejects.toMatchObject({ status: 404 });
+  });
+
   it("timeout ambíguo vira unknown e nunca dispara contingência ou reenvio", async () => {
     const provider = new FakeProvider(new FiscalProviderUnavailable());
     const request = randomUUID();

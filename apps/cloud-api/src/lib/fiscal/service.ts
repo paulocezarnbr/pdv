@@ -25,6 +25,12 @@ export interface FiscalDocumentOut {
   provider_reason: string | null;
   issued_at: string;
   authorized_at: string | null;
+  /**
+   * O `nfeProc` autorizado (NFe assinada + protocolo), que o caixa imprime no
+   * DANFE. Só com a nota autorizada: é o único XML com valor fiscal, e o
+   * caixa não monta nem calcula nada do DANFE — imprime o que está aqui.
+   */
+  processed_xml: string | null;
 }
 
 /**
@@ -69,6 +75,7 @@ interface DocumentRow {
   provider_reason: string | null;
   issued_at: Date;
   authorized_at: Date | null;
+  xml_content: string | null;
 }
 
 interface ConfigRow {
@@ -513,5 +520,6 @@ function out(row: DocumentRow): FiscalDocumentOut {
     access_key: row.access_key, protocol: row.protocol, provider_code: row.provider_code,
     provider_reason: row.provider_reason, issued_at: row.issued_at.toISOString(),
     authorized_at: row.authorized_at?.toISOString() ?? null,
+    processed_xml: row.status === "authorized" ? row.xml_content : null,
   };
 }

@@ -1,0 +1,56 @@
+{
+  "descricao": "nfeProc autorizado pelo motor do fiscal-net (SEFAZ de teste). Gerado por apps/fiscal-net/tests/Fiscal.Tests/NfceProcContractTests.cs; não edite à mão.",
+  "xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><nfeProc versao=\"4.00\" xmlns=\"http://www.portalfiscal.inf.br/nfe\"><NFe xmlns=\"http://www.portalfiscal.inf.br/nfe\"><infNFe versao=\"4.00\" Id=\"NFe33260911222333000181650010000000421641069475\"><ide><cUF>33</cUF><cNF>64106947</cNF><natOp>VENDA</natOp><mod>65</mod><serie>1</serie><nNF>42</nNF><dhEmi>2026-09-25T21:52:19-03:00</dhEmi><tpNF>1</tpNF><idDest>1</idDest><cMunFG>3304557</cMunFG><tpImp>4</tpImp><tpEmis>1</tpEmis><cDV>5</cDV><tpAmb>2</tpAmb><finNFe>1</finNFe><indFinal>1</indFinal><indPres>1</indPres><procEmi>0</procEmi><verProc>ERPFood Fiscal 1.0</verProc></ide><emit><CNPJ>11222333000181</CNPJ><xNome>Confeitaria Aurora Ltda</xNome><enderEmit><xLgr>Rua do Ouvidor</xLgr><nro>50</nro><xBairro>Centro</xBairro><cMun>3304557</cMun><xMun>Rio de Janeiro</xMun><UF>RJ</UF><CEP>20040030</CEP><cPais>1058</cPais><xPais>BRASIL</xPais></enderEmit><IE>12345678</IE><CRT>1</CRT></emit><det nItem=\"1\"><prod><cProd>856b3ae4</cProd><cEAN>SEM GTIN</cEAN><xProd>NOTA FISCAL EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL</xProd><NCM>19059090</NCM><CFOP>5102</CFOP><uCom>KG</uCom><qCom>0.8470</qCom><vUnCom>59.0000000000</vUnCom><vProd>49.97</vProd><cEANTrib>SEM GTIN</cEANTrib><uTrib>KG</uTrib><qTrib>0.8470</qTrib><vUnTrib>59.0000000000</vUnTrib><vDesc>3.10</vDesc><indTot>1</indTot></prod><imposto><ICMS><ICMSSN102><orig>0</orig><CSOSN>102</CSOSN></ICMSSN102></ICMS><PIS><PISOutr><CST>49</CST><vBC>0.00</vBC><pPIS>0.0000</pPIS><vPIS>0.00</vPIS></PISOutr></PIS><COFINS><COFINSOutr><CST>49</CST><vBC>0.00</vBC><pCOFINS>0.0000</pCOFINS><vCOFINS>0.00</vCOFINS></COFINSOutr></COFINS></imposto></det><det nItem=\"2\"><prod><cProd>fe65fdf6</cProd><cEAN>SEM GTIN</cEAN><xProd>Café coado</xProd><NCM>19059090</NCM><CFOP>5102</CFOP><uCom>UN</uCom><qCom>2.0000</qCom><vUnCom>7.0000000000</vUnCom><vProd>14.00</vProd><cEANTrib>SEM GTIN</cEANTrib><uTrib>UN</uTrib><qTrib>2.0000</qTrib><vUnTrib>7.0000000000</vUnTrib><vDesc>0.87</vDesc><indTot>1</indTot></prod><imposto><ICMS><ICMSSN102><orig>0</orig><CSOSN>102</CSOSN></ICMSSN102></ICMS><PIS><PISOutr><CST>49</CST><vBC>0.00</vBC><pPIS>0.0000</pPIS><vPIS>0.00</vPIS></PISOutr></PIS><COFINS><COFINSOutr><CST>49</CST><vBC>0.00</vBC><pCOFINS>0.0000</pCOFINS><vCOFINS>0.00</vCOFINS></COFINSOutr></COFINS></imposto></det><total><ICMSTot><vBC>0.00</vBC><vICMS>0.00</vICMS><vICMSDeson>0.00</vICMSDeson><vFCP>0.00</vFCP><vBCST>0.00</vBCST><vST>0.00</vST><vFCPST>0.00</vFCPST><vFCPSTRet>0.00</vFCPSTRet><vProd>63.97</vProd><vFrete>0.00</vFrete><vSeg>0.00</vSeg><vDesc>3.97</vDesc><vII>0.00</vII><vIPI>0.00</vIPI><vIPIDevol>0.00</vIPIDevol><vPIS>0.00</vPIS><vCOFINS>0.00</vCOFINS><vOutro>0.00</vOutro><vNF>60.00</vNF></ICMSTot></total><transp><modFrete>9</modFrete></transp><pag><detPag><tPag>17</tPag><vPag>40.00</vPag></detPag><detPag><tPag>01</tPag><vPag>25.00</vPag></detPag><vTroco>5.00</vTroco></pag></infNFe><infNFeSupl><qrCode><![CDATA[https://consultadfe.fazenda.rj.gov.br/consultaNFCe/QRCode?p=33260911222333000181650010000000421641069475|3|2]]></qrCode><urlChave>www.fazenda.rj.gov.br/nfce/consulta</urlChave></infNFeSupl><Signature xmlns=\"http://www.w3.org/2000/09/xmldsig#\"><SignedInfo><CanonicalizationMethod Algorithm=\"http://www.w3.org/TR/2001/REC-xml-c14n-20010315\" /><SignatureMethod Algorithm=\"http://www.w3.org/2000/09/xmldsig#rsa-sha1\" /><Reference URI=\"#NFe33260911222333000181650010000000421641069475\"><Transforms><Transform Algorithm=\"http://www.w3.org/2000/09/xmldsig#enveloped-signature\" /><Transform Algorithm=\"http://www.w3.org/TR/2001/REC-xml-c14n-20010315\" /></Transforms><DigestMethod Algorithm=\"http://www.w3.org/2000/09/xmldsig#sha1\" /><DigestValue>bqKyJUlem+KU3pwP4fc4ZwQWl6U=</DigestValue></Reference></SignedInfo><SignatureValue>NAwgXnXWErQQf3vV6oZJ2pJ7zqrPpvKRknkXcmYBG4tVIdSeWwlB3wWJXbfkT7WRcWvuGbH3leSLeERPWGHf4VLOvQf8s/1Pmb+o7JoJtrh7c2f533TuYxdojOfI8hfx7OS7UyPL+96Ff4jo2Gfd+x7epStx87Xy0dQz7fDUsg9nHWFB0Vedm7fI3OXXdmG1VIhQc3oOac2RV0KNfYd68kaqp0JD3R+5GQWMKbWLKYD6wVKx/3Jxh6smmV2WGQN1cHWRAn9Z9pJH4RCoiMn+pjuh1L0VHoal9C7QiP8uKRsX9lRh33ImS8g87RJdZWi0ndpBevE7A85A+6kyH/52aA==</SignatureValue><KeyInfo><X509Data><X509Certificate>MIIC4jCCAcqgAwIBAgIIbaPfVnsL20kwDQYJKoZIhvcNAQELBQAwMTEvMC0GA1UEAxMmQ09ORkVJVEFSSUEgQVVST1JBIExUREE6MTEyMjIzMzMwMDAxODEwHhcNMjYwODI3MDA1MjE5WhcNMjcwOTI2MDA1MjE5WjAxMS8wLQYDVQQDEyZDT05GRUlUQVJJQSBBVVJPUkEgTFREQToxMTIyMjMzMzAwMDE4MTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAJUe7h9sqLeHauh7sgH5DvKHI3gHbZDQlFLAiyOVfe07OsHRNQ5XMzXc4RwRM+xwYwqBkUYCY+UFgZJItXh5y965fSwptanQMSDgaztCGFy9HzVKh5V5+15zRRCQLBrvvcJ0QckGrNHDOSX35ctt4576tBMk2qEjsTuUihAx51zuW1jLhczCHq0YqJvhC/lgYCvsNhhfyYpmuWZLHA1jDZlz7JkZZttrJNfqprJ26mzxAsaP8erPpDEDcE722J0YG80aBg35DTAltVmEhemjSk47WbP/ACM36wXlhPnFrC2NbZ/6AjjRua4ihPJsAFyMwyPJkwJVitGdAcLqDHihUaUCAwEAATANBgkqhkiG9w0BAQsFAAOCAQEAdOipswSVtZnLM1Um9+XNDmF3Ul+FBpenGqneSEi43GAq9rfx96/3/gxvaFUIcXw/bRqeoBwydouTltzAAQS/+PeT7VfuZ0Uh+CgtbGR/W0LWwd8TohNQ1IywwoOrpnALZ01jRYYBX8Oj57ymLTyW4xXEaoxM5bV65eR67/8nCrp5ViG/h7bIoCvHwhl//tWlW3l3PTX1S7HNdEiC0p9Rd0IM45kBbUfjfbOFbeGlzupYdH41bTx2bOxKty1P/OaBtkt2jx9O4pbJUScgSySjwwRBxIudQxvQJ3FBzRgRqw8oZWGrHDhs9UsMp38wEowiIS2AldzxPVx51JMXJnSc6Q==</X509Certificate></X509Data></KeyInfo></Signature></NFe><protNFe versao=\"4.00\" xmlns=\"http://www.portalfiscal.inf.br/nfe\"><infProt Id=\"ID333260000000001\"><tpAmb>2</tpAmb><verAplic>SVRS202609251200</verAplic><chNFe>33260911222333000181650010000000421641069475</chNFe><dhRecbto>2026-09-25T18:00:00-03:00</dhRecbto><nProt>333260000000001</nProt><digVal>AAAAAAAAAAAAAAAAAAAAAAAAAAA=</digVal><cStat>100</cStat><xMotivo>Autorizado o uso da NF-e</xMotivo></infProt></protNFe></nfeProc>",
+  "payment_codes": {
+    "cash": "01",
+    "credit": "03",
+    "debit": "04",
+    "pix": "17",
+    "prepaid": "21",
+    "credit_account": "05",
+    "cashback": "19"
+  },
+  "expected": {
+    "access_key": "33260911222333000181650010000000421641069475",
+    "protocol": "333260000000001",
+    "authorized_at": "2026-09-25T18:00:00-03:00",
+    "environment": "homologation",
+    "emission": "normal",
+    "series": 1,
+    "number": 42,
+    "legal_name": "Confeitaria Aurora Ltda",
+    "cnpj": "11222333000181",
+    "state_registration": "12345678",
+    "address": "Rua do Ouvidor, 50 - Centro - Rio de Janeiro/RJ - CEP 20040-030",
+    "items": [
+      {
+        "code": "856b3ae4",
+        "description": "NOTA FISCAL EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL",
+        "quantity": "0.847",
+        "unit": "KG",
+        "unit_price_cents": 5900,
+        "total_cents": 4997
+      },
+      {
+        "code": "fe65fdf6",
+        "description": "Café coado",
+        "quantity": "2",
+        "unit": "UN",
+        "unit_price_cents": 700,
+        "total_cents": 1400
+      }
+    ],
+    "payments": [
+      {
+        "method": "pix",
+        "amount_cents": 4000
+      },
+      {
+        "method": "cash",
+        "amount_cents": 2500
+      }
+    ],
+    "discount_cents": 397,
+    "change_cents": 500
+  }
+}
