@@ -15,6 +15,11 @@ public sealed class ManualClock(DateTimeOffset start) : TimeProvider
 
     public override long TimestampFrequency => TimeSpan.TicksPerSecond;
 
+    /// <summary>O fuso da loja; o da máquina, se o teste não disser.</summary>
+    public TimeZoneInfo Zone { get; init; } = TimeZoneInfo.Local;
+
+    public override TimeZoneInfo LocalTimeZone => Zone;
+
     /// <summary>O tempo passa: os dois relógios andam.</summary>
     public void Advance(TimeSpan elapsed)
     {

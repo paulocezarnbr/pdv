@@ -152,6 +152,20 @@ jobs:
           Write-Host "$($counters.total) testes, $($counters.notExecuted) pulados"
           if ([int] $counters.notExecuted -gt 0) { throw 'Teste pulado nao prova nada.' }
 
+      # Para experimentar o PDV em C# numa máquina de teste sem compilar: a
+      # pasta self-contained (o runtime do .NET e o do Windows App SDK vão
+      # dentro). Não é o instalador (C7c): o banco ainda nasce do PDV em Python.
+      # Só sai com tudo acima verde.
+      - name: Publicar o PDV.exe (Release, self-contained)
+        run: dotnet publish src/Pdv.WinUI -c Release -nologo -o "${{ runner.temp }}\pdv-csharp"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pdv-csharp-${{ github.sha }}
+          path: ${{ runner.temp }}\pdv-csharp
+          retention-days: 14
+          if-no-files-found: error
+
   # ---------------------------------------------------------------------------
   cloud:
     name: Retaguarda (Next.js + Postgres real)
