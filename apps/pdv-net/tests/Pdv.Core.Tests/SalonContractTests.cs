@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Pdv.Data;
+using Pdv.Data.Auth;
 using Pdv.Data.Edge;
 using Pdv.Data.Sales;
 
@@ -70,6 +71,7 @@ public sealed partial class SalonContractTests : IDisposable
     private static readonly Dictionary<string, string> Volatile = new(StringComparer.Ordinal)
     {
         ["hash"] = "<hash>", ["prev_hash"] = "<hash>", ["waiting_seconds"] = "<s>",
+        ["token"] = "<token>", ["code"] = "<code>", ["remaining_seconds"] = "<s>", ["expires_in_seconds"] = "<s>",
     };
 
     /// <summary>O <c>Normalizer</c> de <c>salon_script.py</c>: UUID → &lt;idN&gt; na ordem de aparição, horário → &lt;ts&gt;.</summary>
@@ -106,7 +108,14 @@ public sealed partial class SalonContractTests : IDisposable
     private const string ManagerName = "Bruno Gerente";
 
     /// <summary>Os serviços do salão sobre o mesmo banco e o mesmo barramento, como o servidor os monta.</summary>
-    private sealed record Salon(TableService Tables, TableOrderService Orders, KdsService Kds);
+    private sealed record Salon(
+        TableService Tables, TableOrderService Orders, KdsService Kds, EdgeAuth Auth, StaffSessions Staff,
+        ManagerSessions Managers, StaffReport Report);
+
+    private static JsonObject Device(PairedDevice device) => new()
+    {
+        ["id"] = device.Id, ["name"] = device.Name, ["kind"] = device.Kind, ["operator_id"] = device.OperatorId,
+    };
 
     private static List<PaymentIntent> Intents(JsonNode? node) =>
         [.. node!.AsArray().Select(p => new PaymentIntent(p!["method"]!.GetValue<string>(), p["amount_cents"]!.GetValue<long>()))];
@@ -132,7 +141,7 @@ public sealed partial class SalonContractTests : IDisposable
         int? Number(string name) => args[name] is { } value ? value.GetValue<int>() : null;
         bool Flag(string name) => args[name]?.GetValue<bool>() ?? false;
         List<string> Ids(string name) => [.. args[name]!.AsArray().Select(id => id!.GetValue<string>())];
-        var (tables, orders, kds) = salon;
+        var (tables, orders, kds, auth, staff, managers, report) = salon;
 
         return op switch
         {
@@ -165,8 +174,56 @@ public sealed partial class SalonContractTests : IDisposable
             "kds.bump" => kds.Bump(Text("ticket_id")).ToJson(),
             "kds.recall" => kds.Recall(Text("ticket_id")).ToJson(),
             "kds.advance" => kds.Advance(Text("ticket_id"), Text("to_status")).ToJson(),
+            "auth.create_code" => CreateCode(),
+            "auth.active_code" => auth.ActivePairingCode() is { } active
+                ? new JsonObject { ["remaining_seconds"] = active.RemainingSeconds }
+                : null,
+            "auth.revoke_codes" => auth.RevokePairingCodes(),
+            "auth.pair" => Pair(),
+            "auth.authenticate" => Device(auth.Authenticate(Text("token"))),
+            "auth.lock_seconds" => auth.PairingLockSeconds(),
+            "auth.revoke" => auth.Revoke(Text("device_id")),
+            "auth.devices" => new JsonArray([.. auth.ListDevices().Select(d => (JsonNode)new JsonObject
+            {
+                ["id"] = d.Id, ["name"] = d.Name, ["kind"] = d.Kind, ["paired_at"] = d.PairedAt,
+                ["last_seen_at"] = d.LastSeenAt, ["revoked_at"] = d.RevokedAt,
+            })]),
+            "staff.login" => staff.Login(Text("login"), Text("pin"), Text("device_id")).ToJson(staff.Clock, withToken: true),
+            "staff.require" => staff.Require(Text("token"), Text("device_id")).ToJson(staff.Clock),
+            "staff.logout" => staff.Logout(Text("token")),
+            "staff.revoke_user" => staff.RevokeUser(Text("user_id")),
+            "staff.active" => new JsonArray([.. staff.ListActive().Select(r => (JsonNode)new JsonObject
+            {
+                ["user_id"] = r.UserId, ["user_name"] = r.UserName, ["role"] = r.Role, ["device_id"] = r.DeviceId,
+                ["created_at"] = r.CreatedAt, ["expires_at"] = r.ExpiresAt, ["last_seen_at"] = r.LastSeenAt,
+            })]),
+            "manager.authorize" => managers.Authorize(Text("login"), Text("pin"), Text("device_id")).ToJson(managers.Clock),
+            "manager.require" => ManagerRequire(),
+            "manager.revoke" => managers.Revoke(Text("token")),
+            "manager.active" => managers.ActiveCount(),
+            "report.by_waiter" => new JsonArray([.. report.ByWaiter().Select(r => (JsonNode)r.ToJson())]),
+            "report.for_user" => report.ForUser(Text("user_id")),
+            "report.totals" => report.Totals(),
             _ => throw new InvalidOperationException($"Passo desconhecido no roteiro: {op}"),
         };
+
+        JsonNode CreateCode()
+        {
+            var (code, pairing) = auth.CreatePairingCode();
+            return new JsonObject { ["code"] = code, ["remaining_seconds"] = pairing.RemainingSeconds };
+        }
+
+        JsonNode Pair()
+        {
+            var token = auth.Pair(Text("code"), Text("device_name"), Optional("kind") ?? "waiter");
+            return new JsonObject { ["token"] = token, ["device"] = Device(auth.Authenticate(token)) };
+        }
+
+        JsonNode ManagerRequire()
+        {
+            var who = managers.Require(Text("token"), Text("device_id"));
+            return new JsonObject { ["user_id"] = who.Id, ["name"] = who.Name, ["role"] = who.Role };
+        }
 
         JsonNode MoveItems()
         {
@@ -179,7 +236,8 @@ public sealed partial class SalonContractTests : IDisposable
     /// <summary>As recusas que o roteiro espera: as mesmas classes que no Python herdam de <c>PdvError</c>.</summary>
     private static bool IsRefusal(Exception error) => error is TableException or OrderNotFoundException
         or OrderClosedException or ProductNotSellableException or TableOccupiedException or TicketNotFoundException
-        or InvalidTransitionException or InsufficientPaymentException;
+        or InvalidTransitionException or InsufficientPaymentException or PairingException or DeviceAuthException
+        or StaffAuthException or AuthenticationException;
 
     /// <summary>O <c>_dig</c> do roteiro: <c>"0.id"</c> → <c>value[0]["id"]</c>.</summary>
     private static string Dig(JsonNode? node, string path)
@@ -193,8 +251,9 @@ public sealed partial class SalonContractTests : IDisposable
 
     private static JsonNode? Resolve(JsonNode? node, Dictionary<string, string> saved) => node switch
     {
-        JsonValue v when v.GetValueKind() == JsonValueKind.String && v.GetValue<string>().StartsWith('$') =>
-            saved[v.GetValue<string>()[1..]],
+        // `$nome` também com espaço em volta (" $code1 "): o espaço é parte do que se testa.
+        JsonValue v when v.GetValueKind() == JsonValueKind.String && v.GetValue<string>().Trim().StartsWith('$') =>
+            v.GetValue<string>().Replace(v.GetValue<string>().Trim(), saved[v.GetValue<string>().Trim()[1..]]),
         JsonArray array => new JsonArray([.. array.Select(item => Resolve(item, saved))]),
         JsonObject obj => new JsonObject(obj.Select(p => KeyValuePair.Create(p.Key, Resolve(p.Value, saved)))),
         _ => node?.DeepClone(),
@@ -209,7 +268,11 @@ public sealed partial class SalonContractTests : IDisposable
         var salon = new Salon(
             new TableService(_database, _terminal),
             new TableOrderService(_database, _terminal, ledger, hub),
-            new KdsService(_database, _terminal, hub));
+            new KdsService(_database, _terminal, hub),
+            new EdgeAuth(_database, _terminal),
+            new StaffSessions(_database, _terminal.TenantId),
+            new ManagerSessions(new StaffAuthentication(_database, _terminal.TenantId)),
+            new StaffReport(_database, _terminal.TenantId));
         var saved = new Dictionary<string, string>();
         var normalizer = new Normalizer();
         var results = new JsonArray();

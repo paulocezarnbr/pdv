@@ -25,10 +25,15 @@ from pdv.config import AppConfig, PrinterConfig, ScaleConfig
 from pdv.data.database import Database
 from pdv.domain.errors import PdvError
 from pdv.domain.models import Cents, EntityId, Payment, PaymentMethod
+from pdv.edge.auth import EdgeAuth
 from pdv.edge.hub import EventHub
 from pdv.edge.kds import KdsService
+from pdv.edge.manager import ManagerSessions
 from pdv.edge.orders import SettledOrder, TableOrderService
+from pdv.edge.staff import StaffSessions
 from pdv.edge.tables import TableService
+from pdv.services.authorization import AuthorizationService
+from pdv.services.staff_report import StaffReport
 
 CONTRACTS = Path(__file__).resolve().parents[3] / "contracts"
 CONTRACT = CONTRACTS / "salon.json"
@@ -55,10 +60,19 @@ def _uuid(n: int) -> str:
 SEED: dict[str, list[dict[str, Any]]] = {
     "users": [
         {"id": "5a1a0000-0000-4000-8000-0000000000a1", "tenant_id": TENANT, "name": "João Garçom",
-         "login": "joao", "role": "waiter", "updated_at": "2026-09-26T00:00:00.000+00:00"},
+         "login": "joao", "role": "waiter", "updated_at": "2026-09-26T00:00:00.000+00:00",
+         # PIN 4826. Hash fixo: o C# confere o mesmo Argon2id que o Python gerou.
+         "pin_hash": "$argon2id$v=19$m=65536,t=3,p=4$L/HZrr606fohJr3zkx0hxg$4468AcXI/qjZWrcpbM9bc51BwKWjVzJBm7UrMATF2kY"},
         {"id": "5a1a0000-0000-4000-8000-0000000000a2", "tenant_id": TENANT, "name": "Bruno Gerente",
          "login": "bruno", "role": "manager", "can_authorize": 1, "max_discount_percent": "30",
-         "updated_at": "2026-09-26T00:00:00.000+00:00"},
+         "updated_at": "2026-09-26T00:00:00.000+00:00",
+         # PIN 7391.
+         "pin_hash": "$argon2id$v=19$m=65536,t=3,p=4$So7KHgj4E7qSNqB0dLi9Cg$gaNMRGt69ipftremGgDs+QrziObdh6tsqghlwY7zBh0"},
+        {"id": "5a1a0000-0000-4000-8000-0000000000a3", "tenant_id": TENANT, "name": "Olga Dona",
+         "login": "olga", "role": "owner", "can_authorize": 1, "max_discount_percent": "100",
+         "updated_at": "2026-09-26T00:00:00.000+00:00",
+         # PIN 5160.
+         "pin_hash": "$argon2id$v=19$m=65536,t=3,p=4$7CPgBUYfN32CU12ofQnkYA$e76mY7TbKQzMYGGVIVPrfvwwiEn9YKIypLB4ogVSHHg"},
     ],
     "products": [
         {"id": "5a1a0000-0000-4000-8000-0000000000b1", "tenant_id": TENANT, "store_id": STORE,
@@ -204,6 +218,76 @@ SCRIPT: list[dict[str, Any]] = [
                                            "payments": [{"method": "debit", "amount_cents": 700}]}},
     {"op": "kds.list"},
     {"op": "tables.list"},
+    # -- pareamento ------------------------------------------------------------ #
+    {"op": "auth.active_code"},
+    {"op": "auth.pair", "args": {"code": "12345678", "device_name": "Celular"}},
+    {"op": "auth.create_code", "save": {"code1": "code"}},
+    {"op": "auth.active_code"},
+    {"op": "auth.pair", "args": {"code": "$code1", "device_name": "Celular", "kind": "tablet"}},
+    # O código aceita espaço em volta, e o nome sai aparado.
+    {"op": "auth.pair", "args": {"code": " $code1 ", "device_name": "  Celular do João  "},
+     "save": {"tok1": "token", "dev1": "device.id"}},
+    {"op": "auth.pair", "args": {"code": "$code1", "device_name": "Outro"}},
+    {"op": "auth.create_code", "save": {"code2": "code"}},
+    {"op": "auth.pair", "args": {"code": "$code2", "device_name": "   ", "kind": "kds"},
+     "save": {"tok2": "token", "dev2": "device.id"}},
+    {"op": "auth.authenticate", "args": {"token": "$tok1"}},
+    {"op": "auth.authenticate", "args": {"token": ""}},
+    {"op": "auth.authenticate", "args": {"token": "nao-e-um-token"}},
+    {"op": "auth.create_code", "save": {"code3": "code"}},
+    {"op": "auth.create_code", "save": {"code4": "code"}},
+    {"op": "auth.pair", "args": {"code": "$code3", "device_name": "Velho"}},
+    {"op": "auth.revoke_codes"},
+    {"op": "auth.revoke_codes"},
+    {"op": "auth.active_code"},
+    {"op": "auth.pair", "args": {"code": "$code4", "device_name": "Revogado"}},
+    {"op": "auth.lock_seconds"},
+    # -- sessão do garçom ------------------------------------------------------ #
+    {"op": "staff.login", "args": {"login": "joao", "pin": "0000", "device_id": "$dev1"}},
+    {"op": "staff.login", "args": {"login": "  JOAO ", "pin": "4826", "device_id": "$dev1"}, "save": {"st1": "token"}},
+    {"op": "staff.require", "args": {"token": "$st1", "device_id": "$dev1"}},
+    {"op": "staff.require", "args": {"token": "$st1", "device_id": "$dev2"}},
+    {"op": "staff.require", "args": {"token": "", "device_id": "$dev1"}},
+    {"op": "staff.require", "args": {"token": "outro", "device_id": "$dev1"}},
+    {"op": "staff.login", "args": {"login": "joao", "pin": "4826", "device_id": "$dev1"}, "save": {"st2": "token"}},
+    {"op": "staff.require", "args": {"token": "$st1", "device_id": "$dev1"}},
+    {"op": "staff.login", "args": {"login": "bruno", "pin": "7391", "device_id": "$dev2"}, "save": {"st3": "token"}},
+    {"op": "staff.active"},
+    {"op": "staff.revoke_user", "args": {"user_id": WAITER}},
+    {"op": "staff.require", "args": {"token": "$st2", "device_id": "$dev1"}},
+    {"op": "staff.logout", "args": {"token": "$st3"}},
+    {"op": "staff.logout", "args": {"token": "$st3"}},
+    {"op": "staff.logout", "args": {"token": ""}},
+    {"op": "staff.active"},
+    # -- gerente --------------------------------------------------------------- #
+    {"op": "manager.authorize", "args": {"login": "joao", "pin": "4826", "device_id": "$dev1"}},
+    {"op": "manager.authorize", "args": {"login": "olga", "pin": "5160", "device_id": "$dev1"}},
+    {"op": "manager.authorize", "args": {"login": "bruno", "pin": "1111", "device_id": "$dev1"}},
+    {"op": "manager.authorize", "args": {"login": "bruno", "pin": "7391", "device_id": "$dev1"}, "save": {"mg1": "token"}},
+    {"op": "manager.require", "args": {"token": "$mg1", "device_id": "$dev1"}},
+    {"op": "manager.require", "args": {"token": "$mg1", "device_id": "$dev2"}},
+    {"op": "manager.require", "args": {"token": "", "device_id": "$dev1"}},
+    {"op": "manager.require", "args": {"token": "inventado", "device_id": "$dev1"}},
+    {"op": "manager.active"},
+    {"op": "manager.revoke", "args": {"token": "$mg1"}},
+    {"op": "manager.revoke", "args": {"token": "$mg1"}},
+    {"op": "manager.require", "args": {"token": "$mg1", "device_id": "$dev1"}},
+    {"op": "manager.active"},
+    # -- resultado do turno ---------------------------------------------------- #
+    {"op": "report.by_waiter"},
+    {"op": "report.for_user", "args": {"user_id": WAITER}},
+    {"op": "report.for_user", "args": {"user_id": "5a1a0000-0000-4000-8000-0000000000a3"}},
+    {"op": "report.for_user", "args": {"user_id": MISSING}},
+    {"op": "report.totals"},
+    # -- aparelho revogado e o freio do pareamento ------------------------------ #
+    {"op": "auth.revoke", "args": {"device_id": "$dev2"}},
+    {"op": "auth.revoke", "args": {"device_id": "$dev2"}},
+    {"op": "auth.authenticate", "args": {"token": "$tok2"}},
+    {"op": "auth.devices"},
+    *[{"op": "auth.pair", "args": {"code": f"0000000{n}", "device_name": "Ataque"}} for n in range(9)],
+    {"op": "auth.lock_seconds"},
+    {"op": "auth.create_code", "save": {"code5": "code"}},
+    {"op": "auth.pair", "args": {"code": "$code5", "device_name": "Legítimo"}},
 ]
 
 _UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
@@ -213,7 +297,12 @@ _TS = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(\+00:00|Z|[+-]\d{
 #: Chaves cujo valor depende do relógio ou da chave do ledger, e não da regra:
 #: o hash cobre ids e horários, e a espera do ticket, os segundos que o teste
 #: levou. Saem trocadas por um marcador, dos dois lados.
-_VOLATILE = {"hash": "<hash>", "prev_hash": "<hash>", "waiting_seconds": "<s>"}
+_VOLATILE = {
+    "hash": "<hash>", "prev_hash": "<hash>", "waiting_seconds": "<s>",
+    # Credenciais: aleatórias por construção. O que se confere é que vieram.
+    "token": "<token>", "code": "<code>",
+    "remaining_seconds": "<s>", "expires_in_seconds": "<s>",
+}
 
 
 class Normalizer:
@@ -292,11 +381,15 @@ def run(tmp_path: Path) -> dict[str, Any]:
     tables = TableService(database, config)
     orders = TableOrderService(database, config, hub)
     kds = KdsService(database, config, hub)
+    auth = EdgeAuth(database, TENANT, STORE)
+    staff = StaffSessions(database, TENANT)
+    managers = ManagerSessions(AuthorizationService(database, TENANT))
+    report = StaffReport(database, config)
     saved: dict[str, str] = {}
 
     def resolve(value: Any) -> Any:
-        if isinstance(value, str) and value.startswith("$"):
-            return saved[value[1:]]
+        if isinstance(value, str) and value.strip().startswith("$"):
+            return value.replace(value.strip(), saved[value.strip()[1:]])
         if isinstance(value, list):
             return [resolve(v) for v in value]
         if isinstance(value, dict):
@@ -322,7 +415,49 @@ def run(tmp_path: Path) -> dict[str, Any]:
         )
         return [source.to_json(), target.to_json()]
 
+    def create_code() -> Any:
+        code, pairing = auth.create_pairing_code()
+        return {"code": code, "remaining_seconds": pairing.remaining_seconds}
+
+    def device(token: str) -> Any:
+        found = auth.authenticate(token)
+        return {"id": found.id, "name": found.name, "kind": found.kind, "operator_id": found.operator_id}
+
+    def pair(code: str, device_name: str, kind: str = "waiter") -> Any:
+        token = auth.pair(code, device_name=device_name, kind=kind)
+        return {"token": token, "device": device(token)}
+
+    def manager_require(token: str, device_id: str) -> Any:
+        who = managers.require(token, EntityId(device_id))
+        return {"user_id": who.id, "name": who.name, "role": who.role}
+
     handlers: dict[str, Callable[..., Any]] = {
+        "auth.create_code": create_code,
+        "auth.active_code": lambda: (
+            lambda p: {"remaining_seconds": p.remaining_seconds} if p else None
+        )(auth.active_pairing_code()),
+        "auth.revoke_codes": lambda: auth.revoke_pairing_codes(),
+        "auth.pair": pair,
+        "auth.authenticate": device,
+        "auth.lock_seconds": lambda: auth.pairing_lock_seconds(),
+        "auth.revoke": lambda device_id: auth.revoke(EntityId(device_id)),
+        "auth.devices": lambda: auth.list_devices(),
+        "staff.login": lambda login, pin, device_id: staff.login(
+            login=login, pin=pin, device_id=EntityId(device_id)
+        ).to_json(with_token=True),
+        "staff.require": lambda token, device_id: staff.require(token, EntityId(device_id)).to_json(),
+        "staff.logout": lambda token: staff.logout(token),
+        "staff.revoke_user": lambda user_id: staff.revoke_user(EntityId(user_id)),
+        "staff.active": lambda: staff.list_active(),
+        "manager.authorize": lambda login, pin, device_id: managers.authorize(
+            login=login, pin=pin, device_id=EntityId(device_id)
+        ).to_json(),
+        "manager.require": manager_require,
+        "manager.revoke": lambda token: managers.revoke(token),
+        "manager.active": lambda: managers.active_count(),
+        "report.by_waiter": lambda: [r.to_json() for r in report.by_waiter()],
+        "report.for_user": lambda user_id: report.for_user(EntityId(user_id)),
+        "report.totals": lambda: report.totals(),
         "tables.list": lambda include_inactive=False: [
             t.to_json() for t in tables.list_tables(include_inactive=include_inactive)
         ],

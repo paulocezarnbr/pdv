@@ -12,7 +12,8 @@
     "name": "João Garçom",
     "login": "joao",
     "role": "waiter",
-    "updated_at": "2026-09-26T00:00:00.000+00:00"
+    "updated_at": "2026-09-26T00:00:00.000+00:00",
+    "pin_hash": "$argon2id$v=19$m=65536,t=3,p=4$L/HZrr606fohJr3zkx0hxg$4468AcXI/qjZWrcpbM9bc51BwKWjVzJBm7UrMATF2kY"
    },
    {
     "id": "5a1a0000-0000-4000-8000-0000000000a2",
@@ -22,7 +23,19 @@
     "role": "manager",
     "can_authorize": 1,
     "max_discount_percent": "30",
-    "updated_at": "2026-09-26T00:00:00.000+00:00"
+    "updated_at": "2026-09-26T00:00:00.000+00:00",
+    "pin_hash": "$argon2id$v=19$m=65536,t=3,p=4$So7KHgj4E7qSNqB0dLi9Cg$gaNMRGt69ipftremGgDs+QrziObdh6tsqghlwY7zBh0"
+   },
+   {
+    "id": "5a1a0000-0000-4000-8000-0000000000a3",
+    "tenant_id": "5a1a0000-0000-4000-8000-000000000001",
+    "name": "Olga Dona",
+    "login": "olga",
+    "role": "owner",
+    "can_authorize": 1,
+    "max_discount_percent": "100",
+    "updated_at": "2026-09-26T00:00:00.000+00:00",
+    "pin_hash": "$argon2id$v=19$m=65536,t=3,p=4$7CPgBUYfN32CU12ofQnkYA$e76mY7TbKQzMYGGVIVPrfvwwiEn9YKIypLB4ogVSHHg"
    }
   ],
   "products": [
@@ -805,6 +818,450 @@
   },
   {
    "op": "tables.list"
+  },
+  {
+   "op": "auth.active_code"
+  },
+  {
+   "op": "auth.pair",
+   "args": {
+    "code": "12345678",
+    "device_name": "Celular"
+   }
+  },
+  {
+   "op": "auth.create_code",
+   "save": {
+    "code1": "code"
+   }
+  },
+  {
+   "op": "auth.active_code"
+  },
+  {
+   "op": "auth.pair",
+   "args": {
+    "code": "$code1",
+    "device_name": "Celular",
+    "kind": "tablet"
+   }
+  },
+  {
+   "op": "auth.pair",
+   "args": {
+    "code": " $code1 ",
+    "device_name": "  Celular do João  "
+   },
+   "save": {
+    "tok1": "token",
+    "dev1": "device.id"
+   }
+  },
+  {
+   "op": "auth.pair",
+   "args": {
+    "code": "$code1",
+    "device_name": "Outro"
+   }
+  },
+  {
+   "op": "auth.create_code",
+   "save": {
+    "code2": "code"
+   }
+  },
+  {
+   "op": "auth.pair",
+   "args": {
+    "code": "$code2",
+    "device_name": "   ",
+    "kind": "kds"
+   },
+   "save": {
+    "tok2": "token",
+    "dev2": "device.id"
+   }
+  },
+  {
+   "op": "auth.authenticate",
+   "args": {
+    "token": "$tok1"
+   }
+  },
+  {
+   "op": "auth.authenticate",
+   "args": {
+    "token": ""
+   }
+  },
+  {
+   "op": "auth.authenticate",
+   "args": {
+    "token": "nao-e-um-token"
+   }
+  },
+  {
+   "op": "auth.create_code",
+   "save": {
+    "code3": "code"
+   }
+  },
+  {
+   "op": "auth.create_code",
+   "save": {
+    "code4": "code"
+   }
+  },
+  {
+   "op": "auth.pair",
+   "args": {
+    "code": "$code3",
+    "device_name": "Velho"
+   }
+  },
+  {
+   "op": "auth.revoke_codes"
+  },
+  {
+   "op": "auth.revoke_codes"
+  },
+  {
+   "op": "auth.active_code"
+  },
+  {
+   "op": "auth.pair",
+   "args": {
+    "code": "$code4",
+    "device_name": "Revogado"
+   }
+  },
+  {
+   "op": "auth.lock_seconds"
+  },
+  {
+   "op": "staff.login",
+   "args": {
+    "login": "joao",
+    "pin": "0000",
+    "device_id": "$dev1"
+   }
+  },
+  {
+   "op": "staff.login",
+   "args": {
+    "login": "  JOAO ",
+    "pin": "4826",
+    "device_id": "$dev1"
+   },
+   "save": {
+    "st1": "token"
+   }
+  },
+  {
+   "op": "staff.require",
+   "args": {
+    "token": "$st1",
+    "device_id": "$dev1"
+   }
+  },
+  {
+   "op": "staff.require",
+   "args": {
+    "token": "$st1",
+    "device_id": "$dev2"
+   }
+  },
+  {
+   "op": "staff.require",
+   "args": {
+    "token": "",
+    "device_id": "$dev1"
+   }
+  },
+  {
+   "op": "staff.require",
+   "args": {
+    "token": "outro",
+    "device_id": "$dev1"
+   }
+  },
+  {
+   "op": "staff.login",
+   "args": {
+    "login": "joao",
+    "pin": "4826",
+    "device_id": "$dev1"
+   },
+   "save": {
+    "st2": "token"
+   }
+  },
+  {
+   "op": "staff.require",
+   "args": {
+    "token": "$st1",
+    "device_id": "$dev1"
+   }
+  },
+  {
+   "op": "staff.login",
+   "args": {
+    "login": "bruno",
+    "pin": "7391",
+    "device_id": "$dev2"
+   },
+   "save": {
+    "st3": "token"
+   }
+  },
+  {
+   "op": "staff.active"
+  },
+  {
+   "op": "staff.revoke_user",
+   "args": {
+    "user_id": "5a1a0000-0000-4000-8000-0000000000a1"
+   }
+  },
+  {
+   "op": "staff.require",
+   "args": {
+    "token": "$st2",
+    "device_id": "$dev1"
+   }
+  },
+  {
+   "op": "staff.logout",
+   "args": {
+    "token": "$st3"
+   }
+  },
+  {
+   "op": "staff.logout",
+   "args": {
+    "token": "$st3"
+   }
+  },
+  {
+   "op": "staff.logout",
+   "args": {
+    "token": ""
+   }
+  },
+  {
+   "op": "staff.active"
+  },
+  {
+   "op": "manager.authorize",
+   "args": {
+    "login": "joao",
+    "pin": "4826",
+    "device_id": "$dev1"
+   }
+  },
+  {
+   "op": "manager.authorize",
+   "args": {
+    "login": "olga",
+    "pin": "5160",
+    "device_id": "$dev1"
+   }
+  },
+  {
+   "op": "manager.authorize",
+   "args": {
+    "login": "bruno",
+    "pin": "1111",
+    "device_id": "$dev1"
+   }
+  },
+  {
+   "op": "manager.authorize",
+   "args": {
+    "login": "bruno",
+    "pin": "7391",
+    "device_id": "$dev1"
+   },
+   "save": {
+    "mg1": "token"
+   }
+  },
+  {
+   "op": "manager.require",
+   "args": {
+    "token": "$mg1",
+    "device_id": "$dev1"
+   }
+  },
+  {
+   "op": "manager.require",
+   "args": {
+    "token": "$mg1",
+    "device_id": "$dev2"
+   }
+  },
+  {
+   "op": "manager.require",
+   "args": {
+    "token": "",
+    "device_id": "$dev1"
+   }
+  },
+  {
+   "op": "manager.require",
+   "args": {
+    "token": "inventado",
+    "device_id": "$dev1"
+   }
+  },
+  {
+   "op": "manager.active"
+  },
+  {
+   "op": "manager.revoke",
+   "args": {
+    "token": "$mg1"
+   }
+  },
+  {
+   "op": "manager.revoke",
+   "args": {
+    "token": "$mg1"
+   }
+  },
+  {
+   "op": "manager.require",
+   "args": {
+    "token": "$mg1",
+    "device_id": "$dev1"
+   }
+  },
+  {
+   "op": "manager.active"
+  },
+  {
+   "op": "report.by_waiter"
+  },
+  {
+   "op": "report.for_user",
+   "args": {
+    "user_id": "5a1a0000-0000-4000-8000-0000000000a1"
+   }
+  },
+  {
+   "op": "report.for_user",
+   "args": {
+    "user_id": "5a1a0000-0000-4000-8000-0000000000a3"
+   }
+  },
+  {
+   "op": "report.for_user",
+   "args": {
+    "user_id": "5a1a0000-0000-4000-8000-00000000dead"
+   }
+  },
+  {
+   "op": "report.totals"
+  },
+  {
+   "op": "auth.revoke",
+   "args": {
+    "device_id": "$dev2"
+   }
+  },
+  {
+   "op": "auth.revoke",
+   "args": {
+    "device_id": "$dev2"
+   }
+  },
+  {
+   "op": "auth.authenticate",
+   "args": {
+    "token": "$tok2"
+   }
+  },
+  {
+   "op": "auth.devices"
+  },
+  {
+   "op": "auth.pair",
+   "args": {
+    "code": "00000000",
+    "device_name": "Ataque"
+   }
+  },
+  {
+   "op": "auth.pair",
+   "args": {
+    "code": "00000001",
+    "device_name": "Ataque"
+   }
+  },
+  {
+   "op": "auth.pair",
+   "args": {
+    "code": "00000002",
+    "device_name": "Ataque"
+   }
+  },
+  {
+   "op": "auth.pair",
+   "args": {
+    "code": "00000003",
+    "device_name": "Ataque"
+   }
+  },
+  {
+   "op": "auth.pair",
+   "args": {
+    "code": "00000004",
+    "device_name": "Ataque"
+   }
+  },
+  {
+   "op": "auth.pair",
+   "args": {
+    "code": "00000005",
+    "device_name": "Ataque"
+   }
+  },
+  {
+   "op": "auth.pair",
+   "args": {
+    "code": "00000006",
+    "device_name": "Ataque"
+   }
+  },
+  {
+   "op": "auth.pair",
+   "args": {
+    "code": "00000007",
+    "device_name": "Ataque"
+   }
+  },
+  {
+   "op": "auth.pair",
+   "args": {
+    "code": "00000008",
+    "device_name": "Ataque"
+   }
+  },
+  {
+   "op": "auth.lock_seconds"
+  },
+  {
+   "op": "auth.create_code",
+   "save": {
+    "code5": "code"
+   }
+  },
+  {
+   "op": "auth.pair",
+   "args": {
+    "code": "$code5",
+    "device_name": "Legítimo"
+   }
   }
  ],
  "results": [
@@ -2623,6 +3080,385 @@
      "bill_requested_at": null
     }
    ]
+  },
+  {
+   "result": null
+  },
+  {
+   "error": "Código inválido, expirado ou já utilizado. Gere um novo na tela do caixa."
+  },
+  {
+   "result": {
+    "code": "<code>",
+    "remaining_seconds": "<s>"
+   }
+  },
+  {
+   "result": {
+    "remaining_seconds": "<s>"
+   }
+  },
+  {
+   "error": "Tipo de aparelho desconhecido: 'tablet'"
+  },
+  {
+   "result": {
+    "token": "<token>",
+    "device": {
+     "id": "<id37>",
+     "name": "Celular do João",
+     "kind": "waiter",
+     "operator_id": null
+    }
+   }
+  },
+  {
+   "error": "Código inválido, expirado ou já utilizado. Gere um novo na tela do caixa."
+  },
+  {
+   "result": {
+    "code": "<code>",
+    "remaining_seconds": "<s>"
+   }
+  },
+  {
+   "result": {
+    "token": "<token>",
+    "device": {
+     "id": "<id38>",
+     "name": "Aparelho sem nome",
+     "kind": "kds",
+     "operator_id": null
+    }
+   }
+  },
+  {
+   "result": {
+    "id": "<id37>",
+    "name": "Celular do João",
+    "kind": "waiter",
+    "operator_id": null
+   }
+  },
+  {
+   "error": "Aparelho não autenticado."
+  },
+  {
+   "error": "Aparelho não reconhecido. Pareie novamente."
+  },
+  {
+   "result": {
+    "code": "<code>",
+    "remaining_seconds": "<s>"
+   }
+  },
+  {
+   "result": {
+    "code": "<code>",
+    "remaining_seconds": "<s>"
+   }
+  },
+  {
+   "error": "Código inválido, expirado ou já utilizado. Gere um novo na tela do caixa."
+  },
+  {
+   "result": 1
+  },
+  {
+   "result": 0
+  },
+  {
+   "result": null
+  },
+  {
+   "error": "Código inválido, expirado ou já utilizado. Gere um novo na tela do caixa."
+  },
+  {
+   "result": 0
+  },
+  {
+   "error": "Login ou PIN inválido."
+  },
+  {
+   "result": {
+    "user_id": "<id10>",
+    "name": "João Garçom",
+    "first_name": "João",
+    "login": "joao",
+    "role": "waiter",
+    "expires_at": "<ts>",
+    "expires_in_seconds": "<s>",
+    "token": "<token>"
+   }
+  },
+  {
+   "result": {
+    "user_id": "<id10>",
+    "name": "João Garçom",
+    "first_name": "João",
+    "login": "joao",
+    "role": "waiter",
+    "expires_at": "<ts>",
+    "expires_in_seconds": "<s>"
+   }
+  },
+  {
+   "error": "Esta sessão não vale para este aparelho."
+  },
+  {
+   "error": "Entre com o seu login para lançar pedidos neste aparelho."
+  },
+  {
+   "error": "Sessão não reconhecida. Entre de novo."
+  },
+  {
+   "result": {
+    "user_id": "<id10>",
+    "name": "João Garçom",
+    "first_name": "João",
+    "login": "joao",
+    "role": "waiter",
+    "expires_at": "<ts>",
+    "expires_in_seconds": "<s>",
+    "token": "<token>"
+   }
+  },
+  {
+   "error": "Sua sessão foi encerrada no caixa. Entre de novo."
+  },
+  {
+   "result": {
+    "user_id": "<id27>",
+    "name": "Bruno Gerente",
+    "first_name": "Bruno",
+    "login": "bruno",
+    "role": "manager",
+    "expires_at": "<ts>",
+    "expires_in_seconds": "<s>",
+    "token": "<token>"
+   }
+  },
+  {
+   "result": [
+    {
+     "user_id": "<id10>",
+     "user_name": "João Garçom",
+     "role": "waiter",
+     "device_id": "<id37>",
+     "created_at": "<ts>",
+     "expires_at": "<ts>",
+     "last_seen_at": "<ts>"
+    },
+    {
+     "user_id": "<id27>",
+     "user_name": "Bruno Gerente",
+     "role": "manager",
+     "device_id": "<id38>",
+     "created_at": "<ts>",
+     "expires_at": "<ts>",
+     "last_seen_at": "<ts>"
+    }
+   ]
+  },
+  {
+   "result": 1
+  },
+  {
+   "error": "Sua sessão foi encerrada no caixa. Entre de novo."
+  },
+  {
+   "result": true
+  },
+  {
+   "result": false
+  },
+  {
+   "result": false
+  },
+  {
+   "result": []
+  },
+  {
+   "error": "João Garçom não tem permissão para autorizar esta operação."
+  },
+  {
+   "error": "Esta operação exige a credencial de um gerente."
+  },
+  {
+   "error": "Login ou PIN inválido."
+  },
+  {
+   "result": {
+    "token": "<token>",
+    "user_id": "<id27>",
+    "name": "Bruno Gerente",
+    "role": "manager",
+    "max_discount_percent": "30",
+    "expires_at": "<ts>",
+    "expires_in_seconds": "<s>"
+   }
+  },
+  {
+   "result": {
+    "user_id": "<id27>",
+    "name": "Bruno Gerente",
+    "role": "manager"
+   }
+  },
+  {
+   "error": "Autorização não vale para este aparelho."
+  },
+  {
+   "error": "Esta operação precisa de autorização de gerente."
+  },
+  {
+   "error": "Autorização expirada. Chame o gerente novamente."
+  },
+  {
+   "result": 1
+  },
+  {
+   "result": true
+  },
+  {
+   "result": false
+  },
+  {
+   "error": "Autorização expirada. Chame o gerente novamente."
+  },
+  {
+   "result": 0
+  },
+  {
+   "result": [
+    {
+     "user_id": "<id10>",
+     "name": "João Garçom",
+     "role": "waiter",
+     "orders": 3,
+     "items": 3,
+     "total_cents": 2285,
+     "tip_cents": 100,
+     "open_orders": 0,
+     "average_ticket_cents": 761
+    }
+   ]
+  },
+  {
+   "result": {
+    "user_id": "<id10>",
+    "name": "João Garçom",
+    "role": "waiter",
+    "orders": 3,
+    "items": 3,
+    "total_cents": 2285,
+    "tip_cents": 100,
+    "open_orders": 0,
+    "average_ticket_cents": 761
+   }
+  },
+  {
+   "result": {
+    "user_id": "<id39>",
+    "name": "Olga Dona",
+    "role": "owner",
+    "orders": 0,
+    "items": 0,
+    "total_cents": 0,
+    "tip_cents": 0,
+    "open_orders": 0,
+    "average_ticket_cents": 0
+   }
+  },
+  {
+   "result": {
+    "user_id": "<id14>",
+    "name": "Sem cadastro",
+    "role": "—",
+    "orders": 0,
+    "items": 0,
+    "total_cents": 0,
+    "tip_cents": 0,
+    "open_orders": 0,
+    "average_ticket_cents": 0
+   }
+  },
+  {
+   "result": {
+    "orders": 3,
+    "items": 3,
+    "total_cents": 2285,
+    "tip_cents": 100,
+    "open_orders": 0
+   }
+  },
+  {
+   "result": true
+  },
+  {
+   "result": false
+  },
+  {
+   "error": "Este aparelho foi revogado. Procure o responsável pelo caixa."
+  },
+  {
+   "result": [
+    {
+     "id": "<id37>",
+     "name": "Celular do João",
+     "kind": "waiter",
+     "paired_at": "<ts>",
+     "last_seen_at": "<ts>",
+     "revoked_at": null
+    },
+    {
+     "id": "<id38>",
+     "name": "Aparelho sem nome",
+     "kind": "kds",
+     "paired_at": "<ts>",
+     "last_seen_at": "<ts>",
+     "revoked_at": "<ts>"
+    }
+   ]
+  },
+  {
+   "error": "Código inválido, expirado ou já utilizado. Gere um novo na tela do caixa."
+  },
+  {
+   "error": "Código inválido, expirado ou já utilizado. Gere um novo na tela do caixa."
+  },
+  {
+   "error": "Código inválido, expirado ou já utilizado. Gere um novo na tela do caixa."
+  },
+  {
+   "error": "Código inválido, expirado ou já utilizado. Gere um novo na tela do caixa."
+  },
+  {
+   "error": "Código inválido, expirado ou já utilizado. Gere um novo na tela do caixa."
+  },
+  {
+   "error": "Código inválido, expirado ou já utilizado. Gere um novo na tela do caixa."
+  },
+  {
+   "error": "Código inválido, expirado ou já utilizado. Gere um novo na tela do caixa."
+  },
+  {
+   "error": "Código inválido, expirado ou já utilizado. Gere um novo na tela do caixa."
+  },
+  {
+   "error": "Tentativas demais de pareamento. Aguarde 120s. Se não foi você, gere um código novo no caixa."
+  },
+  {
+   "result": 120
+  },
+  {
+   "result": {
+    "code": "<code>",
+    "remaining_seconds": "<s>"
+   }
+  },
+  {
+   "error": "Tentativas demais de pareamento. Aguarde 120s. Se não foi você, gere um código novo no caixa."
   }
  ],
  "outbox": [
@@ -2746,7 +3582,7 @@
     "local_number": 1,
     "opened_at": "<ts>",
     "operator_id": "<id10>",
-    "origin_device_id": "<id37>",
+    "origin_device_id": "<id40>",
     "status": "open",
     "table_id": "<id5>",
     "table_label": "Mesa 1"
@@ -2762,7 +3598,7 @@
     "local_number": 2,
     "opened_at": "<ts>",
     "operator_id": "<id10>",
-    "origin_device_id": "<id37>",
+    "origin_device_id": "<id40>",
     "status": "open",
     "table_id": "<id6>",
     "table_label": "Mesa 2"
@@ -2772,7 +3608,7 @@
    "entity_table": "order_items",
    "operation": "insert",
    "payload": {
-    "client_uuid": "<id38>",
+    "client_uuid": "<id41>",
     "created_at": "<ts>",
     "created_by_user_id": "<id10>",
     "gross_weight_grams": 0,
@@ -2781,12 +3617,12 @@
     "net_weight_grams": 0,
     "order_id": "<id8>",
     "pricing_mode": "unit",
-    "product_id": "<id39>",
+    "product_id": "<id42>",
     "product_name": "Café coado",
     "quantity": "2",
     "scale_reading_raw": null,
     "tare_grams": 0,
-    "tenant_id": "<id40>",
+    "tenant_id": "<id43>",
     "total_cents": 1400,
     "unit_price_cents": 700
    }
@@ -2795,7 +3631,7 @@
    "entity_table": "order_items",
    "operation": "insert",
    "payload": {
-    "client_uuid": "<id41>",
+    "client_uuid": "<id44>",
     "created_at": "<ts>",
     "created_by_user_id": null,
     "gross_weight_grams": 0,
@@ -2804,12 +3640,12 @@
     "net_weight_grams": 0,
     "order_id": "<id8>",
     "pricing_mode": "unit",
-    "product_id": "<id39>",
+    "product_id": "<id42>",
     "product_name": "Café coado",
     "quantity": "1.50",
     "scale_reading_raw": null,
     "tare_grams": 0,
-    "tenant_id": "<id40>",
+    "tenant_id": "<id43>",
     "total_cents": 1050,
     "unit_price_cents": 700
    }
@@ -2818,7 +3654,7 @@
    "entity_table": "order_items",
    "operation": "insert",
    "payload": {
-    "client_uuid": "<id42>",
+    "client_uuid": "<id45>",
     "created_at": "<ts>",
     "created_by_user_id": null,
     "gross_weight_grams": 0,
@@ -2827,12 +3663,12 @@
     "net_weight_grams": 0,
     "order_id": "<id8>",
     "pricing_mode": "unit",
-    "product_id": "<id39>",
+    "product_id": "<id42>",
     "product_name": "Café coado",
     "quantity": "0.25",
     "scale_reading_raw": null,
     "tare_grams": 0,
-    "tenant_id": "<id40>",
+    "tenant_id": "<id43>",
     "total_cents": 175,
     "unit_price_cents": 700
    }
@@ -2841,7 +3677,7 @@
    "entity_table": "order_items",
    "operation": "insert",
    "payload": {
-    "client_uuid": "<id43>",
+    "client_uuid": "<id46>",
     "created_at": "<ts>",
     "created_by_user_id": "<id27>",
     "gross_weight_grams": 0,
@@ -2850,12 +3686,12 @@
     "net_weight_grams": 0,
     "order_id": "<id8>",
     "pricing_mode": "unit",
-    "product_id": "<id39>",
+    "product_id": "<id42>",
     "product_name": "Café coado",
     "quantity": "0.015",
     "scale_reading_raw": null,
     "tare_grams": 0,
-    "tenant_id": "<id40>",
+    "tenant_id": "<id43>",
     "total_cents": 10,
     "unit_price_cents": 700
    }
@@ -2880,7 +3716,7 @@
    "entity_table": "order_items",
    "operation": "insert",
    "payload": {
-    "client_uuid": "<id44>",
+    "client_uuid": "<id47>",
     "created_at": "<ts>",
     "created_by_user_id": null,
     "gross_weight_grams": 0,
@@ -2889,12 +3725,12 @@
     "net_weight_grams": 0,
     "order_id": "<id11>",
     "pricing_mode": "unit",
-    "product_id": "<id39>",
+    "product_id": "<id42>",
     "product_name": "Café coado",
     "quantity": "3",
     "scale_reading_raw": null,
     "tare_grams": 0,
-    "tenant_id": "<id40>",
+    "tenant_id": "<id43>",
     "total_cents": 2100,
     "unit_price_cents": 700
    }
@@ -2931,18 +3767,18 @@
    "payload": {
     "actor_user_id": "<id27>",
     "authorizer_user_id": null,
-    "client_uuid": "<id45>",
+    "client_uuid": "<id48>",
     "created_at": "<ts>",
-    "device_id": "<id37>",
+    "device_id": "<id40>",
     "event_type": "items_transferred",
     "hash": "<hash>",
-    "id": "<id46>",
+    "id": "<id49>",
     "payload_json": "{\"from_local_number\":1,\"from_order_id\":\"<id8>\",\"from_table\":\"Mesa 1\",\"item_ids\":[\"<id19>\"],\"operator_name\":\"Bruno Gerente\",\"to_local_number\":2,\"to_order_id\":\"<id11>\",\"to_table\":\"Mesa 2\",\"total_cents\":1050}",
     "prev_hash": "<hash>",
     "seq": 1,
     "severity": "warning",
-    "store_id": "<id47>",
-    "tenant_id": "<id40>"
+    "store_id": "<id50>",
+    "tenant_id": "<id43>"
    }
   },
   {
@@ -2960,18 +3796,18 @@
    "payload": {
     "actor_user_id": "<id27>",
     "authorizer_user_id": "<id27>",
-    "client_uuid": "<id48>",
+    "client_uuid": "<id51>",
     "created_at": "<ts>",
-    "device_id": "<id37>",
+    "device_id": "<id40>",
     "event_type": "price_override",
     "hash": "<hash>",
-    "id": "<id49>",
+    "id": "<id52>",
     "payload_json": "{\"authorizer_name\":\"Bruno Gerente\",\"channel\":\"waiter\",\"from_table\":\"Mesa 2\",\"operation\":\"table_transfer\",\"order_id\":\"<id11>\",\"to_table\":\"Mesa 3\"}",
     "prev_hash": "<hash>",
     "seq": 2,
     "severity": "warning",
-    "store_id": "<id47>",
-    "tenant_id": "<id40>"
+    "store_id": "<id50>",
+    "tenant_id": "<id43>"
    }
   },
   {
@@ -2984,7 +3820,7 @@
     "local_number": 3,
     "opened_at": "<ts>",
     "operator_id": "<id10>",
-    "origin_device_id": "<id37>",
+    "origin_device_id": "<id40>",
     "status": "open",
     "table_id": "<id5>",
     "table_label": "Mesa 1"
@@ -3023,7 +3859,7 @@
     "amount_cents": 2000,
     "change_cents": 500,
     "created_at": "<ts>",
-    "id": "<id50>",
+    "id": "<id53>",
     "method": "cash",
     "order_id": "<id23>"
    }
@@ -3049,18 +3885,18 @@
    "payload": {
     "actor_user_id": "<id27>",
     "authorizer_user_id": null,
-    "client_uuid": "<id51>",
+    "client_uuid": "<id54>",
     "created_at": "<ts>",
-    "device_id": "<id37>",
+    "device_id": "<id40>",
     "event_type": "sale_closed",
     "hash": "<hash>",
-    "id": "<id52>",
+    "id": "<id55>",
     "payload_json": "{\"channel\":\"waiter\",\"items\":1,\"local_number\":3,\"order_id\":\"<id23>\",\"payments\":[{\"amount_cents\":2000,\"method\":\"cash\"}],\"received_by_name\":\"Bruno Gerente\",\"served_by_name\":\"João Garçom\",\"served_by_user_id\":\"<id10>\",\"split_from_local_number\":1,\"split_from_order_id\":\"<id8>\",\"table_label\":\"Mesa 1\",\"tip_cents\":100,\"total_cents\":1400}",
     "prev_hash": "<hash>",
     "seq": 3,
     "severity": "info",
-    "store_id": "<id47>",
-    "tenant_id": "<id40>"
+    "store_id": "<id50>",
+    "tenant_id": "<id43>"
    }
   },
   {
@@ -3070,7 +3906,7 @@
     "amount_cents": 100,
     "change_cents": 0,
     "created_at": "<ts>",
-    "id": "<id53>",
+    "id": "<id56>",
     "method": "pix",
     "order_id": "<id8>"
    }
@@ -3082,7 +3918,7 @@
     "amount_cents": 50,
     "change_cents": 15,
     "created_at": "<ts>",
-    "id": "<id54>",
+    "id": "<id57>",
     "method": "cash",
     "order_id": "<id8>"
    }
@@ -3094,7 +3930,7 @@
     "amount_cents": 50,
     "change_cents": 0,
     "created_at": "<ts>",
-    "id": "<id55>",
+    "id": "<id58>",
     "method": "cash",
     "order_id": "<id8>"
    }
@@ -3120,18 +3956,18 @@
    "payload": {
     "actor_user_id": "<id27>",
     "authorizer_user_id": null,
-    "client_uuid": "<id56>",
+    "client_uuid": "<id59>",
     "created_at": "<ts>",
-    "device_id": "<id37>",
+    "device_id": "<id40>",
     "event_type": "sale_closed",
     "hash": "<hash>",
-    "id": "<id57>",
+    "id": "<id60>",
     "payload_json": "{\"channel\":\"waiter\",\"items\":2,\"local_number\":1,\"order_id\":\"<id8>\",\"payments\":[{\"amount_cents\":100,\"method\":\"pix\"},{\"amount_cents\":50,\"method\":\"cash\"},{\"amount_cents\":50,\"method\":\"cash\"}],\"received_by_name\":\"Bruno Gerente\",\"served_by_name\":\"João Garçom\",\"served_by_user_id\":\"<id10>\",\"table_label\":\"Mesa 1\",\"tip_cents\":0,\"total_cents\":185}",
     "prev_hash": "<hash>",
     "seq": 4,
     "severity": "info",
-    "store_id": "<id47>",
-    "tenant_id": "<id40>"
+    "store_id": "<id50>",
+    "tenant_id": "<id43>"
    }
   },
   {
@@ -3144,7 +3980,7 @@
     "local_number": 4,
     "opened_at": "<ts>",
     "operator_id": "<id27>",
-    "origin_device_id": "<id37>",
+    "origin_device_id": "<id40>",
     "status": "open",
     "table_id": "<id6>",
     "table_label": "Mesa 2"
@@ -3170,18 +4006,18 @@
    "payload": {
     "actor_user_id": "<id27>",
     "authorizer_user_id": "<id27>",
-    "client_uuid": "<id58>",
+    "client_uuid": "<id61>",
     "created_at": "<ts>",
-    "device_id": "<id37>",
+    "device_id": "<id40>",
     "event_type": "item_canceled",
     "hash": "<hash>",
-    "id": "<id59>",
+    "id": "<id62>",
     "payload_json": "{\"authorizer_name\":\"Bruno Gerente\",\"channel\":\"waiter\",\"item_count\":0,\"local_number\":4,\"order_id\":\"<id25>\",\"reason\":\"aberta por engano\",\"table_label\":\"Mesa 2\",\"total_cents\":0}",
     "prev_hash": "<hash>",
     "seq": 5,
     "severity": "critical",
-    "store_id": "<id47>",
-    "tenant_id": "<id40>"
+    "store_id": "<id50>",
+    "tenant_id": "<id43>"
    }
   },
   {
@@ -3194,7 +4030,7 @@
     "local_number": 5,
     "opened_at": "<ts>",
     "operator_id": "<id10>",
-    "origin_device_id": "<id37>",
+    "origin_device_id": "<id40>",
     "status": "open",
     "table_id": "<id5>",
     "table_label": "Mesa 1"
@@ -3204,7 +4040,7 @@
    "entity_table": "order_items",
    "operation": "insert",
    "payload": {
-    "client_uuid": "<id60>",
+    "client_uuid": "<id63>",
     "created_at": "<ts>",
     "created_by_user_id": null,
     "gross_weight_grams": 0,
@@ -3213,12 +4049,12 @@
     "net_weight_grams": 0,
     "order_id": "<id28>",
     "pricing_mode": "unit",
-    "product_id": "<id39>",
+    "product_id": "<id42>",
     "product_name": "Café coado",
     "quantity": "1",
     "scale_reading_raw": null,
     "tare_grams": 0,
-    "tenant_id": "<id40>",
+    "tenant_id": "<id43>",
     "total_cents": 700,
     "unit_price_cents": 700
    }
@@ -3268,18 +4104,18 @@
    "payload": {
     "actor_user_id": "<id27>",
     "authorizer_user_id": null,
-    "client_uuid": "<id61>",
+    "client_uuid": "<id64>",
     "created_at": "<ts>",
-    "device_id": "<id37>",
+    "device_id": "<id40>",
     "event_type": "order_merged",
     "hash": "<hash>",
-    "id": "<id62>",
+    "id": "<id65>",
     "payload_json": "{\"from_local_number\":5,\"from_order_id\":\"<id28>\",\"from_table\":\"Mesa 1\",\"items\":1,\"operator_name\":\"Bruno Gerente\",\"to_local_number\":2,\"to_order_id\":\"<id11>\",\"to_table\":\"Mesa 3\",\"total_cents\":700}",
     "prev_hash": "<hash>",
     "seq": 6,
     "severity": "warning",
-    "store_id": "<id47>",
-    "tenant_id": "<id40>"
+    "store_id": "<id50>",
+    "tenant_id": "<id43>"
    }
   },
   {
@@ -3332,18 +4168,18 @@
    "payload": {
     "actor_user_id": "<id27>",
     "authorizer_user_id": "<id27>",
-    "client_uuid": "<id63>",
+    "client_uuid": "<id66>",
     "created_at": "<ts>",
-    "device_id": "<id37>",
+    "device_id": "<id40>",
     "event_type": "item_canceled",
     "hash": "<hash>",
-    "id": "<id64>",
+    "id": "<id67>",
     "payload_json": "{\"authorizer_name\":\"Bruno Gerente\",\"channel\":\"waiter\",\"item_count\":3,\"local_number\":2,\"order_id\":\"<id11>\",\"reason\":\"cliente foi embora\",\"table_label\":\"Mesa 3\",\"total_cents\":3850}",
     "prev_hash": "<hash>",
     "seq": 7,
     "severity": "critical",
-    "store_id": "<id47>",
-    "tenant_id": "<id40>"
+    "store_id": "<id50>",
+    "tenant_id": "<id43>"
    }
   },
   {
@@ -3356,7 +4192,7 @@
     "local_number": 6,
     "opened_at": "<ts>",
     "operator_id": "<id10>",
-    "origin_device_id": "<id37>",
+    "origin_device_id": "<id40>",
     "status": "open",
     "table_id": "<id6>",
     "table_label": "Mesa 2"
@@ -3366,7 +4202,7 @@
    "entity_table": "order_items",
    "operation": "insert",
    "payload": {
-    "client_uuid": "<id65>",
+    "client_uuid": "<id68>",
     "created_at": "<ts>",
     "created_by_user_id": null,
     "gross_weight_grams": 0,
@@ -3375,12 +4211,12 @@
     "net_weight_grams": 0,
     "order_id": "<id33>",
     "pricing_mode": "unit",
-    "product_id": "<id39>",
+    "product_id": "<id42>",
     "product_name": "Café coado",
     "quantity": "1",
     "scale_reading_raw": null,
     "tare_grams": 0,
-    "tenant_id": "<id40>",
+    "tenant_id": "<id43>",
     "total_cents": 700,
     "unit_price_cents": 700
    }
@@ -3392,7 +4228,7 @@
     "amount_cents": 700,
     "change_cents": 0,
     "created_at": "<ts>",
-    "id": "<id66>",
+    "id": "<id69>",
     "method": "debit",
     "order_id": "<id33>"
    }
@@ -3418,18 +4254,18 @@
    "payload": {
     "actor_user_id": "<id27>",
     "authorizer_user_id": null,
-    "client_uuid": "<id67>",
+    "client_uuid": "<id70>",
     "created_at": "<ts>",
-    "device_id": "<id37>",
+    "device_id": "<id40>",
     "event_type": "sale_closed",
     "hash": "<hash>",
-    "id": "<id68>",
+    "id": "<id71>",
     "payload_json": "{\"channel\":\"waiter\",\"items\":1,\"local_number\":6,\"order_id\":\"<id33>\",\"payments\":[{\"amount_cents\":700,\"method\":\"debit\"}],\"received_by_name\":\"Bruno Gerente\",\"served_by_name\":\"João Garçom\",\"served_by_user_id\":\"<id10>\",\"table_label\":\"Mesa 2\",\"tip_cents\":0,\"total_cents\":700}",
     "prev_hash": "<hash>",
     "seq": 8,
     "severity": "info",
-    "store_id": "<id47>",
-    "tenant_id": "<id40>"
+    "store_id": "<id50>",
+    "tenant_id": "<id43>"
    }
   }
  ]
