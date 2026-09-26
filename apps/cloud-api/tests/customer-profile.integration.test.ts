@@ -10,6 +10,7 @@ import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { SyncMerger, type ItemResult, type SyncItem } from "../src/lib/sync/merge.ts";
+import { pullRows } from "../src/lib/sync/pull.ts";
 
 const ADMIN_URL = process.env.TEST_DATABASE_URL;
 const APP_URL = process.env.TEST_APP_DATABASE_URL;
@@ -20,6 +21,7 @@ describeDb("cadastro do cliente pelo caixa", () => {
   let app: postgres.Sql;
   let tenant: string;
   let store: string;
+  let otherStore: string;
 
   beforeAll(async () => {
     admin = postgres(ADMIN_URL!, { max: 1, onnotice: () => {} });
@@ -32,6 +34,10 @@ describeDb("cadastro do cliente pelo caixa", () => {
       INSERT INTO stores (tenant_id, name) VALUES (${tenant}, 'Mercadinho do condomínio') RETURNING id
     `;
     store = s!.id;
+    const [o] = await admin<{ id: string }[]>`
+      INSERT INTO stores (tenant_id, name) VALUES (${tenant}, 'Padaria da mesma rede') RETURNING id
+    `;
+    otherStore = o!.id;
   });
 
   afterAll(async () => {
@@ -44,12 +50,12 @@ describeDb("cadastro do cliente pelo caixa", () => {
   });
 
   /** Um caixa da loja: cada um tem o próprio banco e cadastra os próprios clientes. */
-  async function terminal() {
+  async function terminal(at: string = store) {
     const device = randomUUID();
     await admin`
-      INSERT INTO devices (id, tenant_id, store_id, token_hash) VALUES (${device}, ${tenant}, ${store}, ${randomUUID()})
+      INSERT INTO devices (id, tenant_id, store_id, token_hash) VALUES (${device}, ${tenant}, ${at}, ${randomUUID()})
     `;
-    const merger = new SyncMerger({ tenantId: tenant, storeId: store, deviceId: device, secret: Buffer.alloc(32) });
+    const merger = new SyncMerger({ tenantId: tenant, storeId: at, deviceId: device, secret: Buffer.alloc(32) });
     return (items: SyncItem[]) =>
       app.begin(async (tx) => {
         await tx`SELECT set_config('app.tenant_id', ${tenant}, true)`;
@@ -133,6 +139,75 @@ describeDb("cadastro do cliente pelo caixa", () => {
     expect(results[0]!.message).toContain("WhatsApp");
     expect(results[1]!.status).toBe("applied");
     expect(await row(other.entity_id)).toMatchObject({ name: "Rui Vizinho" });
+  });
+
+  it("o cliente é da loja do caixa que cadastrou, nunca da que vem no corpo", async () => {
+    const push = await terminal();
+    const item = customer({ ...lia, phone: "21900000010", cpf: null, store_id: otherStore });
+
+    await push([item]);
+
+    const [found] = await admin<{ store_id: string }[]>`
+      SELECT store_id::text FROM customers WHERE tenant_id = ${tenant} AND id::text = ${item.entity_id}
+    `;
+    expect(found!.store_id).toBe(store);
+  });
+
+  it("a mesma pessoa cadastrada em dois caixas sem internet é um cliente só: vence a mais nova", async () => {
+    const first = await terminal();
+    const second = await terminal();
+    const id = randomUUID();
+    await first([customer({ ...lia, id, phone: "21900000011", cpf: null, email: "antigo@exemplo.com" })]);
+
+    const [again] = await second([customer({
+      ...lia, id, phone: "21900000011", cpf: null, email: "novo@exemplo.com",
+      updated_at: "2026-09-26T16:00:00.000+00:00",
+    })]);
+    const [late] = await second([customer({
+      ...lia, id, phone: "21900000011", cpf: null, email: "velho@exemplo.com",
+      updated_at: "2026-09-26T14:00:00.000+00:00",
+    })]);
+
+    expect(again!.status).toBe("applied");
+    expect(late!.status).toBe("duplicate");
+    const rows = await admin`SELECT email FROM customers WHERE tenant_id = ${tenant} AND phone = '21900000011'`;
+    expect(rows).toEqual([{ email: "novo@exemplo.com" }]);
+  });
+
+  it("o mesmo WhatsApp em duas lojas da rede são dois clientes, um de cada loja", async () => {
+    const here = await terminal();
+    const there = await terminal(otherStore);
+
+    const [a] = await here([customer({ ...lia, phone: "21900000012", cpf: null })]);
+    const [b] = await there([customer({ ...lia, phone: "21900000012", cpf: null })]);
+
+    expect([a!.status, b!.status]).toEqual(["applied", "applied"]);
+  });
+
+  it("cada caixa baixa os clientes da própria loja e os antigos sem loja, nunca os da outra", async () => {
+    const here = await terminal();
+    const there = await terminal(otherStore);
+    const mine = customer({ ...lia, phone: "21900000013", cpf: null });
+    const theirs = customer({ ...lia, phone: "21900000014", cpf: null });
+    await here([mine]);
+    await there([theirs]);
+    const legacy = randomUUID();
+    await admin`
+      INSERT INTO customers (id, tenant_id, name, phone, client_uuid)
+      VALUES (${legacy}, ${tenant}, 'Cliente de antes da 021', '21900000015', ${randomUUID()})
+    `;
+
+    const rows = await app.begin(async (tx) => {
+      await tx`SELECT set_config('app.tenant_id', ${tenant}, true)`;
+      return pullRows(tx as never, { tenantId: tenant, storeId: store }, "customers", 0, 1000);
+    });
+
+    const ids = rows.map((r) => String(r["id"]));
+    expect(ids).toContain(mine.entity_id);
+    expect(ids).toContain(legacy);
+    expect(ids).not.toContain(theirs.entity_id);
+    const seqs = rows.map((r) => Number(r["server_seq"]));
+    expect(seqs).toEqual([...seqs].sort((x, y) => x - y));
   });
 
   it("o mesmo CPF em dois caixas entra nos dois: juntar cadastros é do painel", async () => {

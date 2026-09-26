@@ -163,6 +163,12 @@ public sealed class SyncEngine(
                     _log($"Linha de {table} descartada no pull (incompleta ou de outro tenant)");
                     continue;
                 }
+                if (table == "customers")
+                {
+                    // O cliente tem regra própria: vence o mais novo, e WhatsApp/CPF seguem únicos.
+                    if (Customers.CustomerPull.Apply(transaction, row, _log)) applied++;
+                    continue;
+                }
                 // Colunas e tabela vêm do mapeamento, nunca da resposta.
                 var columns = row.Keys.OrderBy(name => name, StringComparer.Ordinal).ToList();
                 var updates = string.Join(", ", columns.Where(c => c != "id").Select(c => $"{c} = excluded.{c}"));

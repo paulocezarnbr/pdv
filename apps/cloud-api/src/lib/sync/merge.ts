@@ -93,6 +93,8 @@ const WRITABLE: Readonly<Record<string, readonly string[]>> = {
     // Schema 15 do caixa: o cadastro completo (migração 020).
     "email", "cpf", "is_resident", "unit_block", "unit_number", "birth_date",
     "marketing_opt_in", "marketing_opt_in_at",
+    // A loja do terminal (migração 021): vem do contexto, nunca do corpo.
+    "store_id",
   ],
   cashback_ledger: [
     "id", "store_id", "client_uuid", "customer_id", "order_id", "entry_type",
@@ -416,13 +418,17 @@ export class SyncMerger {
   // -- cadastro de cliente ------------------------------------------------- //
 
   /**
-   * O cliente, com a colisão de WhatsApp contida neste item.
+   * O cliente, com as colisões contidas neste item.
    *
-   * Os clientes não descem da nuvem para os outros caixas: a mesma pessoa
-   * cadastrada em dois balcões chega aqui duas vezes, com o mesmo WhatsApp, e
-   * o índice único recusa a segunda. Sem o savepoint, essa recusa derrubava o
-   * lote inteiro — e com ele as vendas do caixa, que ficavam presas atrás de
-   * um cadastro repetido.
+   * O cadastro é do estabelecimento e desce para todos os caixas da loja. O
+   * caixa deriva o id do cliente do WhatsApp (ou do CPF) e da loja: a mesma
+   * pessoa cadastrada em dois balcões sem internet chega com o MESMO id. Isso
+   * não é colisão, é o mesmo cliente — a segunda chegada vira correção, e a
+   * mais nova vence. Os saldos dos dois caixas já apontam para esse id.
+   *
+   * O que ainda colide é WhatsApp igual com id diferente (cadastro anterior
+   * a esta regra, ou número que mudou de dono): recusa só este item. Sem o
+   * savepoint, a recusa derrubava o lote inteiro, vendas junto.
    */
   private async applyCustomer(item: SyncItem, tx: Tx): Promise<ItemResult> {
     try {
@@ -432,8 +438,24 @@ export class SyncMerger {
           : this.applyGeneric(item, sp as never),
       ) as ItemResult;
     } catch (error) {
+      const failure = error as { code?: string; constraint_name?: string };
+      if (failure.code !== "23505") throw error;
+      if (item.operation === "insert" && failure.constraint_name === "customers_pkey") {
+        return this.applySameCustomer(item, tx);
+      }
+      return reject(item, "este WhatsApp já está no cadastro de outro cliente desta loja");
+    }
+  }
+
+  /** O mesmo cliente, cadastrado em outro caixa da loja: a chegada vira correção. */
+  private async applySameCustomer(item: SyncItem, tx: Tx): Promise<ItemResult> {
+    try {
+      return await tx.savepoint((sp) =>
+        this.applyUpdate({ ...item, operation: "update" }, sp as never),
+      ) as ItemResult;
+    } catch (error) {
       if ((error as { code?: string }).code !== "23505") throw error;
-      return reject(item, "este WhatsApp já está no cadastro de outro cliente, feito em outro caixa");
+      return reject(item, "este WhatsApp já está no cadastro de outro cliente desta loja");
     }
   }
 

@@ -604,6 +604,36 @@ A arquitetura existe para que a tela seja testável:
     - 6 de integração na nuvem, contra Postgres, com a contenção da
       colisão verificada por mutação.
     - O `ui-smoke.ps1` cadastra uma moradora pelo formulário.
+  - **O cadastro é do estabelecimento, não do caixa (pedido do dono, mesmo dia).**
+    - **Na nuvem (migração `021`).** O cliente ganha `store_id`, vindo do
+      terminal que cadastrou e nunca do corpo. O WhatsApp é único por loja,
+      e `/api/sync/pull` passa a oferecer `customers`: cada caixa baixa os da
+      própria loja e os antigos sem loja, nunca os de outra loja da rede.
+      Os cadastros antigos ganham a loja por dedução, só quando ela é certa:
+      a rede com um estabelecimento só, ou o cliente que movimentou saldo
+      numa loja só.
+    - **O id do cliente sai da loja e do WhatsApp** (UUID v5,
+      `CustomerIdentity`; do CPF quando não há WhatsApp). A mesma pessoa
+      cadastrada em dois caixas sem internet chega com o mesmo id. A nuvem
+      a trata como o mesmo cliente, e vence a versão mais nova. Número que
+      mudou de dono ganha id próprio.
+    - **No caixa (`CustomerPull`, regra a mais que o Python).**
+      - O cliente desce inteiro, e o que a nuvem apagou é apagado aqui.
+      - Uma correção local mais nova não é desfeita.
+      - Dois cadastros com o mesmo WhatsApp ou CPF (um antigo, de id
+        aleatório, ou um por WhatsApp e outro só por CPF): o de menor id
+        fica com o número, e o outro perde só esse campo, localmente. É a
+        mesma decisão em todos os caixas, em qualquer ordem de chegada.
+        Juntar os dois é trabalho do painel.
+    - O PDV em Python não pede `customers`: a lista de descida dele segue
+      igual, e o teste do contrato confere o C# menos `BeyondPython`.
+    - **Testes.** 11 no caixa (12 regras verificadas por mutação); 4 de
+      integração na nuvem (3 regras verificadas por mutação).
+    - **Ainda por caixa: os saldos.** Cashback, pré-pago e fiado continuam
+      no banco de cada caixa: o cliente é o mesmo em todos, mas o saldo que
+      cada um mostra é o que passou por ele. Descer os lançamentos é
+      simples (são só acréscimos). A decisão é outra: com dois caixas sem
+      internet, o mesmo saldo pré-pago pode ser gasto nos dois.
   - **Fica para depois.**
     - O PDV em Python só ganhou as colunas; a tela dele continua pedindo
       nome e telefone.

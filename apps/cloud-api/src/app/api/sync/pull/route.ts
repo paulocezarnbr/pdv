@@ -23,23 +23,9 @@
 import { requireDevice } from "@/lib/auth/device";
 import { sql } from "@/lib/db";
 import { ApiError, handler, json } from "@/lib/http";
+import { PULLABLE, pullRows } from "@/lib/sync/pull";
 
 export const dynamic = "force-dynamic";
-
-/**
- * O que o terminal pode baixar. Lista fechada, e só cadastro.
- *
- * `users` está aqui porque é o que permite validar o PIN offline: sem a
- * réplica local, uma queda de internet impediria de abrir o caixa — que é o
- * oposto do que o sistema inteiro existe para garantir.
- */
-const PULLABLE = new Set([
-  "products",
-  "recipes",
-  "recipe_lines",
-  "inventory_items",
-  "users",
-]);
 
 export const GET = handler(async (request) => {
   const device = await requireDevice(request);
@@ -59,13 +45,8 @@ export const GET = handler(async (request) => {
     throw new ApiError(400, "limit precisa estar entre 1 e 1000.");
   }
 
-  // O nome da tabela passou pela lista branca acima; nada mais é interpolado.
-  const rows = await sql.unsafe<Record<string, unknown>[]>(
-    `SELECT * FROM ${table}
-      WHERE tenant_id = $1 AND server_seq > $2
-      ORDER BY server_seq
-      LIMIT $3`,
-    [device.tenantId, since, limit] as never[],
+  const rows = await pullRows(
+    sql as never, { tenantId: device.tenantId, storeId: device.storeId }, table, since, limit,
   );
 
   const lastSeq = rows.reduce(

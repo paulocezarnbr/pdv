@@ -185,8 +185,11 @@ public sealed class SyncTests : IDisposable
         }
 
         var pull = Contract.GetProperty("pull");
-        Assert.Equal(pull.GetProperty("pullable").EnumerateArray().Select(t => t.GetString()), PullMapping.PullableTables);
-        Assert.Equal(pull.GetProperty("mapped").EnumerateArray().Select(t => t.GetString()), PullMapping.MappedTables.Order());
+        // O cliente por estabelecimento é regra a mais que o Python (PullMapping.BeyondPython).
+        Assert.Equal(pull.GetProperty("pullable").EnumerateArray().Select(t => t.GetString()),
+            PullMapping.PullableTables.Except(PullMapping.BeyondPython));
+        Assert.Equal(pull.GetProperty("mapped").EnumerateArray().Select(t => t.GetString()),
+            PullMapping.MappedTables.Except(PullMapping.BeyondPython).Order());
         Assert.Equal(pull.GetProperty("not_applied").EnumerateArray().Select(t => t.GetString()), PullMapping.NotApplied.Keys.Order());
 
         var worker = Contract.GetProperty("worker");
@@ -366,7 +369,7 @@ public sealed class SyncTests : IDisposable
         Assert.Equal(9L, new CursorStore(_database).Get("users"));
         Assert.Equal(700L, new CursorStore(_database).Get("products"));
         // O que o caixa não aplica, nem pede.
-        Assert.Equal(["products", "users"], _cloud.PullRequests.Select(r => r.EntityTable));
+        Assert.Equal(["products", "users", "customers"], _cloud.PullRequests.Select(r => r.EntityTable));
     }
 
     [Fact]

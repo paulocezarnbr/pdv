@@ -89,12 +89,13 @@ public sealed class CustomerLedgers(
     public string Register(CustomerProfile profile)
     {
         var clean = CustomerRules.Normalize(profile, Today());
-        var id = Iso.NewId();
         var clientUuid = Iso.NewId();
         var now = Iso.Now(_clock);
+        var id = "";
         database.InTransaction(transaction =>
         {
             RefuseDuplicate(transaction, clean, exceptId: null);
+            id = NewCustomerId(transaction, clean.WhatsApp, clean.Cpf);
             var optInAt = clean.MarketingOptIn ? now : null;
             transaction.Command(
                 "INSERT INTO customers (id, tenant_id, name, phone, email, cpf, is_resident, unit_block, unit_number, " +
@@ -201,6 +202,21 @@ public sealed class CustomerLedgers(
         return new CustomerRecord(reader.GetString(0), new CustomerProfile(
             reader.GetString(1), Text(2), Text(3), Text(4), reader.GetInt64(5) != 0, Text(6), Text(7), birth,
             reader.GetInt64(9) != 0), Text(10));
+    }
+
+    /// <summary>
+    /// O id derivado da loja e do WhatsApp (ou CPF): a mesma pessoa cadastrada
+    /// em dois caixas vira um cliente só (<see cref="CustomerIdentity"/>). Se o
+    /// id já existe aqui, é de outra pessoa que teve este número antes: o
+    /// cadastro novo ganha id próprio.
+    /// </summary>
+    private string NewCustomerId(SqliteTransaction transaction, string? whatsApp, string? cpf)
+    {
+        if (string.IsNullOrEmpty(whatsApp) && string.IsNullOrEmpty(cpf)) return Iso.NewId();
+        var derived = CustomerIdentity.IdFor(terminal.TenantId, terminal.StoreId, whatsApp, cpf);
+        return transaction.Command("SELECT 1 FROM customers WHERE id = $id", ("$id", derived)).ExecuteScalar() is null
+            ? derived
+            : Iso.NewId();
     }
 
     /// <summary>WhatsApp e CPF são únicos na loja. A recusa diz de quem é, para o operador achar o cadastro certo.</summary>

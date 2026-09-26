@@ -24,7 +24,15 @@ namespace Pdv.Data.Sync;
 public static partial class PullMapping
 {
     /// <summary>Cadastros que a nuvem oferece, na ordem em que o caixa pede.</summary>
-    public static readonly IReadOnlyList<string> PullableTables = ["products", "recipes", "recipe_lines", "inventory_items", "users"];
+    public static readonly IReadOnlyList<string> PullableTables =
+        ["products", "recipes", "recipe_lines", "inventory_items", "users", "customers"];
+
+    /// <summary>
+    /// Regra a mais que o Python: o cliente é do estabelecimento e desce para
+    /// todos os caixas da loja (<see cref="Customers.CustomerPull"/>). O PDV em
+    /// Python não pede esta tabela.
+    /// </summary>
+    public static readonly IReadOnlyList<string> BeyondPython = ["customers"];
 
     /// <summary>O que a nuvem oferece e o caixa ainda não aplica com segurança — e por quê.</summary>
     public static readonly IReadOnlyDictionary<string, string> NotApplied = new Dictionary<string, string>
@@ -60,6 +68,17 @@ public static partial class PullMapping
             ["id", "tenant_id", "sku", "name", "pricing_mode", "price_cents", "updated_at"],
             // O catálogo da nuvem vale para a rede; no caixa, o produto é desta loja.
             storeId => new Dictionary<string, object> { ["store_id"] = storeId }),
+        ["customers"] = new(
+            new Dictionary<string, Func<JsonElement, object?>>
+            {
+                ["id"] = Text, ["tenant_id"] = Text, ["client_uuid"] = Text, ["name"] = Text, ["phone"] = Text,
+                ["email"] = Text, ["cpf"] = Text, ["is_resident"] = Flag, ["unit_block"] = Text, ["unit_number"] = Text,
+                ["birth_date"] = Date, ["marketing_opt_in"] = Flag, ["marketing_opt_in_at"] = Moment,
+                ["is_active"] = Flag, ["created_at"] = Moment, ["updated_at"] = Moment,
+            },
+            ["id", "tenant_id", "client_uuid", "name", "created_at", "updated_at"],
+            // A loja não é coluna no caixa: o banco dele é de uma loja só.
+            _ => new Dictionary<string, object>()),
     };
 
     public static IEnumerable<string> MappedTables => Mappings.Keys;
@@ -154,6 +173,20 @@ public static partial class PullMapping
         JsonValueKind.Object => value.EnumerateObject().Any() ? 1 : 0,
         _ => 0,
     };
+
+    /// <summary>Data do Postgres (<c>DATE</c>), que o driver entrega como meia-noite: só o dia.</summary>
+    private static object? Date(JsonElement value) =>
+        value.ValueKind == JsonValueKind.String && value.GetString() is { Length: >= 10 } text &&
+        DateOnly.TryParseExact(text[..10], "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _)
+            ? text[..10]
+            : null;
+
+    /// <summary>Instante no formato do caixa (<c>...000+00:00</c>), para a comparação de "mais novo" ser justa.</summary>
+    private static object? Moment(JsonElement value) =>
+        value.ValueKind == JsonValueKind.String &&
+        DateTimeOffset.TryParse(value.GetString(), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var moment)
+            ? Pdv.Core.Iso.Format(moment)
+            : null;
 
     private static bool IsIntegerLiteral(string raw) => raw.IndexOfAny(['.', 'e', 'E']) < 0;
 
