@@ -342,6 +342,30 @@ public sealed class RemoteCommandTests : IDisposable
     }
 
     [Fact]
+    public void The_kitchen_screen_hears_the_cancel_after_the_commit()
+    {
+        // Com o salão no ar, a tela da cozinha tira o prato da fila na hora — e
+        // não só quando reconectar, como fazia antes: até lá ela mandaria
+        // preparar um prato que já saiu da conta.
+        var hub = new Data.Edge.EventHub(_clock);
+        using var kitchen = hub.Subscribe(["ticket.changed"]);
+        var service = new RemoteCommandService(
+            _database, Terminal, Secret, _ledger, new StaffAuthentication(_database, Terminal.TenantId, _clock), _clock,
+            _log.Add, hub);
+        var command = CancelWhatTheKitchenHas();
+        _service.Inbox.Accept(command);
+        Assert.Equal(new ApplyReport(Awaiting: 1), service.ApplyPending());
+        Assert.False(kitchen.TryNext(out _));
+
+        service.Confirm(command.CommandUuid, "ana", Pin);
+
+        Assert.True(kitchen.TryNext(out var changed));
+        Assert.Equal(("k-1", "canceled"),
+            (changed!.Payload["ticket_id"]!.GetValue<string>(), changed.Payload["status"]!.GetValue<string>()));
+        Assert.False(kitchen.TryNext(out _));
+    }
+
+    [Fact]
     public void A_waiter_cannot_accept_the_cancel_of_his_own_table()
     {
         var command = CancelWhatTheKitchenHas();

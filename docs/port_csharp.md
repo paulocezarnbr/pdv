@@ -490,9 +490,10 @@ A arquitetura existe para que a tela seja testável:
     não vira pergunta. 9 mutações, 8 mortas; a que sobrevive (teto de
     saltos maior) é equivalente, o laço termina de todo jeito. Nome de loja
     com ponto vira um rótulo só (o Python o partiria em dois).
-  - **Falta:** o painel do salão com a digital e o QR (C6f). O cancelamento remoto em C# marca os tickets da
-    cozinha como cancelados, mas não avisa a tela da cozinha pelo
-    barramento, como o Python avisa — entra junto com o painel.
+  - **O cancelamento pelo painel avisa a tela da cozinha** depois do commit,
+    pelo mesmo barramento do salão (um só no app), como o Python. Antes o
+    C# só marcava o ticket; a tela o tirava da fila apenas ao reconectar.
+  - **Falta:** o painel do salão com a digital e o QR (C6f).
   - A mensagem do commit `444a7cb` diz 30 rotas; são 28 (27 HTTP e o
     WebSocket).
   - **Baixa de insumo pelo salão (correção nos dois PDVs, 26/09/2026).** O

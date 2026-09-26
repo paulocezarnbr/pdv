@@ -81,10 +81,15 @@ public sealed class RemoteCommandService
     private readonly CommandInbox _inbox;
     private readonly SaleAdjustments _adjustments;
 
+    /// <summary>O barramento do salão, quando ele está no ar: a tela da cozinha precisa saber do cancelamento.</summary>
+    private readonly Edge.EventHub? _hub;
+
     public RemoteCommandService(
         PdvDatabase database, TerminalProfile terminal, byte[] deviceSecret, AuditLedger ledger,
-        StaffAuthentication authentication, TimeProvider? clock = null, Action<string>? log = null)
+        StaffAuthentication authentication, TimeProvider? clock = null, Action<string>? log = null,
+        Edge.EventHub? hub = null)
     {
+        _hub = hub;
         _database = database;
         _terminal = terminal;
         _deviceSecret = deviceSecret;
@@ -344,6 +349,7 @@ public sealed class RemoteCommandService
         var itemId = Text(command.Payload, "order_item_id");
         var reason = Text(command.Payload, "reason", "Cancelamento remoto exige motivo.");
 
+        var tickets = new List<string>();
         var productName = _database.InTransaction(transaction =>
         {
             RequireAuthorizer(transaction, command.IssuedByUserId, Roles.ItemCancel);
@@ -373,12 +379,18 @@ public sealed class RemoteCommandService
             _adjustments.CancelWithin(transaction, orderId, itemId, command.IssuedByUserId, $"[{Channel}] {reason}");
             // O ticket sai da fila junto com o item: deixá-lo mandaria a cozinha
             // preparar um prato que já não está na conta.
-            using (var tickets = transaction.Command(
+            using (var live = transaction.Command(
+                       "SELECT id FROM kds_tickets WHERE order_item_id = $item AND status <> 'canceled'", ("$item", itemId)))
+            using (var reader = live.ExecuteReader())
+            {
+                while (reader.Read()) tickets.Add(reader.GetString(0));
+            }
+            using (var cancel = transaction.Command(
                        "UPDATE kds_tickets SET status = 'canceled', updated_at = $now " +
                        "WHERE order_item_id = $item AND status <> 'canceled'",
                        ("$now", Iso.Now(_clock)), ("$item", itemId)))
             {
-                tickets.ExecuteNonQuery();
+                cancel.ExecuteNonQuery();
             }
             SaleRepository.RecomputeTotals(transaction, orderId, _clock);
 
@@ -403,8 +415,31 @@ public sealed class RemoteCommandService
         });
 
         changedOrder = orderId;
+        AnnounceKitchen(tickets);
         var message = $"item {productName} cancelado";
         return confirmedBy is null ? message : message + $" com aceite de {confirmedBy.Name} no caixa";
+    }
+
+    /// <summary>
+    /// Avisa as telas da cozinha, DEPOIS do commit. Falhar aqui não desfaz o
+    /// cancelamento: a tela se reconcilia pela fila inteira ao reconectar; o
+    /// aviso é para ela mudar agora, não a fonte da verdade.
+    /// </summary>
+    private void AnnounceKitchen(IReadOnlyList<string> tickets)
+    {
+        if (_hub is null || tickets.Count == 0) return;
+        var kds = new Edge.KdsService(_database, _terminal.Identity, _hub, _clock);
+        foreach (var ticket in tickets)
+        {
+            try
+            {
+                _hub.Publish("ticket.changed", kds.Get(ticket).ToJson());
+            }
+            catch (Exception error) when (error is Edge.TicketNotFoundException or Microsoft.Data.Sqlite.SqliteException)
+            {
+                _log($"não foi possível avisar a cozinha do ticket {ticket}: {error.Message}");
+            }
+        }
     }
 
     // -- travas --------------------------------------------------------------

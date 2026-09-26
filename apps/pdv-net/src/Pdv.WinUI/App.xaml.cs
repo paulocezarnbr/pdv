@@ -39,6 +39,13 @@ public partial class App : Application
     /// <summary>O token do terminal, lido do cofre uma vez na abertura.</summary>
     private string? _deviceToken;
 
+    /// <summary>
+    /// O barramento do salão, um só no app: o cancelamento pelo painel (no
+    /// ciclo de sincronização ou no aceite do caixa) avisa a tela da cozinha
+    /// pelo mesmo barramento que o servidor usa.
+    /// </summary>
+    private readonly EventHub _salonHub = new();
+
     /// <summary>O servidor do salão: um por execução do app, não por abertura de caixa.</summary>
     private SalonServer? _salon;
 
@@ -218,7 +225,7 @@ public partial class App : Application
     /// terminal no cofre não há como conferir assinatura: sem serviço, o caixa
     /// não obedece a nada — que é o lado seguro.
     /// </summary>
-    private static Data.Remote.RemoteCommandService? RemoteCommands(string path, PdvDatabase database, TerminalProfile profile)
+    private Data.Remote.RemoteCommandService? RemoteCommands(string path, PdvDatabase database, TerminalProfile profile)
     {
         try
         {
@@ -226,7 +233,7 @@ public partial class App : Application
             var ledger = new AuditLedger(profile.TenantId, profile.StoreId, profile.DeviceId, secret);
             return new Data.Remote.RemoteCommandService(
                 database, profile, secret, ledger, new StaffAuthentication(database, profile.TenantId),
-                log: line => CrashLog.Write($"painel: {line}", null));
+                log: line => CrashLog.Write($"painel: {line}", null), hub: _salonHub);
         }
         catch (SecretVaultException error)
         {
@@ -497,7 +504,7 @@ public partial class App : Application
         {
             database = new PdvDatabase(path);
             var ledger = new AuditLedger(profile.TenantId, profile.StoreId, profile.DeviceId, secret);
-            var services = new SalonServices(database, profile, ledger, new EventHub());
+            var services = new SalonServices(database, profile, ledger, _salonHub);
             if (Environment.GetEnvironmentVariable("PDV_EDGE_TLS") == "0")
             {
                 CrashLog.Write("PDV_EDGE_TLS=0: o salão sobe em HTTP. Token de aparelho e PIN trafegam em claro na rede da loja.", null);
