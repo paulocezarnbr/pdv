@@ -1,0 +1,601 @@
+{
+ "descricao": "Roteiro do salão interpretado pelo PDV em Python e pelo em C#. Gerado por apps/desktop-pdv/tests/salon_script.py; não edite à mão: rode PDV_UPDATE_CONTRACT=1 python -m pytest tests/test_salon_contract.py.",
+ "tenant_id": "5a1a0000-0000-4000-8000-000000000001",
+ "store_id": "5a1a0000-0000-4000-8000-000000000002",
+ "device_id": "5a1a0000-0000-4000-8000-000000000003",
+ "seed": {
+  "users": [
+   {
+    "id": "5a1a0000-0000-4000-8000-0000000000a1",
+    "tenant_id": "5a1a0000-0000-4000-8000-000000000001",
+    "name": "João Garçom",
+    "login": "joao",
+    "role": "waiter",
+    "updated_at": "2026-09-26T00:00:00.000+00:00"
+   },
+   {
+    "id": "5a1a0000-0000-4000-8000-0000000000a2",
+    "tenant_id": "5a1a0000-0000-4000-8000-000000000001",
+    "name": "Bruno Gerente",
+    "login": "bruno",
+    "role": "manager",
+    "can_authorize": 1,
+    "max_discount_percent": "30",
+    "updated_at": "2026-09-26T00:00:00.000+00:00"
+   }
+  ],
+  "products": [
+   {
+    "id": "5a1a0000-0000-4000-8000-0000000000b1",
+    "tenant_id": "5a1a0000-0000-4000-8000-000000000001",
+    "store_id": "5a1a0000-0000-4000-8000-000000000002",
+    "sku": "CAFE",
+    "name": "Café coado",
+    "pricing_mode": "unit",
+    "price_cents": 700,
+    "updated_at": "2026-09-26T00:00:00.000+00:00"
+   },
+   {
+    "id": "5a1a0000-0000-4000-8000-0000000000b2",
+    "tenant_id": "5a1a0000-0000-4000-8000-000000000001",
+    "store_id": "5a1a0000-0000-4000-8000-000000000002",
+    "sku": "TORTA",
+    "name": "Torta de limão",
+    "pricing_mode": "weight",
+    "price_cents": 5900,
+    "updated_at": "2026-09-26T00:00:00.000+00:00"
+   }
+  ]
+ },
+ "script": [
+  {
+   "op": "tables.list"
+  },
+  {
+   "op": "tables.seed",
+   "args": {
+    "count": 3
+   }
+  },
+  {
+   "op": "tables.seed",
+   "args": {
+    "count": 3
+   }
+  },
+  {
+   "op": "tables.create",
+   "args": {
+    "label": "  Varanda   1 ",
+    "area": "Varanda",
+    "seats": 2
+   },
+   "save": "varanda"
+  },
+  {
+   "op": "tables.create",
+   "args": {
+    "label": "mesa 1"
+   }
+  },
+  {
+   "op": "tables.create",
+   "args": {
+    "label": "   "
+   }
+  },
+  {
+   "op": "tables.create",
+   "args": {
+    "label": "Balcão",
+    "area": "",
+    "seats": 500
+   }
+  },
+  {
+   "op": "tables.create",
+   "args": {
+    "label": "Balcão",
+    "area": "Bar",
+    "seats": 500
+   }
+  },
+  {
+   "op": "tables.create",
+   "args": {
+    "label": "Mesa com um nome comprido demais para caber",
+    "seats": 0
+   }
+  },
+  {
+   "op": "tables.update",
+   "args": {
+    "table_id": "$varanda",
+    "label": "Varanda 2",
+    "seats": 6
+   }
+  },
+  {
+   "op": "tables.update",
+   "args": {
+    "table_id": "$varanda"
+   }
+  },
+  {
+   "op": "tables.update",
+   "args": {
+    "table_id": "$varanda",
+    "label": "Mesa 2"
+   }
+  },
+  {
+   "op": "tables.update",
+   "args": {
+    "table_id": "5a1a0000-0000-4000-8000-00000000dead",
+    "label": "X"
+   }
+  },
+  {
+   "op": "tables.set_active",
+   "args": {
+    "table_id": "$varanda",
+    "active": false
+   }
+  },
+  {
+   "op": "tables.set_active",
+   "args": {
+    "table_id": "$varanda",
+    "active": false
+   }
+  },
+  {
+   "op": "tables.update",
+   "args": {
+    "table_id": "$varanda",
+    "label": "Varanda 3"
+   }
+  },
+  {
+   "op": "tables.create",
+   "args": {
+    "label": "Varanda 2"
+   },
+   "save": "rival"
+  },
+  {
+   "op": "tables.set_active",
+   "args": {
+    "table_id": "$varanda",
+    "active": true
+   }
+  },
+  {
+   "op": "tables.list",
+   "args": {
+    "include_inactive": true
+   }
+  },
+  {
+   "op": "tables.find",
+   "args": {
+    "label": "MESA 3"
+   }
+  },
+  {
+   "op": "tables.find",
+   "args": {
+    "label": "Mesa 99"
+   }
+  }
+ ],
+ "results": [
+  {
+   "result": []
+  },
+  {
+   "result": 3
+  },
+  {
+   "result": 0
+  },
+  {
+   "result": {
+    "id": "<id1>",
+    "label": "Varanda 1",
+    "area": "Varanda",
+    "seats": 2,
+    "sort_order": 4,
+    "is_active": true,
+    "status": "free",
+    "order_id": null,
+    "local_number": null,
+    "total_cents": 0,
+    "item_count": 0,
+    "opened_at": null,
+    "bill_requested_at": null
+   }
+  },
+  {
+   "error": "Já existe uma mesa chamada 'mesa 1'."
+  },
+  {
+   "error": "O rótulo da mesa não pode ficar em branco."
+  },
+  {
+   "error": "A área não pode ficar em branco."
+  },
+  {
+   "result": {
+    "id": "<id2>",
+    "label": "Balcão",
+    "area": "Bar",
+    "seats": 99,
+    "sort_order": 5,
+    "is_active": true,
+    "status": "free",
+    "order_id": null,
+    "local_number": null,
+    "total_cents": 0,
+    "item_count": 0,
+    "opened_at": null,
+    "bill_requested_at": null
+   }
+  },
+  {
+   "result": {
+    "id": "<id3>",
+    "label": "Mesa com um nome comprido demais",
+    "area": "Salão",
+    "seats": 1,
+    "sort_order": 6,
+    "is_active": true,
+    "status": "free",
+    "order_id": null,
+    "local_number": null,
+    "total_cents": 0,
+    "item_count": 0,
+    "opened_at": null,
+    "bill_requested_at": null
+   }
+  },
+  {
+   "result": {
+    "id": "<id1>",
+    "label": "Varanda 2",
+    "area": "Varanda",
+    "seats": 6,
+    "sort_order": 4,
+    "is_active": true,
+    "status": "free",
+    "order_id": null,
+    "local_number": null,
+    "total_cents": 0,
+    "item_count": 0,
+    "opened_at": null,
+    "bill_requested_at": null
+   }
+  },
+  {
+   "result": {
+    "id": "<id1>",
+    "label": "Varanda 2",
+    "area": "Varanda",
+    "seats": 6,
+    "sort_order": 4,
+    "is_active": true,
+    "status": "free",
+    "order_id": null,
+    "local_number": null,
+    "total_cents": 0,
+    "item_count": 0,
+    "opened_at": null,
+    "bill_requested_at": null
+   }
+  },
+  {
+   "error": "Já existe uma mesa chamada 'Mesa 2'."
+  },
+  {
+   "error": "Mesa não encontrada."
+  },
+  {
+   "result": {
+    "id": "<id1>",
+    "label": "Varanda 2",
+    "area": "Varanda",
+    "seats": 6,
+    "sort_order": 4,
+    "is_active": false,
+    "status": "free",
+    "order_id": null,
+    "local_number": null,
+    "total_cents": 0,
+    "item_count": 0,
+    "opened_at": null,
+    "bill_requested_at": null
+   }
+  },
+  {
+   "result": {
+    "id": "<id1>",
+    "label": "Varanda 2",
+    "area": "Varanda",
+    "seats": 6,
+    "sort_order": 4,
+    "is_active": false,
+    "status": "free",
+    "order_id": null,
+    "local_number": null,
+    "total_cents": 0,
+    "item_count": 0,
+    "opened_at": null,
+    "bill_requested_at": null
+   }
+  },
+  {
+   "error": "Mesa desativada. Reative antes de editar."
+  },
+  {
+   "result": {
+    "id": "<id4>",
+    "label": "Varanda 2",
+    "area": "Salão",
+    "seats": 4,
+    "sort_order": 7,
+    "is_active": true,
+    "status": "free",
+    "order_id": null,
+    "local_number": null,
+    "total_cents": 0,
+    "item_count": 0,
+    "opened_at": null,
+    "bill_requested_at": null
+   }
+  },
+  {
+   "error": "Já existe outra mesa ativa chamada 'Varanda 2'. Renomeie uma das duas antes de reativar."
+  },
+  {
+   "result": [
+    {
+     "id": "<id5>",
+     "label": "Mesa 1",
+     "area": "Salão",
+     "seats": 4,
+     "sort_order": 1,
+     "is_active": true,
+     "status": "free",
+     "order_id": null,
+     "local_number": null,
+     "total_cents": 0,
+     "item_count": 0,
+     "opened_at": null,
+     "bill_requested_at": null
+    },
+    {
+     "id": "<id6>",
+     "label": "Mesa 2",
+     "area": "Salão",
+     "seats": 4,
+     "sort_order": 2,
+     "is_active": true,
+     "status": "free",
+     "order_id": null,
+     "local_number": null,
+     "total_cents": 0,
+     "item_count": 0,
+     "opened_at": null,
+     "bill_requested_at": null
+    },
+    {
+     "id": "<id7>",
+     "label": "Mesa 3",
+     "area": "Salão",
+     "seats": 4,
+     "sort_order": 3,
+     "is_active": true,
+     "status": "free",
+     "order_id": null,
+     "local_number": null,
+     "total_cents": 0,
+     "item_count": 0,
+     "opened_at": null,
+     "bill_requested_at": null
+    },
+    {
+     "id": "<id1>",
+     "label": "Varanda 2",
+     "area": "Varanda",
+     "seats": 6,
+     "sort_order": 4,
+     "is_active": false,
+     "status": "free",
+     "order_id": null,
+     "local_number": null,
+     "total_cents": 0,
+     "item_count": 0,
+     "opened_at": null,
+     "bill_requested_at": null
+    },
+    {
+     "id": "<id2>",
+     "label": "Balcão",
+     "area": "Bar",
+     "seats": 99,
+     "sort_order": 5,
+     "is_active": true,
+     "status": "free",
+     "order_id": null,
+     "local_number": null,
+     "total_cents": 0,
+     "item_count": 0,
+     "opened_at": null,
+     "bill_requested_at": null
+    },
+    {
+     "id": "<id3>",
+     "label": "Mesa com um nome comprido demais",
+     "area": "Salão",
+     "seats": 1,
+     "sort_order": 6,
+     "is_active": true,
+     "status": "free",
+     "order_id": null,
+     "local_number": null,
+     "total_cents": 0,
+     "item_count": 0,
+     "opened_at": null,
+     "bill_requested_at": null
+    },
+    {
+     "id": "<id4>",
+     "label": "Varanda 2",
+     "area": "Salão",
+     "seats": 4,
+     "sort_order": 7,
+     "is_active": true,
+     "status": "free",
+     "order_id": null,
+     "local_number": null,
+     "total_cents": 0,
+     "item_count": 0,
+     "opened_at": null,
+     "bill_requested_at": null
+    }
+   ]
+  },
+  {
+   "result": {
+    "id": "<id7>",
+    "label": "Mesa 3",
+    "area": "Salão",
+    "seats": 4,
+    "sort_order": 3,
+    "is_active": true,
+    "status": "free",
+    "order_id": null,
+    "local_number": null,
+    "total_cents": 0,
+    "item_count": 0,
+    "opened_at": null,
+    "bill_requested_at": null
+   }
+  },
+  {
+   "result": null
+  }
+ ],
+ "outbox": [
+  {
+   "entity_table": "store_tables",
+   "operation": "insert",
+   "payload": {
+    "area": "Salão",
+    "id": "<id5>",
+    "is_active": true,
+    "label": "Mesa 1",
+    "seats": 4,
+    "sort_order": 1,
+    "updated_at": "<ts>"
+   }
+  },
+  {
+   "entity_table": "store_tables",
+   "operation": "insert",
+   "payload": {
+    "area": "Salão",
+    "id": "<id6>",
+    "is_active": true,
+    "label": "Mesa 2",
+    "seats": 4,
+    "sort_order": 2,
+    "updated_at": "<ts>"
+   }
+  },
+  {
+   "entity_table": "store_tables",
+   "operation": "insert",
+   "payload": {
+    "area": "Salão",
+    "id": "<id7>",
+    "is_active": true,
+    "label": "Mesa 3",
+    "seats": 4,
+    "sort_order": 3,
+    "updated_at": "<ts>"
+   }
+  },
+  {
+   "entity_table": "store_tables",
+   "operation": "insert",
+   "payload": {
+    "area": "Varanda",
+    "id": "<id1>",
+    "is_active": true,
+    "label": "Varanda 1",
+    "seats": 2,
+    "sort_order": 4,
+    "updated_at": "<ts>"
+   }
+  },
+  {
+   "entity_table": "store_tables",
+   "operation": "insert",
+   "payload": {
+    "area": "Bar",
+    "id": "<id2>",
+    "is_active": true,
+    "label": "Balcão",
+    "seats": 99,
+    "sort_order": 5,
+    "updated_at": "<ts>"
+   }
+  },
+  {
+   "entity_table": "store_tables",
+   "operation": "insert",
+   "payload": {
+    "area": "Salão",
+    "id": "<id3>",
+    "is_active": true,
+    "label": "Mesa com um nome comprido demais",
+    "seats": 1,
+    "sort_order": 6,
+    "updated_at": "<ts>"
+   }
+  },
+  {
+   "entity_table": "store_tables",
+   "operation": "update",
+   "payload": {
+    "id": "<id1>",
+    "label": "Varanda 2",
+    "seats": 6,
+    "updated_at": "<ts>"
+   }
+  },
+  {
+   "entity_table": "store_tables",
+   "operation": "update",
+   "payload": {
+    "id": "<id1>",
+    "is_active": false,
+    "updated_at": "<ts>"
+   }
+  },
+  {
+   "entity_table": "store_tables",
+   "operation": "insert",
+   "payload": {
+    "area": "Salão",
+    "id": "<id4>",
+    "is_active": true,
+    "label": "Varanda 2",
+    "seats": 4,
+    "sort_order": 7,
+    "updated_at": "<ts>"
+   }
+  }
+ ]
+}
