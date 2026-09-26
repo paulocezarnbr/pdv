@@ -264,6 +264,13 @@ try {
     elseif ($tef -notmatch 'Transação aprovada') { $failures += "débito: a conversa do TEF não apareceu ('$tef')" }
     else { Write-Host 'ok  venda no débito, com a conversa do TEF na tela' }
 
+    # 4a. o cupom da venda foi para a fila e, sem impressora configurada, para a pasta
+    $deadline = (Get-Date).AddSeconds(10)
+    do { $receipts = @(Get-ChildItem (Join-Path $work 'cupons') -Filter '*.txt' -ErrorAction SilentlyContinue); Start-Sleep -Milliseconds 200 } while ($receipts.Count -lt 1 -and (Get-Date) -lt $deadline)
+    $receiptText = if ($receipts.Count -gt 0) { Get-Content $receipts[0].FullName -Raw -Encoding UTF8 } else { '' }
+    if ($receiptText -notmatch 'CUPOM NAO FISCAL' -or $receiptText -notmatch 'Cartao Debito' -or $receiptText -notmatch 'Fatia de torta') { $failures += "cupom: '$receiptText'" }
+    else { Write-Host 'ok  cupom da venda gravado pela fila de impressão' }
+
     # 4b. cliente pelo telefone (cadastro na hora), carga pré-paga com o PIN do
     #     gerente e uma venda paga com o pré-pago
     Click (Find $window 'IdentifyCustomer')

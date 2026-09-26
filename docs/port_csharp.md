@@ -353,6 +353,37 @@ A arquitetura existe para que a tela seja testável:
   - **Lacuna herdada do Python, não corrigida em silêncio.** O pagamento do
     fiado recebido no balcão não entra no esperado da gaveta: o fechamento
     cego acusa sobra do valor recebido em dinheiro. Anotado no `plan.md`.
+- [x] **C6c. Impressora, cupom e DANFE NFC-e** (`Pdv.Core.Printing`,
+      `Pdv.Data.Hardware.Printers`).
+  - **Cupom e DANFE byte a byte.** São conferidos contra
+    `contracts/receipts.json` e `contracts/danfe.json`, gerados pelo
+    Python. As armadilhas fixadas:
+    - PC850 com "?" no que não existe (o .NET faria "best fit", € → E);
+    - um "?" por emoji (o .NET põe dois);
+    - largura contada em pontos de código, como o `len()` do Python;
+    - o valor nunca truncado;
+    - a gaveta só com dinheiro;
+    - a hora no fuso do caixa.
+  - **DANFE.** As doze recusas do Python têm a mesma mensagem: chave de
+    outro CNPJ, série trocada, "normal" sem protocolo, pagamento que não
+    fecha, DV errado e outras.
+  - **Entrega.** Spooler do Windows em RAW (`winspool.drv`) ou arquivo
+    (`cupons/` ao lado do banco, na demonstração), pelas chaves
+    `printer.*` de `device_settings`. A rota libusb do Python ficou de fora:
+    ela troca o driver e tranca a impressora para outros programas.
+  - **Fila de impressão.** Roda em thread própria, com três tentativas e
+    aviso na tela se falhar: a venda já está gravada.
+  - **Cupom montado do banco, não da tela.** Item cancelado fica fora e o
+    desconto do painel entra. "Reimprimir" (Ctrl+P) é uma regra a mais que
+    o Python.
+  - 445 testes; seis regras verificadas por mutação. O `ui-smoke.ps1`
+    confere o cupom da venda no débito gravado pela fila.
+  - **Pendências.**
+    - O DANFE só sai do papel quando o caixa pedir a NFC-e à nuvem (C6d).
+    - CNPJ e endereço da loja vêm de `store.document` e `store.address`,
+      que a ativação ainda não grava. Sem eles, o cupom mostra os
+      marcadores do Python, que são fictícios. A retaguarda tem o CNPJ no
+      cadastro fiscal e deve mandá-lo na ativação.
 - [ ] **C6. O resto da paridade.**
       - Periféricos: balança serial e impressora ESC/POS.
       - NFC-e.
@@ -390,7 +421,7 @@ Na ordem em que dá para trocar:
 | ~~2~~ | ~~C5b-3~~ | ~~`remote/`~~ | **Feito** (comandos do painel com as sete travas e o aceite no caixa) |
 | ~~3~~ | ~~C6a~~ | ~~`services/cash_session.py`~~ | **Feito** (abertura com fundo de troco e fechamento cego) |
 | ~~4~~ | ~~C6b~~ | ~~`cashback.py`, `prepaid.py`, `credit_account.py`, `discount_tiers.py`~~ | **Feito** (o resgate de cashback segue desligado até a decisão do contador) |
-| 5 | C6c | `hardware/printer/` (~620), `fiscal/danfe.py` (~440) | Impressora ESC/POS, cupom e DANFE NFC-e 80 mm |
+| ~~5~~ | ~~C6c~~ | ~~`hardware/printer/`, `fiscal/danfe.py`~~ | **Feito** (cupom e DANFE byte a byte; o DANFE vai ao papel com a C6d) |
 | 6 | C6d | `fiscal/cloud.py`, `fiscal/service.py`, `fiscal/gateway.py` (~500) | NFC-e pedida pelo caixa à nuvem, e a **contingência offline** com série própria e QR Code v3 assinado com o A1 (o DFe.NET já gera) |
 | 7 | C6e | `edge/` (~4.000) + `edge/webapp` | Servidor do salão para os celulares dos garçons, KDS, mesas, contas e descoberta na rede, em ASP.NET Core dentro do PDV. O app web do garçom é reaproveitado como está |
 | 8 | C6f | `ui/salon_panel.py`, `ui/tables_dialog.py`, `ui/dialogs.py`, `ui/remote_dialog.py`, `services/staff_report.py` (~2.300) | Telas do salão, mesas, relatórios de equipe e diálogos que faltam no WinUI |

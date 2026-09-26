@@ -272,6 +272,11 @@ public partial class App : Application
             var journal = new SqliteTefJournal(path);
             var tef = new TefCoordinator(new TefSimulator(), journal);
             var customers = new Data.Customers.CustomerLedgers(database, terminal, ledger);
+            // Cupom: fila própria, fora da tela. Sem impressora configurada, vai
+            // para a pasta "cupons" ao lado do banco (demonstração).
+            var printerSettings = Data.Hardware.PrinterSettings.Load(database, Path.Combine(Path.GetDirectoryName(path)!, "cupons"));
+            var printer = new Data.Hardware.PrintService(printerSettings.Build());
+            var receipts = new ReceiptComposer(database, profile, printerSettings);
             var scale = StartScale(database);
             // Conexão da tela: o aceite no caixa não disputa a do ciclo de sincronização.
             var remote = profile.Activated ? RemoteCommands(path, database, profile) : null;
@@ -292,6 +297,27 @@ public partial class App : Application
             _sale = sale;
             sale.RefreshRemote();
 
+            sale.SaleClosed += (_, closed) =>
+            {
+                try
+                {
+                    var payload = receipts.Compose(closed.OrderId, closed.OperatorName, closed.Customer?.Name,
+                        closed.Result.Cashback?.AmountCents ?? 0, closed.Result.PrepaidBalanceCents);
+                    printer.Submit(payload, "PDV Cupom");
+                }
+                catch (Exception error)
+                {
+                    // Cupom que não se monta não desfaz a venda gravada.
+                    CrashLog.Write("montagem do cupom", error);
+                    sale.Error = "A venda foi gravada, mas o cupom não pôde ser montado. Use Reimprimir.";
+                }
+            };
+            sale.ReprintRequested += (_, _) =>
+            {
+                if (printer.LastPrinted is { } last) printer.Submit(last, "PDV Cupom (2a via)");
+                else sale.Notice = "Nenhum cupom impresso ainda nesta sessão.";
+            };
+
             // Os eventos saem da thread da balança; a tela só é tocada pela dela.
             var ui = _window!.DispatcherQueue;
             scale.ReadingReceived += reading => ui.TryEnqueue(() => sale.ShowReading(reading));
@@ -302,6 +328,11 @@ public partial class App : Application
                 CrashLog.Write($"balança: {message}", null);
                 ui.TryEnqueue(() => sale.ShowScaleError(message));
             };
+            printer.Failed += message =>
+            {
+                CrashLog.Write($"impressora: {message}", null);
+                ui.TryEnqueue(() => sale.Error = message + " A venda está gravada: confira o papel e use Reimprimir.");
+            };
             scale.Start();
             var released = false;
             async Task ReleaseAsync()
@@ -311,6 +342,7 @@ public partial class App : Application
                 // A porta da balança precisa estar livre para o próximo login abri-la.
                 await scale.DisposeAsync();
                 journal.Dispose();
+                printer.Dispose();
             }
             _window.Closed += (_, _) => ReleaseAsync().Wait(TimeSpan.FromSeconds(2));
 

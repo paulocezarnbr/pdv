@@ -177,6 +177,12 @@
                         <Button.KeyboardAccelerators><KeyboardAccelerator Modifiers="Control" Key="F6" /></Button.KeyboardAccelerators>
                     </Button>
                 </Grid>
+                <Button AutomationProperties.AutomationId="Reprint" Content="Reimprimir cupom (Ctrl+P)" HorizontalAlignment="Stretch"
+                        Command="{x:Bind ViewModel.ReprintCommand}">
+                    <Button.KeyboardAccelerators>
+                        <KeyboardAccelerator Modifiers="Control" Key="P" />
+                    </Button.KeyboardAccelerators>
+                </Button>
                 <Button AutomationProperties.AutomationId="CloseCash" Content="F12  Fechar o caixa"
                         HorizontalAlignment="Stretch" Command="{x:Bind ViewModel.CloseCashCommand}">
                     <Button.KeyboardAccelerators>

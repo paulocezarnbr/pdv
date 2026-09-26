@@ -13,6 +13,9 @@ using Pdv.Data.Sales;
 
 namespace Pdv.App;
 
+/// <summary>O que o cupom precisa de uma venda recém-fechada.</summary>
+public sealed record ClosedSale(string OrderId, CheckoutResult.Closed Result, Customer? Customer, string OperatorName);
+
 public sealed record SaleLine(string ItemId, string Name, string Quantity, long TotalCents)
 {
     public string Total => Money.Format(TotalCents);
@@ -296,6 +299,17 @@ public sealed partial class SaleViewModel : ObservableObject, ITefInteraction
             Error = error.Message;
         }
     }
+
+    // -- cupom ---------------------------------------------------------------
+
+    /// <summary>Uma venda acabou de fechar. A casca monta o cupom do banco e o manda à fila.</summary>
+    public event EventHandler<ClosedSale>? SaleClosed;
+
+    /// <summary>Ctrl+P: reimprimir o último cupom (papel acabou, cliente pediu segunda via).</summary>
+    public event EventHandler? ReprintRequested;
+
+    [RelayCommand]
+    private void Reprint() => ReprintRequested?.Invoke(this, EventArgs.Empty);
 
     // -- cliente -------------------------------------------------------------
 
@@ -824,6 +838,9 @@ public sealed partial class SaleViewModel : ObservableObject, ITefInteraction
             switch (result)
             {
                 case CheckoutResult.Closed closed:
+                    // A venda já está gravada: o cupom vai para a fila e, se a
+                    // impressora falhar, reimprime-se — nada volta atrás.
+                    SaleClosed?.Invoke(this, new ClosedSale(OrderId!, closed, Customer, _operator.Name));
                     var change = closed.Payments.Sum(payment => payment.ChangeCents);
                     Notice = change > 0
                         ? $"Venda finalizada. Troco: {Money.Format(change)}"

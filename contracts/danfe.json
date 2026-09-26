@@ -1,0 +1,778 @@
+{
+  "comment": "Gerado por apps/desktop-pdv/tests/test_danfe_contract.py. Não edite à mão.",
+  "valid": [
+    {
+      "name": "normal_producao",
+      "issuer": {
+        "legal_name": "Confeitaria Dolce Affetto Comércio de Alimentos Finos e Doces Artesanais Ltda",
+        "cnpj": "12.345.678/0001-90",
+        "state_registration": "12345678",
+        "address": "Rua das Laranjeiras, 1234, Loja B - Laranjeiras - Rio de Janeiro/RJ - CEP 22240-003"
+      },
+      "environment": "production",
+      "emission": "normal",
+      "series": 1,
+      "number": 42,
+      "items": [
+        {
+          "code": "0000001234",
+          "description": "Torta de chocolate belga com cobertura de ganache",
+          "quantity": "0.847",
+          "unit": "KG",
+          "unit_price_cents": 4990,
+          "total_cents": 4227
+        },
+        {
+          "code": "77",
+          "description": "Café",
+          "quantity": "2.000",
+          "unit": "UN",
+          "unit_price_cents": 750,
+          "total_cents": 1500
+        }
+      ],
+      "payments": [
+        {
+          "method": "cash",
+          "amount_cents": 6000
+        },
+        {
+          "method": "debit",
+          "amount_cents": 227
+        }
+      ],
+      "access_key": "33260912345678000190650010000000421123456783",
+      "consultation_url": "https://consultadfe.fazenda.rj.gov.br/consultaNFCe/QRCode",
+      "qr_code": "https://consultadfe.fazenda.rj.gov.br/consultaNFCe/QRCode?p=33260912345678000190650010000000421123456783|3|1",
+      "discount_cents": 0,
+      "change_cents": 500,
+      "protocol": "333260000012345",
+      "issued_local": "2026-09-25T12:04:05",
+      "authorized_local": "2026-09-25T12:04:09",
+      "consumer_document": null,
+      "approximate_taxes_cents": null,
+      "hex": "1b401b74021b61011b4501436f6e666569746172696120446f6c6365204166666574746f20436f6d827263696f20646520416c696d656e746f730a46696e6f73206520446f636573204172746573616e616973204c7464610a1b4500434e504a3a2031322e3334352e3637382f303030312d3930202049453a2031323334353637380a52756120646173204c6172616e6a65697261732c20313233342c204c6f6a612042202d204c6172616e6a65697261730a2d2052696f206465204a616e6569726f2f524a202d204345502032323234302d3030330a1b61002d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610144414e4645204e46432d65202d20446f63756d656e746f20417578696c6961720a6461204e6f74612046697363616c20646520436f6e73756d69646f7220456c657472936e6963610a1b61002d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b450143a26469676f202044657363726987c66f0a1b45005174646520556e207820566c20556e69742020202020202020202020202020202020202020202020566c20546f74616c0a2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a3030303030303120546f7274612064652063686f636f6c6174652062656c676120636f6d20636f6265727475726120640a202020302c383437204b4720782034392c393020202020202020202020202020202020202020202020202034322c32370a3737202020202020436166820a2020203220554e207820372c3530202020202020202020202020202020202020202020202020202020202031352c30300a2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a517464652e20746f74616c206465206974656e73202020202020202020202020202020202020202020202020202020320a56616c6f7220746f74616c205224202020202020202020202020202020202020202020202020202020202035372c32370a1b450156616c6f72206120506167617220522420202020202020202020202020202020202020202020202020202035372c32370a1b4500464f524d4120504147414d454e544f202020202020202020202020202020202020202056414c4f52205041474f2052240a44696e686569726f202020202020202020202020202020202020202020202020202020202020202020202036302c30300a43617274616f2044656269746f20202020202020202020202020202020202020202020202020202020202020322c32370a54726f636f205224202020202020202020202020202020202020202020202020202020202020202020202020352c30300a2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61014ea36d65726f203030303030303034322020538272696520303031202032352f30392f323032362031323a30343a30350a1b6401436f6e73756c74652070656c612043686176652064652041636573736f20656d0a68747470733a2f2f636f6e73756c74616466652e66617a656e64612e726a2e676f762e62722f636f6e73756c74614e460a43652f5152436f64650a33333236203039313220333435362037383030203031393020363530300a3130303020303030302034323131203233343520363738330a1b61002d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6101434f4e53554d49444f52204ec74f204944454e544946494341444f0a1b61001b64011b61011d286b0400314132001d286b03003143041d286b03003145311d286b6f0031503068747470733a2f2f636f6e73756c74616466652e66617a656e64612e726a2e676f762e62722f636f6e73756c74614e4643652f5152436f64653f703d33333236303931323334353637383030303139303635303031303030303030303432313132333435363738337c337c311d286b03003151301b61001b610150726f746f636f6c6f206465206175746f72697a6187c66f3a203333333236303030303031323334350a44617461206465206175746f72697a6187c66f3a2032352f30392f323032362031323a30343a30390a1b61001b64011d564204"
+    },
+    {
+      "name": "homologacao_desconto_cpf_tributos",
+      "issuer": {
+        "legal_name": "Confeitaria Dolce Affetto Comércio de Alimentos Finos e Doces Artesanais Ltda",
+        "cnpj": "12.345.678/0001-90",
+        "state_registration": "12345678",
+        "address": "Rua das Laranjeiras, 1234, Loja B - Laranjeiras - Rio de Janeiro/RJ - CEP 22240-003"
+      },
+      "environment": "homologation",
+      "emission": "normal",
+      "series": 1,
+      "number": 42,
+      "items": [
+        {
+          "code": "0000001234",
+          "description": "Torta de chocolate belga com cobertura de ganache",
+          "quantity": "0.847",
+          "unit": "KG",
+          "unit_price_cents": 4990,
+          "total_cents": 4227
+        },
+        {
+          "code": "77",
+          "description": "Café",
+          "quantity": "2.000",
+          "unit": "UN",
+          "unit_price_cents": 750,
+          "total_cents": 1500
+        }
+      ],
+      "payments": [
+        {
+          "method": "pix",
+          "amount_cents": 5500
+        }
+      ],
+      "access_key": "33260912345678000190650010000000421123456783",
+      "consultation_url": "https://consultadfe.fazenda.rj.gov.br/consultaNFCe/QRCode",
+      "qr_code": "https://consultadfe.fazenda.rj.gov.br/consultaNFCe/QRCode?p=33260912345678000190650010000000421123456783|3|1",
+      "discount_cents": 227,
+      "change_cents": 0,
+      "protocol": "333260000012345",
+      "issued_local": "2026-09-25T12:04:05",
+      "authorized_local": "2026-09-25T12:04:09",
+      "consumer_document": "123.456.789-09",
+      "approximate_taxes_cents": 1234,
+      "hex": "1b401b74021b61011b4501436f6e666569746172696120446f6c6365204166666574746f20436f6d827263696f20646520416c696d656e746f730a46696e6f73206520446f636573204172746573616e616973204c7464610a1b4500434e504a3a2031322e3334352e3637382f303030312d3930202049453a2031323334353637380a52756120646173204c6172616e6a65697261732c20313233342c204c6f6a612042202d204c6172616e6a65697261730a2d2052696f206465204a616e6569726f2f524a202d204345502032323234302d3030330a1b61002d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610144414e4645204e46432d65202d20446f63756d656e746f20417578696c6961720a6461204e6f74612046697363616c20646520436f6e73756d69646f7220456c657472936e6963610a1b61002d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b450143a26469676f202044657363726987c66f0a1b45005174646520556e207820566c20556e69742020202020202020202020202020202020202020202020566c20546f74616c0a2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a3030303030303120546f7274612064652063686f636f6c6174652062656c676120636f6d20636f6265727475726120640a202020302c383437204b4720782034392c393020202020202020202020202020202020202020202020202034322c32370a3737202020202020436166820a2020203220554e207820372c3530202020202020202020202020202020202020202020202020202020202031352c30300a2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a517464652e20746f74616c206465206974656e73202020202020202020202020202020202020202020202020202020320a56616c6f7220746f74616c205224202020202020202020202020202020202020202020202020202020202035372c32370a446573636f6e746f20522420202020202020202020202020202020202020202020202020202020202020202d322c32370a1b450156616c6f72206120506167617220522420202020202020202020202020202020202020202020202020202035352c30300a1b4500464f524d4120504147414d454e544f202020202020202020202020202020202020202056414c4f52205041474f2052240a5049582020202020202020202020202020202020202020202020202020202020202020202020202020202035352c30300a2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61011b4501454d495449444120454d20414d4249454e544520444520484f4d4f4c4f474180c74f0a53454d2056414c4f522046495343414c0a1b45004ea36d65726f203030303030303034322020538272696520303031202032352f30392f323032362031323a30343a30350a1b6401436f6e73756c74652070656c612043686176652064652041636573736f20656d0a68747470733a2f2f636f6e73756c74616466652e66617a656e64612e726a2e676f762e62722f636f6e73756c74614e460a43652f5152436f64650a33333236203039313220333435362037383030203031393020363530300a3130303020303030302034323131203233343520363738330a1b61002d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6101434f4e53554d49444f52202d204350463a203132332e3435362e3738392d30390a1b61001b64011b61011d286b0400314132001d286b03003143041d286b03003145311d286b6f0031503068747470733a2f2f636f6e73756c74616466652e66617a656e64612e726a2e676f762e62722f636f6e73756c74614e4643652f5152436f64653f703d33333236303931323334353637383030303139303635303031303030303030303432313132333435363738337c337c311d286b03003151301b61001b610150726f746f636f6c6f206465206175746f72697a6187c66f3a203333333236303030303031323334350a44617461206465206175746f72697a6187c66f3a2032352f30392f323032362031323a30343a30390a1b61002d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a5472696275746f7320546f7461697320496e636964656e7465730a284c6569204665646572616c2031322e3734312f323031322920522420202020202020202020202020202031322c33340a1b64011d564204"
+    },
+    {
+      "name": "contingencia_cnpj",
+      "issuer": {
+        "legal_name": "Confeitaria Dolce Affetto Comércio de Alimentos Finos e Doces Artesanais Ltda",
+        "cnpj": "12.345.678/0001-90",
+        "state_registration": "12345678",
+        "address": "Rua das Laranjeiras, 1234, Loja B - Laranjeiras - Rio de Janeiro/RJ - CEP 22240-003"
+      },
+      "environment": "production",
+      "emission": "offline_contingency",
+      "series": 900,
+      "number": 7,
+      "items": [
+        {
+          "code": "0000001234",
+          "description": "Torta de chocolate belga com cobertura de ganache",
+          "quantity": "0.847",
+          "unit": "KG",
+          "unit_price_cents": 4990,
+          "total_cents": 4227
+        },
+        {
+          "code": "77",
+          "description": "Café",
+          "quantity": "2.000",
+          "unit": "UN",
+          "unit_price_cents": 750,
+          "total_cents": 1500
+        }
+      ],
+      "payments": [
+        {
+          "method": "credit",
+          "amount_cents": 5727
+        }
+      ],
+      "access_key": "33260912345678000190659000000000079123456784",
+      "consultation_url": "https://consultadfe.fazenda.rj.gov.br/consultaNFCe/QRCode",
+      "qr_code": "https://consultadfe.fazenda.rj.gov.br/consultaNFCe/QRCode?p=33260912345678000190650010000000421123456783|3|1",
+      "discount_cents": 0,
+      "change_cents": 0,
+      "protocol": null,
+      "issued_local": "2026-09-25T12:04:05",
+      "authorized_local": null,
+      "consumer_document": "98.765.432/0001-98",
+      "approximate_taxes_cents": null,
+      "hex": "1b401b74021b61011b4501436f6e666569746172696120446f6c6365204166666574746f20436f6d827263696f20646520416c696d656e746f730a46696e6f73206520446f636573204172746573616e616973204c7464610a1b4500434e504a3a2031322e3334352e3637382f303030312d3930202049453a2031323334353637380a52756120646173204c6172616e6a65697261732c20313233342c204c6f6a612042202d204c6172616e6a65697261730a2d2052696f206465204a616e6569726f2f524a202d204345502032323234302d3030330a1b61002d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b610144414e4645204e46432d65202d20446f63756d656e746f20417578696c6961720a6461204e6f74612046697363616c20646520436f6e73756d69646f7220456c657472936e6963610a1b61002d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b450143a26469676f202044657363726987c66f0a1b45005174646520556e207820566c20556e69742020202020202020202020202020202020202020202020566c20546f74616c0a2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a3030303030303120546f7274612064652063686f636f6c6174652062656c676120636f6d20636f6265727475726120640a202020302c383437204b4720782034392c393020202020202020202020202020202020202020202020202034322c32370a3737202020202020436166820a2020203220554e207820372c3530202020202020202020202020202020202020202020202020202020202031352c30300a2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a517464652e20746f74616c206465206974656e73202020202020202020202020202020202020202020202020202020320a56616c6f7220746f74616c205224202020202020202020202020202020202020202020202020202020202035372c32370a1b450156616c6f72206120506167617220522420202020202020202020202020202020202020202020202020202035372c32370a1b4500464f524d4120504147414d454e544f202020202020202020202020202020202020202056414c4f52205041474f2052240a43617274616f204372656469746f202020202020202020202020202020202020202020202020202020202035372c32370a2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b61011b45011d2101454d495449444120454d20434f4e54494e47d24e4349410a1d210050656e64656e7465206465206175746f72697a6187c66f0a1b45004ea36d65726f203030303030303030372020538272696520393030202032352f30392f323032362031323a30343a30350a1b6401436f6e73756c74652070656c612043686176652064652041636573736f20656d0a68747470733a2f2f636f6e73756c74616466652e66617a656e64612e726a2e676f762e62722f636f6e73756c74614e460a43652f5152436f64650a33333236203039313220333435362037383030203031393020363539300a3030303020303030302030373931203233343520363738340a1b61002d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d0a1b6101434f4e53554d49444f52202d20434e504a3a2039382e3736352e3433322f303030312d39380a1b61001b64011b61011d286b0400314132001d286b03003143041d286b03003145311d286b6f0031503068747470733a2f2f636f6e73756c74616466652e66617a656e64612e726a2e676f762e62722f636f6e73756c74614e4643652f5152436f64653f703d33333236303931323334353637383030303139303635303031303030303030303432313132333435363738337c337c311d286b03003151301b61001b64011d564204"
+    }
+  ],
+  "invalid": [
+    {
+      "name": "chave_curta",
+      "issuer": {
+        "legal_name": "Confeitaria Dolce Affetto Comércio de Alimentos Finos e Doces Artesanais Ltda",
+        "cnpj": "12.345.678/0001-90",
+        "state_registration": "12345678",
+        "address": "Rua das Laranjeiras, 1234, Loja B - Laranjeiras - Rio de Janeiro/RJ - CEP 22240-003"
+      },
+      "environment": "production",
+      "emission": "normal",
+      "series": 1,
+      "number": 42,
+      "items": [
+        {
+          "code": "0000001234",
+          "description": "Torta de chocolate belga com cobertura de ganache",
+          "quantity": "0.847",
+          "unit": "KG",
+          "unit_price_cents": 4990,
+          "total_cents": 4227
+        },
+        {
+          "code": "77",
+          "description": "Café",
+          "quantity": "2.000",
+          "unit": "UN",
+          "unit_price_cents": 750,
+          "total_cents": 1500
+        }
+      ],
+      "payments": [
+        {
+          "method": "cash",
+          "amount_cents": 6000
+        },
+        {
+          "method": "debit",
+          "amount_cents": 227
+        }
+      ],
+      "access_key": "3326091234567800019065001000000042112345678",
+      "consultation_url": "https://consultadfe.fazenda.rj.gov.br/consultaNFCe/QRCode",
+      "qr_code": "https://consultadfe.fazenda.rj.gov.br/consultaNFCe/QRCode?p=33260912345678000190650010000000421123456783|3|1",
+      "discount_cents": 0,
+      "change_cents": 500,
+      "protocol": "333260000012345",
+      "issued_local": "2026-09-25T12:04:05",
+      "authorized_local": "2026-09-25T12:04:09",
+      "consumer_document": null,
+      "approximate_taxes_cents": null,
+      "error": "A chave de acesso precisa ter 44 dígitos."
+    },
+    {
+      "name": "digito_errado",
+      "issuer": {
+        "legal_name": "Confeitaria Dolce Affetto Comércio de Alimentos Finos e Doces Artesanais Ltda",
+        "cnpj": "12.345.678/0001-90",
+        "state_registration": "12345678",
+        "address": "Rua das Laranjeiras, 1234, Loja B - Laranjeiras - Rio de Janeiro/RJ - CEP 22240-003"
+      },
+      "environment": "production",
+      "emission": "normal",
+      "series": 1,
+      "number": 42,
+      "items": [
+        {
+          "code": "0000001234",
+          "description": "Torta de chocolate belga com cobertura de ganache",
+          "quantity": "0.847",
+          "unit": "KG",
+          "unit_price_cents": 4990,
+          "total_cents": 4227
+        },
+        {
+          "code": "77",
+          "description": "Café",
+          "quantity": "2.000",
+          "unit": "UN",
+          "unit_price_cents": 750,
+          "total_cents": 1500
+        }
+      ],
+      "payments": [
+        {
+          "method": "cash",
+          "amount_cents": 6000
+        },
+        {
+          "method": "debit",
+          "amount_cents": 227
+        }
+      ],
+      "access_key": "33260912345678000190650010000000421123456784",
+      "consultation_url": "https://consultadfe.fazenda.rj.gov.br/consultaNFCe/QRCode",
+      "qr_code": "https://consultadfe.fazenda.rj.gov.br/consultaNFCe/QRCode?p=33260912345678000190650010000000421123456783|3|1",
+      "discount_cents": 0,
+      "change_cents": 500,
+      "protocol": "333260000012345",
+      "issued_local": "2026-09-25T12:04:05",
+      "authorized_local": "2026-09-25T12:04:09",
+      "consumer_document": null,
+      "approximate_taxes_cents": null,
+      "error": "O dígito verificador da chave de acesso não confere."
+    },
+    {
+      "name": "outro_cnpj",
+      "issuer": {
+        "legal_name": "Confeitaria Dolce Affetto Comércio de Alimentos Finos e Doces Artesanais Ltda",
+        "cnpj": "12.345.678/0001-90",
+        "state_registration": "12345678",
+        "address": "Rua das Laranjeiras, 1234, Loja B - Laranjeiras - Rio de Janeiro/RJ - CEP 22240-003"
+      },
+      "environment": "production",
+      "emission": "normal",
+      "series": 1,
+      "number": 42,
+      "items": [
+        {
+          "code": "0000001234",
+          "description": "Torta de chocolate belga com cobertura de ganache",
+          "quantity": "0.847",
+          "unit": "KG",
+          "unit_price_cents": 4990,
+          "total_cents": 4227
+        },
+        {
+          "code": "77",
+          "description": "Café",
+          "quantity": "2.000",
+          "unit": "UN",
+          "unit_price_cents": 750,
+          "total_cents": 1500
+        }
+      ],
+      "payments": [
+        {
+          "method": "cash",
+          "amount_cents": 6000
+        },
+        {
+          "method": "debit",
+          "amount_cents": 227
+        }
+      ],
+      "access_key": "33260999999999000199650010000000421123456786",
+      "consultation_url": "https://consultadfe.fazenda.rj.gov.br/consultaNFCe/QRCode",
+      "qr_code": "https://consultadfe.fazenda.rj.gov.br/consultaNFCe/QRCode?p=33260912345678000190650010000000421123456783|3|1",
+      "discount_cents": 0,
+      "change_cents": 500,
+      "protocol": "333260000012345",
+      "issued_local": "2026-09-25T12:04:05",
+      "authorized_local": "2026-09-25T12:04:09",
+      "consumer_document": null,
+      "approximate_taxes_cents": null,
+      "error": "A chave de acesso é de outro CNPJ, não deste emitente."
+    },
+    {
+      "name": "modelo_55",
+      "issuer": {
+        "legal_name": "Confeitaria Dolce Affetto Comércio de Alimentos Finos e Doces Artesanais Ltda",
+        "cnpj": "12.345.678/0001-90",
+        "state_registration": "12345678",
+        "address": "Rua das Laranjeiras, 1234, Loja B - Laranjeiras - Rio de Janeiro/RJ - CEP 22240-003"
+      },
+      "environment": "production",
+      "emission": "normal",
+      "series": 1,
+      "number": 42,
+      "items": [
+        {
+          "code": "0000001234",
+          "description": "Torta de chocolate belga com cobertura de ganache",
+          "quantity": "0.847",
+          "unit": "KG",
+          "unit_price_cents": 4990,
+          "total_cents": 4227
+        },
+        {
+          "code": "77",
+          "description": "Café",
+          "quantity": "2.000",
+          "unit": "UN",
+          "unit_price_cents": 750,
+          "total_cents": 1500
+        }
+      ],
+      "payments": [
+        {
+          "method": "cash",
+          "amount_cents": 6000
+        },
+        {
+          "method": "debit",
+          "amount_cents": 227
+        }
+      ],
+      "access_key": "33260912345678000190550010000000421123456780",
+      "consultation_url": "https://consultadfe.fazenda.rj.gov.br/consultaNFCe/QRCode",
+      "qr_code": "https://consultadfe.fazenda.rj.gov.br/consultaNFCe/QRCode?p=33260912345678000190650010000000421123456783|3|1",
+      "discount_cents": 0,
+      "change_cents": 500,
+      "protocol": "333260000012345",
+      "issued_local": "2026-09-25T12:04:05",
+      "authorized_local": "2026-09-25T12:04:09",
+      "consumer_document": null,
+      "approximate_taxes_cents": null,
+      "error": "A chave de acesso não é de uma NFC-e (modelo 65)."
+    },
+    {
+      "name": "serie_trocada",
+      "issuer": {
+        "legal_name": "Confeitaria Dolce Affetto Comércio de Alimentos Finos e Doces Artesanais Ltda",
+        "cnpj": "12.345.678/0001-90",
+        "state_registration": "12345678",
+        "address": "Rua das Laranjeiras, 1234, Loja B - Laranjeiras - Rio de Janeiro/RJ - CEP 22240-003"
+      },
+      "environment": "production",
+      "emission": "normal",
+      "series": 2,
+      "number": 42,
+      "items": [
+        {
+          "code": "0000001234",
+          "description": "Torta de chocolate belga com cobertura de ganache",
+          "quantity": "0.847",
+          "unit": "KG",
+          "unit_price_cents": 4990,
+          "total_cents": 4227
+        },
+        {
+          "code": "77",
+          "description": "Café",
+          "quantity": "2.000",
+          "unit": "UN",
+          "unit_price_cents": 750,
+          "total_cents": 1500
+        }
+      ],
+      "payments": [
+        {
+          "method": "cash",
+          "amount_cents": 6000
+        },
+        {
+          "method": "debit",
+          "amount_cents": 227
+        }
+      ],
+      "access_key": "33260912345678000190650010000000421123456783",
+      "consultation_url": "https://consultadfe.fazenda.rj.gov.br/consultaNFCe/QRCode",
+      "qr_code": "https://consultadfe.fazenda.rj.gov.br/consultaNFCe/QRCode?p=33260912345678000190650010000000421123456783|3|1",
+      "discount_cents": 0,
+      "change_cents": 500,
+      "protocol": "333260000012345",
+      "issued_local": "2026-09-25T12:04:05",
+      "authorized_local": "2026-09-25T12:04:09",
+      "consumer_document": null,
+      "approximate_taxes_cents": null,
+      "error": "A série ou o número não conferem com a chave de acesso."
+    },
+    {
+      "name": "numero_trocado",
+      "issuer": {
+        "legal_name": "Confeitaria Dolce Affetto Comércio de Alimentos Finos e Doces Artesanais Ltda",
+        "cnpj": "12.345.678/0001-90",
+        "state_registration": "12345678",
+        "address": "Rua das Laranjeiras, 1234, Loja B - Laranjeiras - Rio de Janeiro/RJ - CEP 22240-003"
+      },
+      "environment": "production",
+      "emission": "normal",
+      "series": 1,
+      "number": 43,
+      "items": [
+        {
+          "code": "0000001234",
+          "description": "Torta de chocolate belga com cobertura de ganache",
+          "quantity": "0.847",
+          "unit": "KG",
+          "unit_price_cents": 4990,
+          "total_cents": 4227
+        },
+        {
+          "code": "77",
+          "description": "Café",
+          "quantity": "2.000",
+          "unit": "UN",
+          "unit_price_cents": 750,
+          "total_cents": 1500
+        }
+      ],
+      "payments": [
+        {
+          "method": "cash",
+          "amount_cents": 6000
+        },
+        {
+          "method": "debit",
+          "amount_cents": 227
+        }
+      ],
+      "access_key": "33260912345678000190650010000000421123456783",
+      "consultation_url": "https://consultadfe.fazenda.rj.gov.br/consultaNFCe/QRCode",
+      "qr_code": "https://consultadfe.fazenda.rj.gov.br/consultaNFCe/QRCode?p=33260912345678000190650010000000421123456783|3|1",
+      "discount_cents": 0,
+      "change_cents": 500,
+      "protocol": "333260000012345",
+      "issued_local": "2026-09-25T12:04:05",
+      "authorized_local": "2026-09-25T12:04:09",
+      "consumer_document": null,
+      "approximate_taxes_cents": null,
+      "error": "A série ou o número não conferem com a chave de acesso."
+    },
+    {
+      "name": "emissao_trocada",
+      "issuer": {
+        "legal_name": "Confeitaria Dolce Affetto Comércio de Alimentos Finos e Doces Artesanais Ltda",
+        "cnpj": "12.345.678/0001-90",
+        "state_registration": "12345678",
+        "address": "Rua das Laranjeiras, 1234, Loja B - Laranjeiras - Rio de Janeiro/RJ - CEP 22240-003"
+      },
+      "environment": "production",
+      "emission": "offline_contingency",
+      "series": 1,
+      "number": 42,
+      "items": [
+        {
+          "code": "0000001234",
+          "description": "Torta de chocolate belga com cobertura de ganache",
+          "quantity": "0.847",
+          "unit": "KG",
+          "unit_price_cents": 4990,
+          "total_cents": 4227
+        },
+        {
+          "code": "77",
+          "description": "Café",
+          "quantity": "2.000",
+          "unit": "UN",
+          "unit_price_cents": 750,
+          "total_cents": 1500
+        }
+      ],
+      "payments": [
+        {
+          "method": "cash",
+          "amount_cents": 6000
+        },
+        {
+          "method": "debit",
+          "amount_cents": 227
+        }
+      ],
+      "access_key": "33260912345678000190650010000000421123456783",
+      "consultation_url": "https://consultadfe.fazenda.rj.gov.br/consultaNFCe/QRCode",
+      "qr_code": "https://consultadfe.fazenda.rj.gov.br/consultaNFCe/QRCode?p=33260912345678000190650010000000421123456783|3|1",
+      "discount_cents": 0,
+      "change_cents": 500,
+      "protocol": null,
+      "issued_local": "2026-09-25T12:04:05",
+      "authorized_local": null,
+      "consumer_document": null,
+      "approximate_taxes_cents": null,
+      "error": "O tipo de emissão impresso não confere com o da chave de acesso."
+    },
+    {
+      "name": "normal_sem_protocolo",
+      "issuer": {
+        "legal_name": "Confeitaria Dolce Affetto Comércio de Alimentos Finos e Doces Artesanais Ltda",
+        "cnpj": "12.345.678/0001-90",
+        "state_registration": "12345678",
+        "address": "Rua das Laranjeiras, 1234, Loja B - Laranjeiras - Rio de Janeiro/RJ - CEP 22240-003"
+      },
+      "environment": "production",
+      "emission": "normal",
+      "series": 1,
+      "number": 42,
+      "items": [
+        {
+          "code": "0000001234",
+          "description": "Torta de chocolate belga com cobertura de ganache",
+          "quantity": "0.847",
+          "unit": "KG",
+          "unit_price_cents": 4990,
+          "total_cents": 4227
+        },
+        {
+          "code": "77",
+          "description": "Café",
+          "quantity": "2.000",
+          "unit": "UN",
+          "unit_price_cents": 750,
+          "total_cents": 1500
+        }
+      ],
+      "payments": [
+        {
+          "method": "cash",
+          "amount_cents": 6000
+        },
+        {
+          "method": "debit",
+          "amount_cents": 227
+        }
+      ],
+      "access_key": "33260912345678000190650010000000421123456783",
+      "consultation_url": "https://consultadfe.fazenda.rj.gov.br/consultaNFCe/QRCode",
+      "qr_code": "https://consultadfe.fazenda.rj.gov.br/consultaNFCe/QRCode?p=33260912345678000190650010000000421123456783|3|1",
+      "discount_cents": 0,
+      "change_cents": 500,
+      "protocol": null,
+      "issued_local": "2026-09-25T12:04:05",
+      "authorized_local": "2026-09-25T12:04:09",
+      "consumer_document": null,
+      "approximate_taxes_cents": null,
+      "error": "Emissão normal sem protocolo de autorização não vira DANFE."
+    },
+    {
+      "name": "contingencia_com_protocolo",
+      "issuer": {
+        "legal_name": "Confeitaria Dolce Affetto Comércio de Alimentos Finos e Doces Artesanais Ltda",
+        "cnpj": "12.345.678/0001-90",
+        "state_registration": "12345678",
+        "address": "Rua das Laranjeiras, 1234, Loja B - Laranjeiras - Rio de Janeiro/RJ - CEP 22240-003"
+      },
+      "environment": "production",
+      "emission": "offline_contingency",
+      "series": 1,
+      "number": 42,
+      "items": [
+        {
+          "code": "0000001234",
+          "description": "Torta de chocolate belga com cobertura de ganache",
+          "quantity": "0.847",
+          "unit": "KG",
+          "unit_price_cents": 4990,
+          "total_cents": 4227
+        },
+        {
+          "code": "77",
+          "description": "Café",
+          "quantity": "2.000",
+          "unit": "UN",
+          "unit_price_cents": 750,
+          "total_cents": 1500
+        }
+      ],
+      "payments": [
+        {
+          "method": "cash",
+          "amount_cents": 6000
+        },
+        {
+          "method": "debit",
+          "amount_cents": 227
+        }
+      ],
+      "access_key": "33260912345678000190650010000000429123456789",
+      "consultation_url": "https://consultadfe.fazenda.rj.gov.br/consultaNFCe/QRCode",
+      "qr_code": "https://consultadfe.fazenda.rj.gov.br/consultaNFCe/QRCode?p=33260912345678000190650010000000421123456783|3|1",
+      "discount_cents": 0,
+      "change_cents": 500,
+      "protocol": "333260000012345",
+      "issued_local": "2026-09-25T12:04:05",
+      "authorized_local": "2026-09-25T12:04:09",
+      "consumer_document": null,
+      "approximate_taxes_cents": null,
+      "error": "Documento em contingência não tem protocolo; os dados se contradizem."
+    },
+    {
+      "name": "sem_itens",
+      "issuer": {
+        "legal_name": "Confeitaria Dolce Affetto Comércio de Alimentos Finos e Doces Artesanais Ltda",
+        "cnpj": "12.345.678/0001-90",
+        "state_registration": "12345678",
+        "address": "Rua das Laranjeiras, 1234, Loja B - Laranjeiras - Rio de Janeiro/RJ - CEP 22240-003"
+      },
+      "environment": "production",
+      "emission": "normal",
+      "series": 1,
+      "number": 42,
+      "items": [],
+      "payments": [
+        {
+          "method": "cash",
+          "amount_cents": 6000
+        },
+        {
+          "method": "debit",
+          "amount_cents": 227
+        }
+      ],
+      "access_key": "33260912345678000190650010000000421123456783",
+      "consultation_url": "https://consultadfe.fazenda.rj.gov.br/consultaNFCe/QRCode",
+      "qr_code": "https://consultadfe.fazenda.rj.gov.br/consultaNFCe/QRCode?p=33260912345678000190650010000000421123456783|3|1",
+      "discount_cents": 0,
+      "change_cents": 500,
+      "protocol": "333260000012345",
+      "issued_local": "2026-09-25T12:04:05",
+      "authorized_local": "2026-09-25T12:04:09",
+      "consumer_document": null,
+      "approximate_taxes_cents": null,
+      "error": "O documento não tem itens."
+    },
+    {
+      "name": "sem_qrcode",
+      "issuer": {
+        "legal_name": "Confeitaria Dolce Affetto Comércio de Alimentos Finos e Doces Artesanais Ltda",
+        "cnpj": "12.345.678/0001-90",
+        "state_registration": "12345678",
+        "address": "Rua das Laranjeiras, 1234, Loja B - Laranjeiras - Rio de Janeiro/RJ - CEP 22240-003"
+      },
+      "environment": "production",
+      "emission": "normal",
+      "series": 1,
+      "number": 42,
+      "items": [
+        {
+          "code": "0000001234",
+          "description": "Torta de chocolate belga com cobertura de ganache",
+          "quantity": "0.847",
+          "unit": "KG",
+          "unit_price_cents": 4990,
+          "total_cents": 4227
+        },
+        {
+          "code": "77",
+          "description": "Café",
+          "quantity": "2.000",
+          "unit": "UN",
+          "unit_price_cents": 750,
+          "total_cents": 1500
+        }
+      ],
+      "payments": [
+        {
+          "method": "cash",
+          "amount_cents": 6000
+        },
+        {
+          "method": "debit",
+          "amount_cents": 227
+        }
+      ],
+      "access_key": "33260912345678000190650010000000421123456783",
+      "consultation_url": "https://consultadfe.fazenda.rj.gov.br/consultaNFCe/QRCode",
+      "qr_code": "  ",
+      "discount_cents": 0,
+      "change_cents": 500,
+      "protocol": "333260000012345",
+      "issued_local": "2026-09-25T12:04:05",
+      "authorized_local": "2026-09-25T12:04:09",
+      "consumer_document": null,
+      "approximate_taxes_cents": null,
+      "error": "QR Code ou URL de consulta ausentes no documento fiscal."
+    },
+    {
+      "name": "pagamento_nao_fecha",
+      "issuer": {
+        "legal_name": "Confeitaria Dolce Affetto Comércio de Alimentos Finos e Doces Artesanais Ltda",
+        "cnpj": "12.345.678/0001-90",
+        "state_registration": "12345678",
+        "address": "Rua das Laranjeiras, 1234, Loja B - Laranjeiras - Rio de Janeiro/RJ - CEP 22240-003"
+      },
+      "environment": "production",
+      "emission": "normal",
+      "series": 1,
+      "number": 42,
+      "items": [
+        {
+          "code": "0000001234",
+          "description": "Torta de chocolate belga com cobertura de ganache",
+          "quantity": "0.847",
+          "unit": "KG",
+          "unit_price_cents": 4990,
+          "total_cents": 4227
+        },
+        {
+          "code": "77",
+          "description": "Café",
+          "quantity": "2.000",
+          "unit": "UN",
+          "unit_price_cents": 750,
+          "total_cents": 1500
+        }
+      ],
+      "payments": [
+        {
+          "method": "cash",
+          "amount_cents": 6000
+        },
+        {
+          "method": "debit",
+          "amount_cents": 227
+        }
+      ],
+      "access_key": "33260912345678000190650010000000421123456783",
+      "consultation_url": "https://consultadfe.fazenda.rj.gov.br/consultaNFCe/QRCode",
+      "qr_code": "https://consultadfe.fazenda.rj.gov.br/consultaNFCe/QRCode?p=33260912345678000190650010000000421123456783|3|1",
+      "discount_cents": 0,
+      "change_cents": 499,
+      "protocol": "333260000012345",
+      "issued_local": "2026-09-25T12:04:05",
+      "authorized_local": "2026-09-25T12:04:09",
+      "consumer_document": null,
+      "approximate_taxes_cents": null,
+      "error": "Os pagamentos (57,28) não fecham com o valor a pagar (57,27)."
+    }
+  ],
+  "check_digits": {
+    "3326091234567800019065001000000042112345678": "3",
+    "0000000000000000000000000000000000000000000": "0",
+    "9999999999999999999999999999999999999999999": "7",
+    "1111111111111111111111111111111111111111111": "2",
+    "3526777777777777777777777777777777777777777": "0"
+  },
+  "access_key_lines": [
+    "3326 0912 3456 7800 0190 6500",
+    "1000 0000 4211 2345 6783"
+  ],
+  "cnpj": {
+    "12345678000190": "12.345.678/0001-90",
+    "12.345.678/0001-90": "12.345.678/0001-90",
+    "123": "123"
+  }
+}
