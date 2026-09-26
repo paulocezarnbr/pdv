@@ -19,6 +19,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Pdv.Core.Tests" />
+    <InternalsVisibleTo Include="Pdv.Edge" />
   </ItemGroup>
 
 </Project>

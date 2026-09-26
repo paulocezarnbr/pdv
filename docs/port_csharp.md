@@ -442,11 +442,32 @@ A arquitetura existe para que a tela seja testável:
     casos) e a gorjeta somada sem filtrar comanda paga (comanda aberta
     nunca tem gorjeta). As mensagens dos commits `d3081b4` e `00ce757` citam
     84 e 72 passos; os números certos são 69 e 70.
-  - **Falta:** o servidor HTTP em ASP.NET Core com as rotas do
-    `edge/server.py` (contrato de rotas contra o FastAPI, 401/403 com
-    `X-Auth-Scope`, 409 com a comanda no corpo), o WebSocket do KDS, TLS
-    (`edge/tls.py`), anúncio na rede (`edge/discovery.py`) e a ligação no
-    caixa.
+  - **Servidor HTTP** (`Pdv.Edge`: Kestrel dentro do PDV). As 30 rotas do
+    `edge/server.py` e o WebSocket da cozinha, conferidos contra
+    `contracts/salon-http.json`, gerado pelo FastAPI com o `TestClient`
+    (`tests/salon_http_script.py`, 114 requisições): status, tipo do
+    conteúdo, `X-Auth-Scope`, `Cache-Control` e corpo. O `SalonHttpContractTests`
+    sobe o Kestrel de verdade em `127.0.0.1` e fala HTTP com ele.
+    - **A ordem de conferência é a do FastAPI**: JSON ilegível (422) antes
+      de tudo; depois aparelho (401), sessão (403 `staff`), gerente (403
+      `manager`) e só então o corpo. Dois passos do roteiro existem só para
+      prender essa ordem.
+    - **422 de validação** sai como lista em `detail`, como no pydantic, e o
+      contrato compara só o status: o app mostra "Erro 422" nos dois.
+    - **Uma requisição por vez no banco** (trava por servidor), como o laço
+      único do FastAPI serializava: uma conexão SQLite não é segura entre
+      threads. O teste de 40 lançamentos simultâneos de 8 celulares prende
+      isso.
+    - **O app do garçom é o mesmo arquivo do Python**, embutido no
+      executável por link no `.csproj` (sem cópia). Sai do `desktop-pdv`
+      quando o Python for removido.
+    - **Regra a mais que o Python:** `DELETE /orders/{id}/bill` numa comanda
+      fechada respondia 500; corrigido nos dois (409), e o contrato exige
+      que nenhuma rota responda 500.
+    - 22 mutações na camada HTTP, todas mortas (duas depois de acrescentar
+      os passos de ordem de conferência).
+  - **Falta:** TLS (`edge/tls.py`), anúncio na rede (`edge/discovery.py`) e
+    a ligação do servidor no caixa (WinUI), com o painel do salão (C6f).
   - **Baixa de insumo pelo salão (correção nos dois PDVs, 26/09/2026).** O
     item lançado pelo garçom não baixava estoque: `add_item` gravava
     `consumptions=()`. Agora baixa **no lançamento**, pela mesma ficha do

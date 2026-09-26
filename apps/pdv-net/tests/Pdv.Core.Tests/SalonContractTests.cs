@@ -2,7 +2,6 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using System.Text.RegularExpressions;
 using Pdv.Data;
 using Pdv.Data.Auth;
 using Pdv.Data.Edge;
@@ -19,7 +18,7 @@ namespace Pdv.Core.Tests;
 /// inclusive a de recusa, precisa ser a do Python. Ids e horários saem
 /// normalizados como em <c>salon_script.py</c>.
 /// </remarks>
-public sealed partial class SalonContractTests : IDisposable
+public sealed class SalonContractTests : IDisposable
 {
     private static readonly JsonObject Contract =
         JsonNode.Parse(File.ReadAllText(TestDatabase.Contract("salon.json")))!.AsObject();
@@ -34,74 +33,13 @@ public sealed partial class SalonContractTests : IDisposable
         _terminal = new TerminalIdentity(
             Contract["tenant_id"]!.GetValue<string>(), Contract["store_id"]!.GetValue<string>(),
             Contract["device_id"]!.GetValue<string>());
-        foreach (var (table, rows) in Contract["seed"]!.AsObject())
-        {
-            foreach (var row in rows!.AsArray().Select(r => r!.AsObject()))
-            {
-                _database.Execute(
-                    $"INSERT INTO {table} ({string.Join(", ", row.Select(c => c.Key))}) " +
-                    $"VALUES ({string.Join(", ", row.Select(c => "$" + c.Key))})",
-                    [.. row.Select(c => ("$" + c.Key, Scalar(c.Value)))]);
-            }
-        }
+        SalonScript.Seed(_database, Contract);
     }
 
     public void Dispose()
     {
         _database.Dispose();
         _file.Dispose();
-    }
-
-    private static object? Scalar(JsonNode? node) => node?.GetValueKind() switch
-    {
-        null or JsonValueKind.Null => null,
-        JsonValueKind.String => node.GetValue<string>(),
-        JsonValueKind.True => 1,
-        JsonValueKind.False => 0,
-        _ => node.GetValue<JsonElement>().GetInt64(),
-    };
-
-    [GeneratedRegex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")]
-    private static partial Regex Uuid();
-
-    [GeneratedRegex(@"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(\+00:00|Z|[+-]\d{2}:\d{2})?")]
-    private static partial Regex Timestamp();
-
-    /// <summary>O <c>_VOLATILE</c> do Python: valor que depende do relógio ou da chave, não da regra.</summary>
-    private static readonly Dictionary<string, string> Volatile = new(StringComparer.Ordinal)
-    {
-        ["hash"] = "<hash>", ["prev_hash"] = "<hash>", ["waiting_seconds"] = "<s>",
-        ["token"] = "<token>", ["code"] = "<code>", ["remaining_seconds"] = "<s>", ["expires_in_seconds"] = "<s>",
-    };
-
-    /// <summary>O <c>Normalizer</c> de <c>salon_script.py</c>: UUID → &lt;idN&gt; na ordem de aparição, horário → &lt;ts&gt;.</summary>
-    private sealed class Normalizer
-    {
-        private readonly Dictionary<string, string> _ids = [];
-
-        public JsonNode? Value(JsonNode? node) => node switch
-        {
-            null => null,
-            JsonObject obj => new JsonObject(obj.Select(p => KeyValuePair.Create(p.Key,
-                Volatile.TryGetValue(p.Key, out var mark) && p.Value is not null ? JsonValue.Create(mark) : Value(p.Value)))),
-            JsonArray array => new JsonArray([.. array.Select(Value)]),
-            JsonValue value when value.GetValueKind() == JsonValueKind.String => Text(value.GetValue<string>()),
-            _ => node.DeepClone(),
-        };
-
-        private string Text(string text)
-        {
-            text = Timestamp().Replace(text, "<ts>");
-            return Uuid().Replace(text, match =>
-            {
-                if (!_ids.TryGetValue(match.Value, out var alias))
-                {
-                    alias = $"<id{_ids.Count + 1}>";
-                    _ids[match.Value] = alias;
-                }
-                return alias;
-            });
-        }
     }
 
     private const string Manager = "5a1a0000-0000-4000-8000-0000000000a2";
@@ -288,7 +226,7 @@ public sealed partial class SalonContractTests : IDisposable
             new ManagerSessions(new StaffAuthentication(_database, _terminal.TenantId)),
             new StaffReport(_database, _terminal.TenantId));
         var saved = new Dictionary<string, string>();
-        var normalizer = new Normalizer();
+        var normalizer = new SalonScript.Normalizer();
         var results = new JsonArray();
         foreach (var step in Contract["script"]!.AsArray().Select(s => s!.AsObject()))
         {

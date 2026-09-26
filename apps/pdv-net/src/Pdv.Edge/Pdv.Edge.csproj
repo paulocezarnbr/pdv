@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- O servidor do salão: o PDV como servidor da loja para os celulares dos
+       garçons e a tela da cozinha. Roda dentro do PDV.exe (Kestrel), não como
+       serviço à parte: a comanda mora no mesmo banco que o caixa usa. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Pdv.Data\Pdv.Data.csproj" />
+  </ItemGroup>
+
+  <!-- O app do garçom é o MESMO do PDV em Python, sem cópia: duas cópias
+       divergiriam na primeira correção de uma delas, e o celular mudaria de
+       comportamento conforme o caixa da loja. Quando o Python sair (passo 8
+       do handoff), os arquivos mudam para cá. -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\..\desktop-pdv\src\pdv\edge\webapp\index.html" LogicalName="webapp/index.html" />
+    <EmbeddedResource Include="..\..\..\desktop-pdv\src\pdv\edge\webapp\vendor\*.css" LogicalName="webapp/vendor/%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\..\..\desktop-pdv\src\pdv\edge\webapp\vendor\*.js" LogicalName="webapp/vendor/%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Pdv.Core.Tests" />
+  </ItemGroup>
+
+</Project>

@@ -461,6 +461,10 @@ def create_app(
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
             ) from exc
+        except OrderClosedError as exc:
+            # Sem isto a comanda já recebida respondia 500 ao celular, que
+            # mostrava "Erro 500" em vez de dizer que a conta já fechou.
+            raise _conflict(exc) from exc
 
     @app.post("/orders/{order_id}/cancel", response_model=OrderResponse)
     async def cancel_order(

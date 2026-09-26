@@ -1,0 +1,2615 @@
+{
+ "descricao": "As rotas do servidor do salão como o FastAPI as responde. Gerado por apps/desktop-pdv/tests/salon_http_script.py; não edite à mão: rode PDV_UPDATE_CONTRACT=1 python -m pytest tests/test_salon_http_contract.py.",
+ "tenant_id": "5a1a0000-0000-4000-8000-000000000001",
+ "store_id": "5a1a0000-0000-4000-8000-000000000002",
+ "device_id": "5a1a0000-0000-4000-8000-000000000003",
+ "store_name": "Confeitaria Aurora",
+ "device_secret": "chave-do-roteiro-do-salao",
+ "manager_id": "5a1a0000-0000-4000-8000-0000000000a2",
+ "seed": {
+  "users": [
+   {
+    "id": "5a1a0000-0000-4000-8000-0000000000a1",
+    "tenant_id": "5a1a0000-0000-4000-8000-000000000001",
+    "name": "João Garçom",
+    "login": "joao",
+    "role": "waiter",
+    "updated_at": "2026-09-26T00:00:00.000+00:00",
+    "pin_hash": "$argon2id$v=19$m=65536,t=3,p=4$L/HZrr606fohJr3zkx0hxg$4468AcXI/qjZWrcpbM9bc51BwKWjVzJBm7UrMATF2kY"
+   },
+   {
+    "id": "5a1a0000-0000-4000-8000-0000000000a2",
+    "tenant_id": "5a1a0000-0000-4000-8000-000000000001",
+    "name": "Bruno Gerente",
+    "login": "bruno",
+    "role": "manager",
+    "can_authorize": 1,
+    "max_discount_percent": "30",
+    "updated_at": "2026-09-26T00:00:00.000+00:00",
+    "pin_hash": "$argon2id$v=19$m=65536,t=3,p=4$So7KHgj4E7qSNqB0dLi9Cg$gaNMRGt69ipftremGgDs+QrziObdh6tsqghlwY7zBh0"
+   },
+   {
+    "id": "5a1a0000-0000-4000-8000-0000000000a3",
+    "tenant_id": "5a1a0000-0000-4000-8000-000000000001",
+    "name": "Olga Dona",
+    "login": "olga",
+    "role": "owner",
+    "can_authorize": 1,
+    "max_discount_percent": "100",
+    "updated_at": "2026-09-26T00:00:00.000+00:00",
+    "pin_hash": "$argon2id$v=19$m=65536,t=3,p=4$7CPgBUYfN32CU12ofQnkYA$e76mY7TbKQzMYGGVIVPrfvwwiEn9YKIypLB4ogVSHHg"
+   }
+  ],
+  "inventory_items": [
+   {
+    "id": "5a1a0000-0000-4000-8000-0000000000e1",
+    "tenant_id": "5a1a0000-0000-4000-8000-000000000001",
+    "store_id": "5a1a0000-0000-4000-8000-000000000002",
+    "name": "Farinha",
+    "unit": "mg",
+    "balance_mg": 10000000,
+    "min_stock_mg": 0,
+    "avg_cost_cents_per_kg": 650,
+    "updated_at": "2026-09-26T00:00:00.000+00:00"
+   },
+   {
+    "id": "5a1a0000-0000-4000-8000-0000000000e2",
+    "tenant_id": "5a1a0000-0000-4000-8000-000000000001",
+    "store_id": "5a1a0000-0000-4000-8000-000000000002",
+    "name": "Chocolate",
+    "unit": "mg",
+    "balance_mg": 5000000,
+    "min_stock_mg": 0,
+    "avg_cost_cents_per_kg": 4200,
+    "updated_at": "2026-09-26T00:00:00.000+00:00"
+   }
+  ],
+  "products": [
+   {
+    "id": "5a1a0000-0000-4000-8000-0000000000b1",
+    "tenant_id": "5a1a0000-0000-4000-8000-000000000001",
+    "store_id": "5a1a0000-0000-4000-8000-000000000002",
+    "sku": "CAFE",
+    "name": "Café coado",
+    "pricing_mode": "unit",
+    "price_cents": 700,
+    "updated_at": "2026-09-26T00:00:00.000+00:00"
+   },
+   {
+    "id": "5a1a0000-0000-4000-8000-0000000000b2",
+    "tenant_id": "5a1a0000-0000-4000-8000-000000000001",
+    "store_id": "5a1a0000-0000-4000-8000-000000000002",
+    "sku": "TORTA",
+    "name": "Torta de limão",
+    "pricing_mode": "weight",
+    "price_cents": 5900,
+    "updated_at": "2026-09-26T00:00:00.000+00:00"
+   },
+   {
+    "id": "5a1a0000-0000-4000-8000-0000000000b3",
+    "tenant_id": "5a1a0000-0000-4000-8000-000000000001",
+    "store_id": "5a1a0000-0000-4000-8000-000000000002",
+    "sku": "FATIA",
+    "name": "Fatia de torta",
+    "pricing_mode": "unit",
+    "price_cents": 1450,
+    "recipe_id": "5a1a0000-0000-4000-8000-0000000000f1",
+    "updated_at": "2026-09-26T00:00:00.000+00:00"
+   }
+  ],
+  "recipes": [
+   {
+    "id": "5a1a0000-0000-4000-8000-0000000000f1",
+    "tenant_id": "5a1a0000-0000-4000-8000-000000000001",
+    "product_id": "5a1a0000-0000-4000-8000-0000000000b3",
+    "base_qty_g": 150,
+    "yield_factor": "0.92",
+    "updated_at": "2026-09-26T00:00:00.000+00:00"
+   }
+  ],
+  "recipe_lines": [
+   {
+    "id": "5a1a0000-0000-4000-8000-0000000000f2",
+    "recipe_id": "5a1a0000-0000-4000-8000-0000000000f1",
+    "inventory_item_id": "5a1a0000-0000-4000-8000-0000000000e1",
+    "qty_per_base_mg": 37500,
+    "waste_percent": "2",
+    "updated_at": "2026-09-26T00:00:00.000+00:00"
+   },
+   {
+    "id": "5a1a0000-0000-4000-8000-0000000000f3",
+    "recipe_id": "5a1a0000-0000-4000-8000-0000000000f1",
+    "inventory_item_id": "5a1a0000-0000-4000-8000-0000000000e2",
+    "qty_per_base_mg": 48000,
+    "waste_percent": "3",
+    "updated_at": "2026-09-26T00:00:00.000+00:00"
+   }
+  ]
+ },
+ "script": [
+  {
+   "method": "GET",
+   "path": "/health"
+  },
+  {
+   "method": "GET",
+   "path": "/manifest.webmanifest"
+  },
+  {
+   "method": "GET",
+   "path": "/"
+  },
+  {
+   "method": "GET",
+   "path": "/vendor/sweetalert2.min.css"
+  },
+  {
+   "method": "GET",
+   "path": "/vendor/sweetalert2.min.js"
+  },
+  {
+   "method": "GET",
+   "path": "/vendor/nao-existe.js"
+  },
+  {
+   "method": "GET",
+   "path": "/rota-que-nao-existe"
+  },
+  {
+   "method": "DELETE",
+   "path": "/health"
+  },
+  {
+   "method": "GET",
+   "path": "/tables"
+  },
+  {
+   "method": "GET",
+   "path": "/tables",
+   "headers": {
+    "device": "token-inventado"
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/tables",
+   "raw_headers": {
+    "Authorization": "Basic abc"
+   }
+  },
+  {
+   "op": "code",
+   "save": "c1"
+  },
+  {
+   "method": "POST",
+   "path": "/pair",
+   "json": {
+    "code": "$c1",
+    "device_name": "Celular do João"
+   },
+   "save": {
+    "tok1": "token",
+    "dev1": "device_id"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/pair",
+   "json": {
+    "code": "$c1",
+    "device_name": "Outro"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/pair",
+   "json": {
+    "code": "12",
+    "device_name": "Curto"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/pair",
+   "json": {
+    "code": "12345678",
+    "device_name": "TV",
+    "kind": "tv"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/pair",
+   "json": {
+    "code": "12345678"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/pair",
+   "raw": "{"
+  },
+  {
+   "op": "code",
+   "save": "c2"
+  },
+  {
+   "method": "POST",
+   "path": "/pair",
+   "json": {
+    "code": "$c2",
+    "device_name": "Tablet da cozinha",
+    "kind": "kds"
+   },
+   "save": {
+    "tok2": "token",
+    "dev2": "device_id"
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/tables",
+   "headers": {
+    "device": "$tok1"
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/menu",
+   "headers": {
+    "device": "$tok1"
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/orders",
+   "headers": {
+    "device": "$tok1"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/orders",
+   "headers": {
+    "device": "$tok1"
+   },
+   "json": {
+    "client_uuid": "5a1a0000-0000-4000-8000-00000000c101",
+    "table_label": "Mesa 1"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/orders",
+   "headers": {
+    "device": "$tok1"
+   },
+   "json": {
+    "client_uuid": "x"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/staff/session",
+   "raw": "{\"login\": "
+  },
+  {
+   "method": "POST",
+   "path": "/staff/session",
+   "headers": {
+    "device": "$tok1"
+   },
+   "json": {
+    "login": "joao",
+    "pin": "0000"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/staff/session",
+   "json": {
+    "login": "joao",
+    "pin": "4826"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/staff/session",
+   "headers": {
+    "device": "$tok1"
+   },
+   "json": {
+    "login": "joao",
+    "pin": "4826"
+   },
+   "save": {
+    "st1": "token"
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/staff/session",
+   "headers": {
+    "device": "$tok1",
+    "staff": "$st1"
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/staff/session",
+   "headers": {
+    "device": "$tok2",
+    "staff": "$st1"
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/staff/session",
+   "headers": {
+    "device": "$tok1"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/tables/seed",
+   "headers": {
+    "device": "$tok1"
+   },
+   "json": {
+    "count": 3
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/manager/session",
+   "headers": {
+    "device": "$tok1"
+   },
+   "json": {
+    "login": "bruno",
+    "pin": "1111"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/manager/session",
+   "headers": {
+    "device": "$tok1"
+   },
+   "json": {
+    "login": "joao",
+    "pin": "4826"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/manager/session",
+   "headers": {
+    "device": "$tok1"
+   },
+   "json": {
+    "login": "bruno",
+    "pin": "7391"
+   },
+   "save": {
+    "mg1": "token"
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/manager/session",
+   "headers": {
+    "device": "$tok1",
+    "manager": "$mg1"
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/manager/session",
+   "headers": {
+    "device": "$tok2",
+    "manager": "$mg1"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/tables/seed",
+   "headers": {
+    "device": "$tok1",
+    "manager": "$mg1"
+   },
+   "json": {
+    "count": 3
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/tables/seed",
+   "headers": {
+    "device": "$tok1",
+    "manager": "$mg1"
+   },
+   "json": {
+    "count": 0
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/tables",
+   "headers": {
+    "device": "$tok1",
+    "manager": "$mg1"
+   },
+   "json": {
+    "label": "Varanda 1",
+    "area": "Varanda",
+    "seats": 2
+   },
+   "save": {
+    "v1": "id"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/tables",
+   "headers": {
+    "device": "$tok1",
+    "manager": "$mg1"
+   },
+   "json": {
+    "label": "mesa 1"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/tables",
+   "headers": {
+    "device": "$tok1",
+    "manager": "$mg1"
+   },
+   "json": {
+    "label": "Sem lugar",
+    "seats": 0
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/tables",
+   "headers": {
+    "device": "$tok1",
+    "manager": "$mg1"
+   },
+   "json": {
+    "label": "   "
+   }
+  },
+  {
+   "method": "PATCH",
+   "path": "/tables/$v1",
+   "headers": {
+    "device": "$tok1",
+    "manager": "$mg1"
+   },
+   "json": {
+    "label": "Varanda 9",
+    "seats": 6
+   }
+  },
+  {
+   "method": "PATCH",
+   "path": "/tables/$v1",
+   "headers": {
+    "device": "$tok1",
+    "manager": "$mg1"
+   },
+   "json": {
+    "is_active": false,
+    "label": "Varanda 10"
+   }
+  },
+  {
+   "method": "PATCH",
+   "path": "/tables/$v1",
+   "headers": {
+    "device": "$tok1",
+    "manager": "$mg1"
+   },
+   "json": {
+    "label": "Varanda 11"
+   }
+  },
+  {
+   "method": "PATCH",
+   "path": "/tables/$v1",
+   "headers": {
+    "device": "$tok1",
+    "manager": "$mg1"
+   },
+   "json": {
+    "is_active": true,
+    "sort_order": 50
+   }
+  },
+  {
+   "method": "PATCH",
+   "path": "/tables/5a1a0000-0000-4000-8000-00000000dead",
+   "headers": {
+    "device": "$tok1",
+    "manager": "$mg1"
+   },
+   "json": {
+    "label": "Y"
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/tables?include_inactive=true",
+   "headers": {
+    "device": "$tok1"
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/tables",
+   "headers": {
+    "device": "$tok1"
+   },
+   "save": {
+    "m1": "tables.0.id",
+    "m2": "tables.1.id",
+    "m3": "tables.2.id"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/orders",
+   "headers": {
+    "device": "$tok1",
+    "staff": "$st1"
+   },
+   "json": {
+    "client_uuid": "5a1a0000-0000-4000-8000-00000000c102",
+    "table_id": "$m1"
+   },
+   "save": {
+    "o1": "order_id"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/orders",
+   "headers": {
+    "device": "$tok1",
+    "staff": "$st1"
+   },
+   "json": {
+    "client_uuid": "5a1a0000-0000-4000-8000-00000000c102",
+    "table_id": "$m1"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/orders",
+   "headers": {
+    "device": "$tok1",
+    "staff": "$st1"
+   },
+   "json": {
+    "client_uuid": "5a1a0000-0000-4000-8000-00000000c103",
+    "table_id": "$m1"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/orders",
+   "headers": {
+    "device": "$tok1",
+    "staff": "$st1"
+   },
+   "json": {
+    "client_uuid": "5a1a0000-0000-4000-8000-00000000c104",
+    "table_label": "Mesa 99"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/orders",
+   "headers": {
+    "device": "$tok1",
+    "staff": "$st1"
+   },
+   "json": {
+    "client_uuid": "5a1a0000-0000-4000-8000-00000000c105"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/orders",
+   "headers": {
+    "device": "$tok1",
+    "staff": "$st1"
+   },
+   "json": {
+    "client_uuid": "curto"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/orders/$o1/items",
+   "headers": {
+    "device": "$tok1",
+    "staff": "$st1"
+   },
+   "json": {
+    "client_uuid": "5a1a0000-0000-4000-8000-00000000d101",
+    "product_id": "5a1a0000-0000-4000-8000-0000000000b1",
+    "quantity": "2",
+    "notes": "sem açúcar"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/orders/$o1/items",
+   "headers": {
+    "device": "$tok1",
+    "staff": "$st1"
+   },
+   "json": {
+    "client_uuid": "5a1a0000-0000-4000-8000-00000000d101",
+    "product_id": "5a1a0000-0000-4000-8000-0000000000b1",
+    "quantity": "2"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/orders/$o1/items",
+   "headers": {
+    "device": "$tok1",
+    "staff": "$st1"
+   },
+   "json": {
+    "client_uuid": "5a1a0000-0000-4000-8000-00000000d102",
+    "product_id": "5a1a0000-0000-4000-8000-0000000000b1",
+    "quantity": "abc"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/orders/$o1/items",
+   "headers": {
+    "device": "$tok1",
+    "staff": "$st1"
+   },
+   "json": {
+    "client_uuid": "5a1a0000-0000-4000-8000-00000000d103",
+    "product_id": "5a1a0000-0000-4000-8000-0000000000b2"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/orders/$o1/items",
+   "headers": {
+    "device": "$tok1",
+    "staff": "$st1"
+   },
+   "json": {
+    "client_uuid": "5a1a0000-0000-4000-8000-00000000d104",
+    "product_id": "5a1a0000-0000-4000-8000-00000000dead"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/orders/5a1a0000-0000-4000-8000-00000000dead/items",
+   "headers": {
+    "device": "$tok1",
+    "staff": "$st1"
+   },
+   "json": {
+    "client_uuid": "5a1a0000-0000-4000-8000-00000000d105",
+    "product_id": "5a1a0000-0000-4000-8000-0000000000b1"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/orders/$o1/items",
+   "headers": {
+    "device": "$tok1",
+    "staff": "$st1"
+   },
+   "json": {
+    "client_uuid": "5a1a0000-0000-4000-8000-00000000d106",
+    "product_id": "5a1a0000-0000-4000-8000-0000000000b3",
+    "station": "confeitaria"
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/orders",
+   "headers": {
+    "device": "$tok1"
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/orders/$o1",
+   "headers": {
+    "device": "$tok1"
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/orders/5a1a0000-0000-4000-8000-00000000dead",
+   "headers": {
+    "device": "$tok1"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/orders/$o1/bill",
+   "headers": {
+    "device": "$tok1",
+    "staff": "$st1"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/orders/$o1/bill",
+   "headers": {
+    "device": "$tok1",
+    "staff": "$st1"
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/tables",
+   "headers": {
+    "device": "$tok1"
+   }
+  },
+  {
+   "method": "DELETE",
+   "path": "/orders/$o1/bill",
+   "headers": {
+    "device": "$tok1",
+    "staff": "$st1"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/orders/5a1a0000-0000-4000-8000-00000000dead/bill",
+   "headers": {
+    "device": "$tok1",
+    "staff": "$st1"
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/kds/tickets",
+   "headers": {
+    "device": "$tok2"
+   },
+   "save": {
+    "t1": "tickets.0.ticket_id",
+    "t2": "tickets.1.ticket_id"
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/kds/tickets?station=confeitaria",
+   "headers": {
+    "device": "$tok2"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/kds/tickets/$t1/bump",
+   "headers": {
+    "device": "$tok2"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/kds/tickets/$t1/bump",
+   "headers": {
+    "device": "$tok2"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/kds/tickets/$t1/recall",
+   "headers": {
+    "device": "$tok2"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/kds/tickets/$t1/explodir",
+   "headers": {
+    "device": "$tok2"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/kds/tickets/5a1a0000-0000-4000-8000-00000000dead/bump",
+   "headers": {
+    "device": "$tok2"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/kds/tickets/$t2/recall",
+   "headers": {
+    "device": "$tok2"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/kds/tickets/$t2/bump"
+  },
+  {
+   "method": "POST",
+   "path": "/orders/$o1/transfer",
+   "headers": {
+    "device": "$tok1",
+    "staff": "$st1"
+   },
+   "json": {
+    "table_id": "$m2"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/orders/$o1/transfer",
+   "headers": {
+    "device": "$tok1",
+    "staff": "$st1",
+    "manager": "$mg1"
+   },
+   "json": {
+    "table_id": "$m2"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/orders",
+   "headers": {
+    "device": "$tok1",
+    "staff": "$st1"
+   },
+   "json": {
+    "client_uuid": "5a1a0000-0000-4000-8000-00000000c106",
+    "table_label": "mesa 1"
+   },
+   "save": {
+    "o2": "order_id"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/orders/$o1/transfer",
+   "headers": {
+    "device": "$tok1",
+    "staff": "$st1",
+    "manager": "$mg1"
+   },
+   "json": {
+    "table_id": "$m1"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/orders/$o1/transfer",
+   "headers": {
+    "device": "$tok1",
+    "staff": "$st1",
+    "manager": "$mg1"
+   },
+   "json": {
+    "table_id": "5a1a0000-0000-4000-8000-00000000dead"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/orders/$o2/cancel",
+   "headers": {
+    "device": "$tok1",
+    "staff": "$st1",
+    "manager": "$mg1"
+   },
+   "json": {
+    "reason": "ab"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/orders/$o2/cancel",
+   "headers": {
+    "device": "$tok1",
+    "staff": "$st1"
+   },
+   "json": {
+    "reason": "aberta por engano"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/orders/$o2/cancel",
+   "headers": {
+    "device": "$tok1",
+    "staff": "$st1",
+    "manager": "$mg1"
+   },
+   "json": {
+    "reason": "  aberta   por engano "
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/orders/$o2/cancel",
+   "headers": {
+    "device": "$tok1",
+    "staff": "$st1",
+    "manager": "$mg1"
+   },
+   "json": {
+    "reason": "de novo"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/orders/$o2/bill",
+   "headers": {
+    "device": "$tok1",
+    "staff": "$st1"
+   }
+  },
+  {
+   "method": "DELETE",
+   "path": "/orders/$o2/bill",
+   "headers": {
+    "device": "$tok1",
+    "staff": "$st1"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/orders/$o2/items",
+   "headers": {
+    "device": "$tok1",
+    "staff": "$st1"
+   },
+   "json": {
+    "client_uuid": "5a1a0000-0000-4000-8000-00000000d107",
+    "product_id": "5a1a0000-0000-4000-8000-0000000000b1"
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/kds/tickets",
+   "headers": {
+    "device": "$tok2"
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/staff/summary",
+   "headers": {
+    "device": "$tok1",
+    "staff": "$st1"
+   }
+  },
+  {
+   "method": "DELETE",
+   "path": "/staff/session",
+   "headers": {
+    "device": "$tok1",
+    "staff": "$st1"
+   }
+  },
+  {
+   "method": "DELETE",
+   "path": "/staff/session",
+   "headers": {
+    "device": "$tok1",
+    "staff": "$st1"
+   }
+  },
+  {
+   "method": "DELETE",
+   "path": "/staff/session",
+   "headers": {
+    "device": "$tok1"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/orders/$o1/items",
+   "headers": {
+    "device": "$tok1",
+    "staff": "$st1"
+   },
+   "json": {
+    "client_uuid": "5a1a0000-0000-4000-8000-00000000d108",
+    "product_id": "5a1a0000-0000-4000-8000-0000000000b1"
+   }
+  },
+  {
+   "method": "DELETE",
+   "path": "/manager/session",
+   "headers": {
+    "device": "$tok1",
+    "manager": "$mg1"
+   }
+  },
+  {
+   "method": "DELETE",
+   "path": "/manager/session",
+   "headers": {
+    "device": "$tok1",
+    "manager": "$mg1"
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/manager/session",
+   "headers": {
+    "device": "$tok1",
+    "manager": "$mg1"
+   }
+  },
+  {
+   "method": "PATCH",
+   "path": "/tables/$v1",
+   "headers": {
+    "device": "$tok1",
+    "manager": "$mg1"
+   },
+   "json": {
+    "is_active": false
+   }
+  },
+  {
+   "op": "revoke",
+   "device": "$dev2"
+  },
+  {
+   "method": "GET",
+   "path": "/kds/tickets",
+   "headers": {
+    "device": "$tok2"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/pair",
+   "json": {
+    "code": "99990000",
+    "device_name": "Ataque"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/pair",
+   "json": {
+    "code": "99990001",
+    "device_name": "Ataque"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/pair",
+   "json": {
+    "code": "99990002",
+    "device_name": "Ataque"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/pair",
+   "json": {
+    "code": "99990003",
+    "device_name": "Ataque"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/pair",
+   "json": {
+    "code": "99990004",
+    "device_name": "Ataque"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/pair",
+   "json": {
+    "code": "99990005",
+    "device_name": "Ataque"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/pair",
+   "json": {
+    "code": "99990006",
+    "device_name": "Ataque"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/pair",
+   "json": {
+    "code": "99990007",
+    "device_name": "Ataque"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/pair",
+   "json": {
+    "code": "99990008",
+    "device_name": "Ataque"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/pair",
+   "json": {
+    "code": "99990009",
+    "device_name": "Ataque"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/pair",
+   "json": {
+    "code": "999900010",
+    "device_name": "Ataque"
+   }
+  },
+  {
+   "op": "code",
+   "save": "c3"
+  },
+  {
+   "method": "POST",
+   "path": "/pair",
+   "json": {
+    "code": "$c3",
+    "device_name": "Legítimo"
+   }
+  }
+ ],
+ "results": [
+  {
+   "status": 200,
+   "type": "application/json",
+   "body": {
+    "service": "pdv-edge",
+    "store_id": "<id1>",
+    "store_name": "Confeitaria Aurora",
+    "device_id": "<id2>",
+    "version": "1.0.0"
+   }
+  },
+  {
+   "status": 200,
+   "type": "application/json",
+   "body": {
+    "name": "Salão — Confeitaria Aurora",
+    "short_name": "Salão",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#0e1116",
+    "theme_color": "#0e1116",
+    "orientation": "portrait"
+   }
+  },
+  {
+   "status": 200,
+   "type": "text/html",
+   "body": {
+    "sha256": "843c638adc1451ebb0ffd348e70b7198cf4b724a1a0b8c760099f7eb2cbaf914",
+    "bytes": 41750
+   }
+  },
+  {
+   "status": 200,
+   "type": "text/css",
+   "headers": {
+    "cache-control": "public, max-age=604800"
+   },
+   "body": {
+    "sha256": "a1173e56fd474be04ddbefa81bd75cc465627ef2f5db261792e7d25fb7871743",
+    "bytes": 30251
+   }
+  },
+  {
+   "status": 200,
+   "type": "application/javascript",
+   "headers": {
+    "cache-control": "public, max-age=604800"
+   },
+   "body": {
+    "sha256": "520341374aa1ee4387d6564e46c0fb0485addc98431ee246cd1be6368fedb1b0",
+    "bytes": 48643
+   }
+  },
+  {
+   "status": 404,
+   "type": "application/json",
+   "body": {
+    "detail": "Arquivo inexistente."
+   }
+  },
+  {
+   "status": 404,
+   "type": "application/json",
+   "body": {
+    "detail": "Not Found"
+   }
+  },
+  {
+   "status": 405,
+   "type": "application/json",
+   "body": {
+    "detail": "Method Not Allowed"
+   }
+  },
+  {
+   "status": 401,
+   "type": "application/json",
+   "body": {
+    "detail": "Aparelho não autenticado."
+   }
+  },
+  {
+   "status": 401,
+   "type": "application/json",
+   "body": {
+    "detail": "Aparelho não reconhecido. Pareie novamente."
+   }
+  },
+  {
+   "status": 401,
+   "type": "application/json",
+   "body": {
+    "detail": "Aparelho não autenticado."
+   }
+  },
+  {
+   "done": "code"
+  },
+  {
+   "status": 200,
+   "type": "application/json",
+   "body": {
+    "device_id": "<id3>",
+    "token": "<token>",
+    "store_name": "Confeitaria Aurora"
+   }
+  },
+  {
+   "status": 403,
+   "type": "application/json",
+   "body": {
+    "detail": "Código inválido, expirado ou já utilizado. Gere um novo na tela do caixa."
+   }
+  },
+  {
+   "status": 422,
+   "type": "application/json",
+   "body": "<validação>"
+  },
+  {
+   "status": 422,
+   "type": "application/json",
+   "body": "<validação>"
+  },
+  {
+   "status": 422,
+   "type": "application/json",
+   "body": "<validação>"
+  },
+  {
+   "status": 422,
+   "type": "application/json",
+   "body": "<validação>"
+  },
+  {
+   "done": "code"
+  },
+  {
+   "status": 200,
+   "type": "application/json",
+   "body": {
+    "device_id": "<id4>",
+    "token": "<token>",
+    "store_name": "Confeitaria Aurora"
+   }
+  },
+  {
+   "status": 200,
+   "type": "application/json",
+   "body": {
+    "tables": []
+   }
+  },
+  {
+   "status": 200,
+   "type": "application/json",
+   "body": {
+    "products": [
+     {
+      "id": "<id5>",
+      "sku": "CAFE",
+      "name": "Café coado",
+      "price_cents": 700,
+      "pricing_mode": "unit",
+      "sellable_by_waiter": true
+     },
+     {
+      "id": "<id6>",
+      "sku": "FATIA",
+      "name": "Fatia de torta",
+      "price_cents": 1450,
+      "pricing_mode": "unit",
+      "sellable_by_waiter": true
+     },
+     {
+      "id": "<id7>",
+      "sku": "TORTA",
+      "name": "Torta de limão",
+      "price_cents": 5900,
+      "pricing_mode": "weight",
+      "sellable_by_waiter": false
+     }
+    ]
+   }
+  },
+  {
+   "status": 200,
+   "type": "application/json",
+   "body": []
+  },
+  {
+   "status": 403,
+   "type": "application/json",
+   "headers": {
+    "x-auth-scope": "staff"
+   },
+   "body": {
+    "detail": "Entre com o seu login para lançar pedidos neste aparelho."
+   }
+  },
+  {
+   "status": 403,
+   "type": "application/json",
+   "headers": {
+    "x-auth-scope": "staff"
+   },
+   "body": {
+    "detail": "Entre com o seu login para lançar pedidos neste aparelho."
+   }
+  },
+  {
+   "status": 422,
+   "type": "application/json",
+   "body": "<validação>"
+  },
+  {
+   "status": 403,
+   "type": "application/json",
+   "body": {
+    "detail": "Login ou PIN inválido."
+   }
+  },
+  {
+   "status": 401,
+   "type": "application/json",
+   "body": {
+    "detail": "Aparelho não autenticado."
+   }
+  },
+  {
+   "status": 200,
+   "type": "application/json",
+   "body": {
+    "user_id": "<id8>",
+    "name": "João Garçom",
+    "first_name": "João",
+    "login": "joao",
+    "role": "waiter",
+    "expires_at": "<ts>",
+    "expires_in_seconds": "<s>",
+    "token": "<token>"
+   }
+  },
+  {
+   "status": 200,
+   "type": "application/json",
+   "body": {
+    "user_id": "<id8>",
+    "name": "João Garçom",
+    "first_name": "João",
+    "login": "joao",
+    "role": "waiter",
+    "expires_at": "<ts>",
+    "expires_in_seconds": "<s>"
+   }
+  },
+  {
+   "status": 403,
+   "type": "application/json",
+   "headers": {
+    "x-auth-scope": "staff"
+   },
+   "body": {
+    "detail": "Esta sessão não vale para este aparelho."
+   }
+  },
+  {
+   "status": 403,
+   "type": "application/json",
+   "headers": {
+    "x-auth-scope": "staff"
+   },
+   "body": {
+    "detail": "Entre com o seu login para lançar pedidos neste aparelho."
+   }
+  },
+  {
+   "status": 403,
+   "type": "application/json",
+   "headers": {
+    "x-auth-scope": "manager"
+   },
+   "body": {
+    "detail": "Esta operação precisa de autorização de gerente."
+   }
+  },
+  {
+   "status": 403,
+   "type": "application/json",
+   "body": {
+    "detail": "Login ou PIN inválido."
+   }
+  },
+  {
+   "status": 403,
+   "type": "application/json",
+   "body": {
+    "detail": "João Garçom não tem permissão para autorizar esta operação."
+   }
+  },
+  {
+   "status": 200,
+   "type": "application/json",
+   "body": {
+    "token": "<token>",
+    "user_id": "<id9>",
+    "name": "Bruno Gerente",
+    "role": "manager",
+    "max_discount_percent": "30",
+    "expires_at": "<ts>",
+    "expires_in_seconds": "<s>"
+   }
+  },
+  {
+   "status": 200,
+   "type": "application/json",
+   "body": {
+    "user_id": "<id9>",
+    "name": "Bruno Gerente",
+    "role": "manager"
+   }
+  },
+  {
+   "status": 403,
+   "type": "application/json",
+   "headers": {
+    "x-auth-scope": "manager"
+   },
+   "body": {
+    "detail": "Autorização não vale para este aparelho."
+   }
+  },
+  {
+   "status": 200,
+   "type": "application/json",
+   "body": {
+    "created": 3,
+    "tables": [
+     {
+      "id": "<id10>",
+      "label": "Mesa 1",
+      "area": "Salão",
+      "seats": 4,
+      "sort_order": 1,
+      "is_active": true,
+      "status": "free",
+      "order_id": null,
+      "local_number": null,
+      "total_cents": 0,
+      "item_count": 0,
+      "opened_at": null,
+      "bill_requested_at": null
+     },
+     {
+      "id": "<id11>",
+      "label": "Mesa 2",
+      "area": "Salão",
+      "seats": 4,
+      "sort_order": 2,
+      "is_active": true,
+      "status": "free",
+      "order_id": null,
+      "local_number": null,
+      "total_cents": 0,
+      "item_count": 0,
+      "opened_at": null,
+      "bill_requested_at": null
+     },
+     {
+      "id": "<id12>",
+      "label": "Mesa 3",
+      "area": "Salão",
+      "seats": 4,
+      "sort_order": 3,
+      "is_active": true,
+      "status": "free",
+      "order_id": null,
+      "local_number": null,
+      "total_cents": 0,
+      "item_count": 0,
+      "opened_at": null,
+      "bill_requested_at": null
+     }
+    ]
+   }
+  },
+  {
+   "status": 422,
+   "type": "application/json",
+   "body": "<validação>"
+  },
+  {
+   "status": 200,
+   "type": "application/json",
+   "body": {
+    "id": "<id13>",
+    "label": "Varanda 1",
+    "area": "Varanda",
+    "seats": 2,
+    "sort_order": 4,
+    "is_active": true,
+    "status": "free",
+    "order_id": null,
+    "local_number": null,
+    "total_cents": 0,
+    "item_count": 0,
+    "opened_at": null,
+    "bill_requested_at": null
+   }
+  },
+  {
+   "status": 409,
+   "type": "application/json",
+   "body": {
+    "detail": "Já existe uma mesa chamada 'mesa 1'."
+   }
+  },
+  {
+   "status": 422,
+   "type": "application/json",
+   "body": "<validação>"
+  },
+  {
+   "status": 409,
+   "type": "application/json",
+   "body": {
+    "detail": "O rótulo da mesa não pode ficar em branco."
+   }
+  },
+  {
+   "status": 200,
+   "type": "application/json",
+   "body": {
+    "id": "<id13>",
+    "label": "Varanda 9",
+    "area": "Varanda",
+    "seats": 6,
+    "sort_order": 4,
+    "is_active": true,
+    "status": "free",
+    "order_id": null,
+    "local_number": null,
+    "total_cents": 0,
+    "item_count": 0,
+    "opened_at": null,
+    "bill_requested_at": null
+   }
+  },
+  {
+   "status": 200,
+   "type": "application/json",
+   "body": {
+    "id": "<id13>",
+    "label": "Varanda 10",
+    "area": "Varanda",
+    "seats": 6,
+    "sort_order": 4,
+    "is_active": false,
+    "status": "free",
+    "order_id": null,
+    "local_number": null,
+    "total_cents": 0,
+    "item_count": 0,
+    "opened_at": null,
+    "bill_requested_at": null
+   }
+  },
+  {
+   "status": 409,
+   "type": "application/json",
+   "body": {
+    "detail": "Mesa desativada. Reative antes de editar."
+   }
+  },
+  {
+   "status": 200,
+   "type": "application/json",
+   "body": {
+    "id": "<id13>",
+    "label": "Varanda 10",
+    "area": "Varanda",
+    "seats": 6,
+    "sort_order": 50,
+    "is_active": true,
+    "status": "free",
+    "order_id": null,
+    "local_number": null,
+    "total_cents": 0,
+    "item_count": 0,
+    "opened_at": null,
+    "bill_requested_at": null
+   }
+  },
+  {
+   "status": 409,
+   "type": "application/json",
+   "body": {
+    "detail": "Mesa não encontrada."
+   }
+  },
+  {
+   "status": 200,
+   "type": "application/json",
+   "body": {
+    "tables": [
+     {
+      "id": "<id10>",
+      "label": "Mesa 1",
+      "area": "Salão",
+      "seats": 4,
+      "sort_order": 1,
+      "is_active": true,
+      "status": "free",
+      "order_id": null,
+      "local_number": null,
+      "total_cents": 0,
+      "item_count": 0,
+      "opened_at": null,
+      "bill_requested_at": null
+     },
+     {
+      "id": "<id11>",
+      "label": "Mesa 2",
+      "area": "Salão",
+      "seats": 4,
+      "sort_order": 2,
+      "is_active": true,
+      "status": "free",
+      "order_id": null,
+      "local_number": null,
+      "total_cents": 0,
+      "item_count": 0,
+      "opened_at": null,
+      "bill_requested_at": null
+     },
+     {
+      "id": "<id12>",
+      "label": "Mesa 3",
+      "area": "Salão",
+      "seats": 4,
+      "sort_order": 3,
+      "is_active": true,
+      "status": "free",
+      "order_id": null,
+      "local_number": null,
+      "total_cents": 0,
+      "item_count": 0,
+      "opened_at": null,
+      "bill_requested_at": null
+     },
+     {
+      "id": "<id13>",
+      "label": "Varanda 10",
+      "area": "Varanda",
+      "seats": 6,
+      "sort_order": 50,
+      "is_active": true,
+      "status": "free",
+      "order_id": null,
+      "local_number": null,
+      "total_cents": 0,
+      "item_count": 0,
+      "opened_at": null,
+      "bill_requested_at": null
+     }
+    ]
+   }
+  },
+  {
+   "status": 200,
+   "type": "application/json",
+   "body": {
+    "tables": [
+     {
+      "id": "<id10>",
+      "label": "Mesa 1",
+      "area": "Salão",
+      "seats": 4,
+      "sort_order": 1,
+      "is_active": true,
+      "status": "free",
+      "order_id": null,
+      "local_number": null,
+      "total_cents": 0,
+      "item_count": 0,
+      "opened_at": null,
+      "bill_requested_at": null
+     },
+     {
+      "id": "<id11>",
+      "label": "Mesa 2",
+      "area": "Salão",
+      "seats": 4,
+      "sort_order": 2,
+      "is_active": true,
+      "status": "free",
+      "order_id": null,
+      "local_number": null,
+      "total_cents": 0,
+      "item_count": 0,
+      "opened_at": null,
+      "bill_requested_at": null
+     },
+     {
+      "id": "<id12>",
+      "label": "Mesa 3",
+      "area": "Salão",
+      "seats": 4,
+      "sort_order": 3,
+      "is_active": true,
+      "status": "free",
+      "order_id": null,
+      "local_number": null,
+      "total_cents": 0,
+      "item_count": 0,
+      "opened_at": null,
+      "bill_requested_at": null
+     },
+     {
+      "id": "<id13>",
+      "label": "Varanda 10",
+      "area": "Varanda",
+      "seats": 6,
+      "sort_order": 50,
+      "is_active": true,
+      "status": "free",
+      "order_id": null,
+      "local_number": null,
+      "total_cents": 0,
+      "item_count": 0,
+      "opened_at": null,
+      "bill_requested_at": null
+     }
+    ]
+   }
+  },
+  {
+   "status": 200,
+   "type": "application/json",
+   "body": {
+    "order_id": "<id14>",
+    "client_uuid": "<id15>",
+    "local_number": 1,
+    "table_label": "Mesa 1",
+    "status": "open",
+    "total_cents": 0,
+    "item_count": 0
+   }
+  },
+  {
+   "status": 200,
+   "type": "application/json",
+   "body": {
+    "order_id": "<id14>",
+    "client_uuid": "<id15>",
+    "local_number": 1,
+    "table_label": "Mesa 1",
+    "status": "open",
+    "total_cents": 0,
+    "item_count": 0
+   }
+  },
+  {
+   "status": 409,
+   "type": "application/json",
+   "body": {
+    "detail": {
+     "message": "A Mesa 1 já tem a comanda 1 aberta.",
+     "order": {
+      "order_id": "<id14>",
+      "client_uuid": "<id15>",
+      "local_number": 1,
+      "table_id": "<id10>",
+      "table_label": "Mesa 1",
+      "status": "open",
+      "total_cents": 0,
+      "tip_cents": 0,
+      "item_count": 0,
+      "bill_requested_at": null,
+      "operator_id": "<id8>",
+      "waiter_name": "João Garçom",
+      "opened_at": "<ts>"
+     }
+    }
+   }
+  },
+  {
+   "status": 404,
+   "type": "application/json",
+   "body": {
+    "detail": "Mesa 'Mesa 99' não existe no cadastro. Cadastre-a nas opções de gerente antes de usá-la."
+   }
+  },
+  {
+   "status": 404,
+   "type": "application/json",
+   "body": {
+    "detail": "Escolha uma mesa do salão."
+   }
+  },
+  {
+   "status": 422,
+   "type": "application/json",
+   "body": "<validação>"
+  },
+  {
+   "status": 200,
+   "type": "application/json",
+   "body": {
+    "order_id": "<id14>",
+    "client_uuid": "<id15>",
+    "local_number": 1,
+    "table_label": "Mesa 1",
+    "status": "open",
+    "total_cents": 1400,
+    "item_count": 1
+   }
+  },
+  {
+   "status": 200,
+   "type": "application/json",
+   "body": {
+    "order_id": "<id14>",
+    "client_uuid": "<id15>",
+    "local_number": 1,
+    "table_label": "Mesa 1",
+    "status": "open",
+    "total_cents": 1400,
+    "item_count": 1
+   }
+  },
+  {
+   "status": 422,
+   "type": "application/json",
+   "body": {
+    "detail": "Quantidade inválida: 'abc'"
+   }
+  },
+  {
+   "status": 409,
+   "type": "application/json",
+   "body": {
+    "detail": "Torta de limão é vendido por peso e precisa da balança do balcão."
+   }
+  },
+  {
+   "status": 409,
+   "type": "application/json",
+   "body": {
+    "detail": "Produto <id16> não encontrado."
+   }
+  },
+  {
+   "status": 404,
+   "type": "application/json",
+   "body": {
+    "detail": "Pedido <id16> não encontrado."
+   }
+  },
+  {
+   "status": 200,
+   "type": "application/json",
+   "body": {
+    "order_id": "<id14>",
+    "client_uuid": "<id15>",
+    "local_number": 1,
+    "table_label": "Mesa 1",
+    "status": "open",
+    "total_cents": 2850,
+    "item_count": 2
+   }
+  },
+  {
+   "status": 200,
+   "type": "application/json",
+   "body": [
+    {
+     "order_id": "<id14>",
+     "client_uuid": "<id15>",
+     "local_number": 1,
+     "table_label": "Mesa 1",
+     "status": "open",
+     "total_cents": 2850,
+     "item_count": 2
+    }
+   ]
+  },
+  {
+   "status": 200,
+   "type": "application/json",
+   "body": {
+    "order_id": "<id14>",
+    "client_uuid": "<id15>",
+    "local_number": 1,
+    "table_id": "<id10>",
+    "table_label": "Mesa 1",
+    "status": "open",
+    "total_cents": 2850,
+    "tip_cents": 0,
+    "item_count": 2,
+    "bill_requested_at": null,
+    "operator_id": "<id8>",
+    "waiter_name": "João Garçom",
+    "opened_at": "<ts>",
+    "items": [
+     {
+      "id": "<id17>",
+      "product_name": "Café coado",
+      "quantity": "2",
+      "unit_price_cents": 700,
+      "total_cents": 1400,
+      "created_at": "<ts>",
+      "canceled": false,
+      "cancel_reason": null,
+      "kds_status": "queued"
+     },
+     {
+      "id": "<id18>",
+      "product_name": "Fatia de torta",
+      "quantity": "1",
+      "unit_price_cents": 1450,
+      "total_cents": 1450,
+      "created_at": "<ts>",
+      "canceled": false,
+      "cancel_reason": null,
+      "kds_status": "queued"
+     }
+    ]
+   }
+  },
+  {
+   "status": 404,
+   "type": "application/json",
+   "body": {
+    "detail": "Pedido <id16> não encontrado."
+   }
+  },
+  {
+   "status": 200,
+   "type": "application/json",
+   "body": {
+    "order_id": "<id14>",
+    "client_uuid": "<id15>",
+    "local_number": 1,
+    "table_label": "Mesa 1",
+    "status": "open",
+    "total_cents": 2850,
+    "item_count": 2
+   }
+  },
+  {
+   "status": 200,
+   "type": "application/json",
+   "body": {
+    "order_id": "<id14>",
+    "client_uuid": "<id15>",
+    "local_number": 1,
+    "table_label": "Mesa 1",
+    "status": "open",
+    "total_cents": 2850,
+    "item_count": 2
+   }
+  },
+  {
+   "status": 200,
+   "type": "application/json",
+   "body": {
+    "tables": [
+     {
+      "id": "<id10>",
+      "label": "Mesa 1",
+      "area": "Salão",
+      "seats": 4,
+      "sort_order": 1,
+      "is_active": true,
+      "status": "billing",
+      "order_id": "<id14>",
+      "local_number": 1,
+      "total_cents": 2850,
+      "item_count": 2,
+      "opened_at": "<ts>",
+      "bill_requested_at": "<ts>"
+     },
+     {
+      "id": "<id11>",
+      "label": "Mesa 2",
+      "area": "Salão",
+      "seats": 4,
+      "sort_order": 2,
+      "is_active": true,
+      "status": "free",
+      "order_id": null,
+      "local_number": null,
+      "total_cents": 0,
+      "item_count": 0,
+      "opened_at": null,
+      "bill_requested_at": null
+     },
+     {
+      "id": "<id12>",
+      "label": "Mesa 3",
+      "area": "Salão",
+      "seats": 4,
+      "sort_order": 3,
+      "is_active": true,
+      "status": "free",
+      "order_id": null,
+      "local_number": null,
+      "total_cents": 0,
+      "item_count": 0,
+      "opened_at": null,
+      "bill_requested_at": null
+     },
+     {
+      "id": "<id13>",
+      "label": "Varanda 10",
+      "area": "Varanda",
+      "seats": 6,
+      "sort_order": 50,
+      "is_active": true,
+      "status": "free",
+      "order_id": null,
+      "local_number": null,
+      "total_cents": 0,
+      "item_count": 0,
+      "opened_at": null,
+      "bill_requested_at": null
+     }
+    ]
+   }
+  },
+  {
+   "status": 200,
+   "type": "application/json",
+   "body": {
+    "order_id": "<id14>",
+    "client_uuid": "<id15>",
+    "local_number": 1,
+    "table_label": "Mesa 1",
+    "status": "open",
+    "total_cents": 2850,
+    "item_count": 2
+   }
+  },
+  {
+   "status": 404,
+   "type": "application/json",
+   "body": {
+    "detail": "Pedido <id16> não encontrado."
+   }
+  },
+  {
+   "status": 200,
+   "type": "application/json",
+   "body": {
+    "tickets": [
+     {
+      "ticket_id": "<id19>",
+      "order_id": "<id14>",
+      "local_number": 1,
+      "table_label": "Mesa 1",
+      "station": "cozinha",
+      "product_name": "Café coado",
+      "quantity": "2",
+      "notes": "sem açúcar",
+      "status": "queued",
+      "queued_at": "<ts>",
+      "waiting_seconds": "<s>",
+      "is_late": false
+     },
+     {
+      "ticket_id": "<id20>",
+      "order_id": "<id14>",
+      "local_number": 1,
+      "table_label": "Mesa 1",
+      "station": "confeitaria",
+      "product_name": "Fatia de torta",
+      "quantity": "1",
+      "notes": "",
+      "status": "queued",
+      "queued_at": "<ts>",
+      "waiting_seconds": "<s>",
+      "is_late": false
+     }
+    ]
+   }
+  },
+  {
+   "status": 200,
+   "type": "application/json",
+   "body": {
+    "tickets": [
+     {
+      "ticket_id": "<id20>",
+      "order_id": "<id14>",
+      "local_number": 1,
+      "table_label": "Mesa 1",
+      "station": "confeitaria",
+      "product_name": "Fatia de torta",
+      "quantity": "1",
+      "notes": "",
+      "status": "queued",
+      "queued_at": "<ts>",
+      "waiting_seconds": "<s>",
+      "is_late": false
+     }
+    ]
+   }
+  },
+  {
+   "status": 200,
+   "type": "application/json",
+   "body": {
+    "ticket_id": "<id19>",
+    "order_id": "<id14>",
+    "local_number": 1,
+    "table_label": "Mesa 1",
+    "station": "cozinha",
+    "product_name": "Café coado",
+    "quantity": "2",
+    "notes": "sem açúcar",
+    "status": "preparing",
+    "queued_at": "<ts>",
+    "waiting_seconds": "<s>",
+    "is_late": false
+   }
+  },
+  {
+   "status": 200,
+   "type": "application/json",
+   "body": {
+    "ticket_id": "<id19>",
+    "order_id": "<id14>",
+    "local_number": 1,
+    "table_label": "Mesa 1",
+    "station": "cozinha",
+    "product_name": "Café coado",
+    "quantity": "2",
+    "notes": "sem açúcar",
+    "status": "ready",
+    "queued_at": "<ts>",
+    "waiting_seconds": "<s>",
+    "is_late": false
+   }
+  },
+  {
+   "status": 200,
+   "type": "application/json",
+   "body": {
+    "ticket_id": "<id19>",
+    "order_id": "<id14>",
+    "local_number": 1,
+    "table_label": "Mesa 1",
+    "station": "cozinha",
+    "product_name": "Café coado",
+    "quantity": "2",
+    "notes": "sem açúcar",
+    "status": "preparing",
+    "queued_at": "<ts>",
+    "waiting_seconds": "<s>",
+    "is_late": false
+   }
+  },
+  {
+   "status": 404,
+   "type": "application/json",
+   "body": {
+    "detail": "Ação desconhecida."
+   }
+  },
+  {
+   "status": 404,
+   "type": "application/json",
+   "body": {
+    "detail": "Ticket <id16> não encontrado."
+   }
+  },
+  {
+   "status": 409,
+   "type": "application/json",
+   "body": {
+    "detail": "Ticket está 'queued'; não há o que desfazer."
+   }
+  },
+  {
+   "status": 401,
+   "type": "application/json",
+   "body": {
+    "detail": "Aparelho não autenticado."
+   }
+  },
+  {
+   "status": 403,
+   "type": "application/json",
+   "headers": {
+    "x-auth-scope": "manager"
+   },
+   "body": {
+    "detail": "Esta operação precisa de autorização de gerente."
+   }
+  },
+  {
+   "status": 200,
+   "type": "application/json",
+   "body": {
+    "order_id": "<id14>",
+    "client_uuid": "<id15>",
+    "local_number": 1,
+    "table_label": "Mesa 2",
+    "status": "open",
+    "total_cents": 2850,
+    "item_count": 2
+   }
+  },
+  {
+   "status": 200,
+   "type": "application/json",
+   "body": {
+    "order_id": "<id21>",
+    "client_uuid": "<id22>",
+    "local_number": 2,
+    "table_label": "Mesa 1",
+    "status": "open",
+    "total_cents": 0,
+    "item_count": 0
+   }
+  },
+  {
+   "status": 409,
+   "type": "application/json",
+   "body": {
+    "detail": {
+     "message": "A Mesa 1 já tem a comanda 2 aberta.",
+     "order": {
+      "order_id": "<id21>",
+      "client_uuid": "<id22>",
+      "local_number": 2,
+      "table_id": "<id10>",
+      "table_label": "Mesa 1",
+      "status": "open",
+      "total_cents": 0,
+      "tip_cents": 0,
+      "item_count": 0,
+      "bill_requested_at": null,
+      "operator_id": "<id8>",
+      "waiter_name": "João Garçom",
+      "opened_at": "<ts>"
+     }
+    }
+   }
+  },
+  {
+   "status": 409,
+   "type": "application/json",
+   "body": {
+    "detail": "Mesa não encontrada."
+   }
+  },
+  {
+   "status": 422,
+   "type": "application/json",
+   "body": "<validação>"
+  },
+  {
+   "status": 403,
+   "type": "application/json",
+   "headers": {
+    "x-auth-scope": "manager"
+   },
+   "body": {
+    "detail": "Esta operação precisa de autorização de gerente."
+   }
+  },
+  {
+   "status": 200,
+   "type": "application/json",
+   "body": {
+    "order_id": "<id21>",
+    "client_uuid": "<id22>",
+    "local_number": 2,
+    "table_label": "Mesa 1",
+    "status": "canceled",
+    "total_cents": 0,
+    "item_count": 0
+   }
+  },
+  {
+   "status": 409,
+   "type": "application/json",
+   "body": {
+    "detail": "O pedido 2 está canceled. Um pedido fechado altera-se por estorno, não por edição."
+   }
+  },
+  {
+   "status": 409,
+   "type": "application/json",
+   "body": {
+    "detail": "O pedido 2 está canceled. Um pedido fechado altera-se por estorno, não por edição."
+   }
+  },
+  {
+   "status": 409,
+   "type": "application/json",
+   "body": {
+    "detail": "O pedido 2 está canceled. Um pedido fechado altera-se por estorno, não por edição."
+   }
+  },
+  {
+   "status": 409,
+   "type": "application/json",
+   "body": {
+    "detail": "O pedido 2 está canceled. Um pedido fechado altera-se por estorno, não por edição."
+   }
+  },
+  {
+   "status": 200,
+   "type": "application/json",
+   "body": {
+    "tickets": [
+     {
+      "ticket_id": "<id19>",
+      "order_id": "<id14>",
+      "local_number": 1,
+      "table_label": "Mesa 2",
+      "station": "cozinha",
+      "product_name": "Café coado",
+      "quantity": "2",
+      "notes": "sem açúcar",
+      "status": "preparing",
+      "queued_at": "<ts>",
+      "waiting_seconds": "<s>",
+      "is_late": false
+     },
+     {
+      "ticket_id": "<id20>",
+      "order_id": "<id14>",
+      "local_number": 1,
+      "table_label": "Mesa 2",
+      "station": "confeitaria",
+      "product_name": "Fatia de torta",
+      "quantity": "1",
+      "notes": "",
+      "status": "queued",
+      "queued_at": "<ts>",
+      "waiting_seconds": "<s>",
+      "is_late": false
+     }
+    ]
+   }
+  },
+  {
+   "status": 200,
+   "type": "application/json",
+   "body": {
+    "user_id": "<id8>",
+    "name": "João Garçom",
+    "role": "waiter",
+    "orders": 0,
+    "items": 2,
+    "total_cents": 0,
+    "tip_cents": 0,
+    "open_orders": 1,
+    "average_ticket_cents": 0
+   }
+  },
+  {
+   "status": 200,
+   "type": "application/json",
+   "body": {
+    "ended": true
+   }
+  },
+  {
+   "status": 200,
+   "type": "application/json",
+   "body": {
+    "ended": false
+   }
+  },
+  {
+   "status": 200,
+   "type": "application/json",
+   "body": {
+    "ended": false
+   }
+  },
+  {
+   "status": 403,
+   "type": "application/json",
+   "headers": {
+    "x-auth-scope": "staff"
+   },
+   "body": {
+    "detail": "Sua sessão foi encerrada no caixa. Entre de novo."
+   }
+  },
+  {
+   "status": 200,
+   "type": "application/json",
+   "body": {
+    "revoked": true
+   }
+  },
+  {
+   "status": 200,
+   "type": "application/json",
+   "body": {
+    "revoked": false
+   }
+  },
+  {
+   "status": 403,
+   "type": "application/json",
+   "headers": {
+    "x-auth-scope": "manager"
+   },
+   "body": {
+    "detail": "Autorização expirada. Chame o gerente novamente."
+   }
+  },
+  {
+   "status": 403,
+   "type": "application/json",
+   "headers": {
+    "x-auth-scope": "manager"
+   },
+   "body": {
+    "detail": "Autorização expirada. Chame o gerente novamente."
+   }
+  },
+  {
+   "done": "revoke",
+   "result": true
+  },
+  {
+   "status": 401,
+   "type": "application/json",
+   "body": {
+    "detail": "Este aparelho foi revogado. Procure o responsável pelo caixa."
+   }
+  },
+  {
+   "status": 403,
+   "type": "application/json",
+   "body": {
+    "detail": "Código inválido, expirado ou já utilizado. Gere um novo na tela do caixa."
+   }
+  },
+  {
+   "status": 403,
+   "type": "application/json",
+   "body": {
+    "detail": "Código inválido, expirado ou já utilizado. Gere um novo na tela do caixa."
+   }
+  },
+  {
+   "status": 403,
+   "type": "application/json",
+   "body": {
+    "detail": "Código inválido, expirado ou já utilizado. Gere um novo na tela do caixa."
+   }
+  },
+  {
+   "status": 403,
+   "type": "application/json",
+   "body": {
+    "detail": "Código inválido, expirado ou já utilizado. Gere um novo na tela do caixa."
+   }
+  },
+  {
+   "status": 403,
+   "type": "application/json",
+   "body": {
+    "detail": "Código inválido, expirado ou já utilizado. Gere um novo na tela do caixa."
+   }
+  },
+  {
+   "status": 403,
+   "type": "application/json",
+   "body": {
+    "detail": "Código inválido, expirado ou já utilizado. Gere um novo na tela do caixa."
+   }
+  },
+  {
+   "status": 403,
+   "type": "application/json",
+   "body": {
+    "detail": "Código inválido, expirado ou já utilizado. Gere um novo na tela do caixa."
+   }
+  },
+  {
+   "status": 403,
+   "type": "application/json",
+   "body": {
+    "detail": "Código inválido, expirado ou já utilizado. Gere um novo na tela do caixa."
+   }
+  },
+  {
+   "status": 403,
+   "type": "application/json",
+   "body": {
+    "detail": "Código inválido, expirado ou já utilizado. Gere um novo na tela do caixa."
+   }
+  },
+  {
+   "status": 403,
+   "type": "application/json",
+   "body": {
+    "detail": "Código inválido, expirado ou já utilizado. Gere um novo na tela do caixa."
+   }
+  },
+  {
+   "status": 403,
+   "type": "application/json",
+   "body": {
+    "detail": "Tentativas demais de pareamento. Aguarde 120s. Se não foi você, gere um código novo no caixa."
+   }
+  },
+  {
+   "done": "code"
+  },
+  {
+   "status": 403,
+   "type": "application/json",
+   "body": {
+    "detail": "Tentativas demais de pareamento. Aguarde 120s. Se não foi você, gere um código novo no caixa."
+   }
+  }
+ ]
+}

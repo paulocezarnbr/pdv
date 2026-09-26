@@ -367,9 +367,10 @@ class Normalizer:
         return value
 
 
-def open_database(tmp_path: Path) -> tuple[Database, AppConfig]:
+def open_database(tmp_path: Path, store_name: str | None = None) -> tuple[Database, AppConfig]:
     config = AppConfig(
         tenant_id=TENANT, store_id=STORE, device_id=DEVICE,
+        **({"store_name": store_name} if store_name else {}),
         database_path=tmp_path / "pdv.db",
         scale=ScaleConfig(protocol="simulated"),
         printer=PrinterConfig(backend="file", output_dir=tmp_path / "cupons"),
