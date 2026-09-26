@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
@@ -64,6 +66,12 @@ public sealed partial class SalonContractTests : IDisposable
     [GeneratedRegex(@"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(\+00:00|Z|[+-]\d{2}:\d{2})?")]
     private static partial Regex Timestamp();
 
+    /// <summary>O <c>_VOLATILE</c> do Python: valor que depende do relógio ou da chave, não da regra.</summary>
+    private static readonly Dictionary<string, string> Volatile = new(StringComparer.Ordinal)
+    {
+        ["hash"] = "<hash>", ["prev_hash"] = "<hash>", ["waiting_seconds"] = "<s>",
+    };
+
     /// <summary>O <c>Normalizer</c> de <c>salon_script.py</c>: UUID → &lt;idN&gt; na ordem de aparição, horário → &lt;ts&gt;.</summary>
     private sealed class Normalizer
     {
@@ -72,7 +80,8 @@ public sealed partial class SalonContractTests : IDisposable
         public JsonNode? Value(JsonNode? node) => node switch
         {
             null => null,
-            JsonObject obj => new JsonObject(obj.Select(p => KeyValuePair.Create(p.Key, Value(p.Value)))),
+            JsonObject obj => new JsonObject(obj.Select(p => KeyValuePair.Create(p.Key,
+                Volatile.TryGetValue(p.Key, out var mark) && p.Value is not null ? JsonValue.Create(mark) : Value(p.Value)))),
             JsonArray array => new JsonArray([.. array.Select(Value)]),
             JsonValue value when value.GetValueKind() == JsonValueKind.String => Text(value.GetValue<string>()),
             _ => node.DeepClone(),
@@ -93,13 +102,37 @@ public sealed partial class SalonContractTests : IDisposable
         }
     }
 
+    private const string Manager = "5a1a0000-0000-4000-8000-0000000000a2";
+    private const string ManagerName = "Bruno Gerente";
+
+    /// <summary>Os serviços do salão sobre o mesmo banco e o mesmo barramento, como o servidor os monta.</summary>
+    private sealed record Salon(TableService Tables, TableOrderService Orders, KdsService Kds);
+
+    private static List<PaymentIntent> Intents(JsonNode? node) =>
+        [.. node!.AsArray().Select(p => new PaymentIntent(p!["method"]!.GetValue<string>(), p["amount_cents"]!.GetValue<long>()))];
+
+    /// <summary>O <c>_settled</c> do roteiro: o recebimento como volta à tela do caixa.</summary>
+    private static JsonObject Settled(SettledOrder settled) => new()
+    {
+        ["order"] = settled.Order.ToJson(),
+        ["payments"] = new JsonArray([.. settled.Payments.Select(p => (JsonNode)new JsonObject
+        {
+            ["method"] = p.Method, ["amount_cents"] = p.AmountCents, ["change_cents"] = p.ChangeCents,
+        })]),
+        ["tip_cents"] = settled.TipCents,
+        ["charged_cents"] = settled.ChargedCents,
+        ["change_cents"] = settled.ChangeCents,
+    };
+
     /// <summary>Um passo do roteiro, como o <c>handlers</c> do Python o executa.</summary>
-    private JsonNode? Execute(string op, JsonObject args, TableService tables)
+    private JsonNode? Execute(string op, JsonObject args, Salon salon)
     {
         string Text(string name) => args[name]!.GetValue<string>();
         string? Optional(string name) => args[name]?.GetValue<string>();
         int? Number(string name) => args[name] is { } value ? value.GetValue<int>() : null;
         bool Flag(string name) => args[name]?.GetValue<bool>() ?? false;
+        List<string> Ids(string name) => [.. args[name]!.AsArray().Select(id => id!.GetValue<string>())];
+        var (tables, orders, kds) = salon;
 
         return op switch
         {
@@ -109,36 +142,107 @@ public sealed partial class SalonContractTests : IDisposable
             "tables.update" => tables.Update(Text("table_id"), Optional("label"), Optional("area"), Number("seats"), Number("sort_order")).ToJson(),
             "tables.set_active" => tables.SetActive(Text("table_id"), Flag("active")).ToJson(),
             "tables.find" => tables.FindByLabel(Text("label"))?.ToJson(),
+            "orders.open" => orders.OpenOrder(Text("client_uuid"), Text("operator_id"), _terminal.DeviceId,
+                Optional("table_id"), Optional("table_label") ?? "").ToJson(),
+            "orders.add_item" => orders.AddItem(Text("order_id"), Text("client_uuid"), Text("product_id"),
+                decimal.Parse(Text("quantity"), CultureInfo.InvariantCulture), Optional("notes") ?? "",
+                Optional("station") ?? "cozinha", Optional("created_by_user_id")).ToJson(),
+            "orders.items" => orders.ListItems(Text("order_id")),
+            "orders.get" => orders.GetOrder(Text("order_id")).ToJson(),
+            "orders.list_open" => new JsonArray([.. orders.ListOpenOrders().Select(o => (JsonNode)o.ToJson())]),
+            "orders.request_bill" => orders.RequestBill(Text("order_id")).ToJson(),
+            "orders.clear_bill" => orders.ClearBillRequest(Text("order_id")).ToJson(),
+            "orders.transfer" => orders.Transfer(Text("order_id"), Text("table_id"), Manager, ManagerName).ToJson(),
+            "orders.move_items" => MoveItems(),
+            "orders.merge" => orders.MergeOrders(Text("source_order_id"), Text("target_order_id"), Manager, ManagerName).ToJson(),
+            "orders.settle" => Settled(orders.Settle(Text("order_id"), Intents(args["payments"]), Manager, ManagerName,
+                Number("tip_cents") ?? 0)),
+            "orders.settle_items" => Settled(orders.SettleItems(Text("order_id"), Ids("item_ids"), Intents(args["payments"]),
+                Manager, ManagerName, Number("tip_cents") ?? 0)),
+            "orders.cancel" => orders.CancelOrder(Text("order_id"), Manager, ManagerName, Text("reason")).ToJson(),
+            "kds.list" => new JsonArray([.. kds.ListActive(Optional("station")).Select(t => (JsonNode)t.ToJson())]),
+            "kds.get" => kds.Get(Text("ticket_id")).ToJson(),
+            "kds.bump" => kds.Bump(Text("ticket_id")).ToJson(),
+            "kds.recall" => kds.Recall(Text("ticket_id")).ToJson(),
+            "kds.advance" => kds.Advance(Text("ticket_id"), Text("to_status")).ToJson(),
             _ => throw new InvalidOperationException($"Passo desconhecido no roteiro: {op}"),
         };
+
+        JsonNode MoveItems()
+        {
+            var (source, target) = orders.MoveItems(Text("source_order_id"), Text("target_order_id"), Ids("item_ids"),
+                Manager, ManagerName);
+            return new JsonArray(source.ToJson(), target.ToJson());
+        }
     }
+
+    /// <summary>As recusas que o roteiro espera: as mesmas classes que no Python herdam de <c>PdvError</c>.</summary>
+    private static bool IsRefusal(Exception error) => error is TableException or OrderNotFoundException
+        or OrderClosedException or ProductNotSellableException or TableOccupiedException or TicketNotFoundException
+        or InvalidTransitionException or InsufficientPaymentException;
+
+    /// <summary>O <c>_dig</c> do roteiro: <c>"0.id"</c> → <c>value[0]["id"]</c>.</summary>
+    private static string Dig(JsonNode? node, string path)
+    {
+        foreach (var part in path.Split('.'))
+        {
+            node = int.TryParse(part, CultureInfo.InvariantCulture, out var index) ? node![index] : node![part];
+        }
+        return node!.GetValue<string>();
+    }
+
+    private static JsonNode? Resolve(JsonNode? node, Dictionary<string, string> saved) => node switch
+    {
+        JsonValue v when v.GetValueKind() == JsonValueKind.String && v.GetValue<string>().StartsWith('$') =>
+            saved[v.GetValue<string>()[1..]],
+        JsonArray array => new JsonArray([.. array.Select(item => Resolve(item, saved))]),
+        JsonObject obj => new JsonObject(obj.Select(p => KeyValuePair.Create(p.Key, Resolve(p.Value, saved)))),
+        _ => node?.DeepClone(),
+    };
 
     private (JsonArray Results, JsonArray Outbox) Run()
     {
-        var tables = new TableService(_database, _terminal);
+        var hub = new EventHub();
+        using var events = hub.Subscribe();
+        var ledger = new AuditLedger(_terminal.TenantId, _terminal.StoreId, _terminal.DeviceId,
+            Encoding.UTF8.GetBytes(Contract["device_secret"]!.GetValue<string>()));
+        var salon = new Salon(
+            new TableService(_database, _terminal),
+            new TableOrderService(_database, _terminal, ledger, hub),
+            new KdsService(_database, _terminal, hub));
         var saved = new Dictionary<string, string>();
         var normalizer = new Normalizer();
         var results = new JsonArray();
         foreach (var step in Contract["script"]!.AsArray().Select(s => s!.AsObject()))
         {
-            var args = new JsonObject();
-            foreach (var (key, value) in step["args"]?.AsObject() ?? [])
-            {
-                args[key] = value is JsonValue v && v.GetValueKind() == JsonValueKind.String && v.GetValue<string>().StartsWith('$')
-                    ? saved[v.GetValue<string>()[1..]]
-                    : value?.DeepClone();
-            }
+            var args = (JsonObject)Resolve(step["args"] ?? new JsonObject(), saved)!;
             JsonObject outcome;
             try
             {
-                var result = Execute(step["op"]!.GetValue<string>(), args, tables);
-                if (step["save"] is { } save) saved[save.GetValue<string>()] = result!["id"]!.GetValue<string>();
+                var result = Execute(step["op"]!.GetValue<string>(), args, salon);
+                var paths = step["save"] switch
+                {
+                    null => [],
+                    JsonValue name => [KeyValuePair.Create(name.GetValue<string>(), "id")],
+                    JsonObject many => many.Select(p => KeyValuePair.Create(p.Key, p.Value!.GetValue<string>())).ToList(),
+                    _ => throw new InvalidOperationException("save inválido no roteiro"),
+                };
+                foreach (var (name, path) in paths) saved[name] = Dig(result, path);
                 outcome = new JsonObject { ["result"] = result };
             }
-            catch (TableException error)
+            catch (Exception error) when (IsRefusal(error))
             {
                 outcome = new JsonObject { ["error"] = error.Message };
             }
+            // O que o passo publicou, sem o `at`: é o que o KDS e o app do garçom recebem.
+            var published = new JsonArray();
+            while (events.TryNext(out var edgeEvent))
+            {
+                var json = edgeEvent!.ToJson();
+                json.Remove("at");
+                published.Add(json);
+            }
+            if (published.Count > 0) outcome["events"] = published;
             results.Add(normalizer.Value(outcome));
         }
 
