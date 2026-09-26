@@ -38,6 +38,30 @@
     "pin_hash": "$argon2id$v=19$m=65536,t=3,p=4$7CPgBUYfN32CU12ofQnkYA$e76mY7TbKQzMYGGVIVPrfvwwiEn9YKIypLB4ogVSHHg"
    }
   ],
+  "inventory_items": [
+   {
+    "id": "5a1a0000-0000-4000-8000-0000000000e1",
+    "tenant_id": "5a1a0000-0000-4000-8000-000000000001",
+    "store_id": "5a1a0000-0000-4000-8000-000000000002",
+    "name": "Farinha",
+    "unit": "mg",
+    "balance_mg": 10000000,
+    "min_stock_mg": 0,
+    "avg_cost_cents_per_kg": 650,
+    "updated_at": "2026-09-26T00:00:00.000+00:00"
+   },
+   {
+    "id": "5a1a0000-0000-4000-8000-0000000000e2",
+    "tenant_id": "5a1a0000-0000-4000-8000-000000000001",
+    "store_id": "5a1a0000-0000-4000-8000-000000000002",
+    "name": "Chocolate",
+    "unit": "mg",
+    "balance_mg": 5000000,
+    "min_stock_mg": 0,
+    "avg_cost_cents_per_kg": 4200,
+    "updated_at": "2026-09-26T00:00:00.000+00:00"
+   }
+  ],
   "products": [
    {
     "id": "5a1a0000-0000-4000-8000-0000000000b1",
@@ -57,6 +81,45 @@
     "name": "Torta de limão",
     "pricing_mode": "weight",
     "price_cents": 5900,
+    "updated_at": "2026-09-26T00:00:00.000+00:00"
+   },
+   {
+    "id": "5a1a0000-0000-4000-8000-0000000000b3",
+    "tenant_id": "5a1a0000-0000-4000-8000-000000000001",
+    "store_id": "5a1a0000-0000-4000-8000-000000000002",
+    "sku": "FATIA",
+    "name": "Fatia de torta",
+    "pricing_mode": "unit",
+    "price_cents": 1450,
+    "recipe_id": "5a1a0000-0000-4000-8000-0000000000f1",
+    "updated_at": "2026-09-26T00:00:00.000+00:00"
+   }
+  ],
+  "recipes": [
+   {
+    "id": "5a1a0000-0000-4000-8000-0000000000f1",
+    "tenant_id": "5a1a0000-0000-4000-8000-000000000001",
+    "product_id": "5a1a0000-0000-4000-8000-0000000000b3",
+    "base_qty_g": 150,
+    "yield_factor": "0.92",
+    "updated_at": "2026-09-26T00:00:00.000+00:00"
+   }
+  ],
+  "recipe_lines": [
+   {
+    "id": "5a1a0000-0000-4000-8000-0000000000f2",
+    "recipe_id": "5a1a0000-0000-4000-8000-0000000000f1",
+    "inventory_item_id": "5a1a0000-0000-4000-8000-0000000000e1",
+    "qty_per_base_mg": 37500,
+    "waste_percent": "2",
+    "updated_at": "2026-09-26T00:00:00.000+00:00"
+   },
+   {
+    "id": "5a1a0000-0000-4000-8000-0000000000f3",
+    "recipe_id": "5a1a0000-0000-4000-8000-0000000000f1",
+    "inventory_item_id": "5a1a0000-0000-4000-8000-0000000000e2",
+    "qty_per_base_mg": 48000,
+    "waste_percent": "3",
     "updated_at": "2026-09-26T00:00:00.000+00:00"
    }
   ]
@@ -734,6 +797,39 @@
    }
   },
   {
+   "op": "stock.balances"
+  },
+  {
+   "op": "orders.add_item",
+   "args": {
+    "order_id": "$o4",
+    "client_uuid": "5a1a0000-0000-4000-8000-00000000d014",
+    "product_id": "5a1a0000-0000-4000-8000-0000000000b3",
+    "quantity": "2"
+   }
+  },
+  {
+   "op": "orders.add_item",
+   "args": {
+    "order_id": "$o4",
+    "client_uuid": "5a1a0000-0000-4000-8000-00000000d014",
+    "product_id": "5a1a0000-0000-4000-8000-0000000000b3",
+    "quantity": "2"
+   }
+  },
+  {
+   "op": "orders.add_item",
+   "args": {
+    "order_id": "$o4",
+    "client_uuid": "5a1a0000-0000-4000-8000-00000000d015",
+    "product_id": "5a1a0000-0000-4000-8000-0000000000b3",
+    "quantity": "0.001"
+   }
+  },
+  {
+   "op": "stock.balances"
+  },
+  {
    "op": "orders.merge",
    "args": {
     "source_order_id": "$o4",
@@ -746,6 +842,9 @@
     "source_order_id": "$o4",
     "target_order_id": "$o2"
    }
+  },
+  {
+   "op": "stock.balances"
   },
   {
    "op": "orders.list_open"
@@ -762,6 +861,9 @@
     "order_id": "$o2",
     "reason": "cliente foi embora"
    }
+  },
+  {
+   "op": "stock.balances"
   },
   {
    "op": "orders.items",
@@ -2723,6 +2825,80 @@
    ]
   },
   {
+   "result": [
+    {
+     "name": "Chocolate",
+     "balance_mg": 5000000
+    },
+    {
+     "name": "Farinha",
+     "balance_mg": 10000000
+    }
+   ]
+  },
+  {
+   "result": {
+    "order_id": "<id28>",
+    "client_uuid": "<id29>",
+    "local_number": 5,
+    "table_id": "<id5>",
+    "table_label": "Mesa 1",
+    "status": "open",
+    "total_cents": 3600,
+    "tip_cents": 0,
+    "item_count": 2,
+    "bill_requested_at": null,
+    "operator_id": "<id10>",
+    "waiter_name": "João Garçom",
+    "opened_at": "<ts>"
+   },
+   "events": [
+    {
+     "kind": "ticket.queued",
+     "ticket_id": "<id31>",
+     "order_id": "<id28>",
+     "local_number": 5,
+     "table_label": "Mesa 1",
+     "station": "cozinha",
+     "product_name": "Fatia de torta",
+     "quantity": "2",
+     "notes": ""
+    }
+   ]
+  },
+  {
+   "result": {
+    "order_id": "<id28>",
+    "client_uuid": "<id29>",
+    "local_number": 5,
+    "table_id": "<id5>",
+    "table_label": "Mesa 1",
+    "status": "open",
+    "total_cents": 3600,
+    "tip_cents": 0,
+    "item_count": 2,
+    "bill_requested_at": null,
+    "operator_id": "<id10>",
+    "waiter_name": "João Garçom",
+    "opened_at": "<ts>"
+   }
+  },
+  {
+   "error": "Peso vendido deve ser maior que zero"
+  },
+  {
+   "result": [
+    {
+     "name": "Chocolate",
+     "balance_mg": 4892522
+    },
+    {
+     "name": "Farinha",
+     "balance_mg": 9916848
+    }
+   ]
+  },
+  {
    "result": {
     "order_id": "<id11>",
     "client_uuid": "<id12>",
@@ -2730,9 +2906,9 @@
     "table_id": "<id7>",
     "table_label": "Mesa 3",
     "status": "open",
-    "total_cents": 3850,
+    "total_cents": 6750,
     "tip_cents": 0,
-    "item_count": 3,
+    "item_count": 4,
     "bill_requested_at": null,
     "operator_id": "<id10>",
     "waiter_name": "João Garçom",
@@ -2745,8 +2921,8 @@
      "from_table": "Mesa 1",
      "to_order_id": "<id11>",
      "to_table": "Mesa 3",
-     "items": 1,
-     "total_cents": 700
+     "items": 2,
+     "total_cents": 3600
     },
     {
      "kind": "order.merged",
@@ -2763,15 +2939,27 @@
   {
    "result": [
     {
+     "name": "Chocolate",
+     "balance_mg": 4892522
+    },
+    {
+     "name": "Farinha",
+     "balance_mg": 9916848
+    }
+   ]
+  },
+  {
+   "result": [
+    {
      "order_id": "<id11>",
      "client_uuid": "<id12>",
      "local_number": 2,
      "table_id": "<id7>",
      "table_label": "Mesa 3",
      "status": "open",
-     "total_cents": 3850,
+     "total_cents": 6750,
      "tip_cents": 0,
-     "item_count": 3,
+     "item_count": 4,
      "bill_requested_at": null,
      "operator_id": "<id10>",
      "waiter_name": "João Garçom",
@@ -2810,6 +2998,18 @@
   {
    "result": [
     {
+     "name": "Chocolate",
+     "balance_mg": 5000000
+    },
+    {
+     "name": "Farinha",
+     "balance_mg": 10000000
+    }
+   ]
+  },
+  {
+   "result": [
+    {
      "id": "<id19>",
      "product_name": "Café coado",
      "quantity": "1.50",
@@ -2821,7 +3021,7 @@
      "kds_status": "canceled"
     },
     {
-     "id": "<id31>",
+     "id": "<id32>",
      "product_name": "Café coado",
      "quantity": "3",
      "unit_price_cents": 700,
@@ -2832,11 +3032,22 @@
      "kds_status": "canceled"
     },
     {
-     "id": "<id32>",
+     "id": "<id33>",
      "product_name": "Café coado",
      "quantity": "1",
      "unit_price_cents": 700,
      "total_cents": 700,
+     "created_at": "<ts>",
+     "canceled": true,
+     "cancel_reason": "[comanda cancelada] cliente foi embora",
+     "kds_status": "canceled"
+    },
+    {
+     "id": "<id34>",
+     "product_name": "Fatia de torta",
+     "quantity": "2",
+     "unit_price_cents": 1450,
+     "total_cents": 2900,
      "created_at": "<ts>",
      "canceled": true,
      "cancel_reason": "[comanda cancelada] cliente foi embora",
@@ -2846,8 +3057,8 @@
   },
   {
    "result": {
-    "order_id": "<id33>",
-    "client_uuid": "<id34>",
+    "order_id": "<id35>",
+    "client_uuid": "<id36>",
     "local_number": 6,
     "table_id": "<id6>",
     "table_label": "Mesa 2",
@@ -2863,7 +3074,7 @@
    "events": [
     {
      "kind": "order.opened",
-     "order_id": "<id33>",
+     "order_id": "<id35>",
      "local_number": 6,
      "table_id": "<id6>",
      "table_label": "Mesa 2"
@@ -2872,8 +3083,8 @@
   },
   {
    "result": {
-    "order_id": "<id33>",
-    "client_uuid": "<id34>",
+    "order_id": "<id35>",
+    "client_uuid": "<id36>",
     "local_number": 6,
     "table_id": "<id6>",
     "table_label": "Mesa 2",
@@ -2889,8 +3100,8 @@
    "events": [
     {
      "kind": "ticket.queued",
-     "ticket_id": "<id35>",
-     "order_id": "<id33>",
+     "ticket_id": "<id37>",
+     "order_id": "<id35>",
      "local_number": 6,
      "table_label": "Mesa 2",
      "station": "cozinha",
@@ -2903,7 +3114,7 @@
   {
    "result": [
     {
-     "id": "<id36>",
+     "id": "<id38>",
      "product_name": "Café coado",
      "quantity": "1",
      "unit_price_cents": 700,
@@ -2918,8 +3129,8 @@
   {
    "result": {
     "order": {
-     "order_id": "<id33>",
-     "client_uuid": "<id34>",
+     "order_id": "<id35>",
+     "client_uuid": "<id36>",
      "local_number": 6,
      "table_id": "<id6>",
      "table_label": "Mesa 2",
@@ -2946,7 +3157,7 @@
    "events": [
     {
      "kind": "order.settled",
-     "order_id": "<id33>",
+     "order_id": "<id35>",
      "local_number": 6,
      "table_id": "<id6>",
      "table_label": "Mesa 2",
@@ -2972,8 +3183,8 @@
      "is_late": false
     },
     {
-     "ticket_id": "<id35>",
-     "order_id": "<id33>",
+     "ticket_id": "<id37>",
+     "order_id": "<id35>",
      "local_number": 6,
      "table_label": "Mesa 2",
      "station": "cozinha",
@@ -3105,7 +3316,7 @@
    "result": {
     "token": "<token>",
     "device": {
-     "id": "<id37>",
+     "id": "<id39>",
      "name": "Celular do João",
      "kind": "waiter",
      "operator_id": null
@@ -3125,7 +3336,7 @@
    "result": {
     "token": "<token>",
     "device": {
-     "id": "<id38>",
+     "id": "<id40>",
      "name": "Aparelho sem nome",
      "kind": "kds",
      "operator_id": null
@@ -3134,7 +3345,7 @@
   },
   {
    "result": {
-    "id": "<id37>",
+    "id": "<id39>",
     "name": "Celular do João",
     "kind": "waiter",
     "operator_id": null
@@ -3244,7 +3455,7 @@
      "user_id": "<id10>",
      "user_name": "João Garçom",
      "role": "waiter",
-     "device_id": "<id37>",
+     "device_id": "<id39>",
      "created_at": "<ts>",
      "expires_at": "<ts>",
      "last_seen_at": "<ts>"
@@ -3253,7 +3464,7 @@
      "user_id": "<id27>",
      "user_name": "Bruno Gerente",
      "role": "manager",
-     "device_id": "<id38>",
+     "device_id": "<id40>",
      "created_at": "<ts>",
      "expires_at": "<ts>",
      "last_seen_at": "<ts>"
@@ -3359,7 +3570,7 @@
   },
   {
    "result": {
-    "user_id": "<id39>",
+    "user_id": "<id41>",
     "name": "Olga Dona",
     "role": "owner",
     "orders": 0,
@@ -3404,7 +3615,7 @@
   {
    "result": [
     {
-     "id": "<id37>",
+     "id": "<id39>",
      "name": "Celular do João",
      "kind": "waiter",
      "paired_at": "<ts>",
@@ -3412,7 +3623,7 @@
      "revoked_at": null
     },
     {
-     "id": "<id38>",
+     "id": "<id40>",
      "name": "Aparelho sem nome",
      "kind": "kds",
      "paired_at": "<ts>",
@@ -3582,7 +3793,7 @@
     "local_number": 1,
     "opened_at": "<ts>",
     "operator_id": "<id10>",
-    "origin_device_id": "<id40>",
+    "origin_device_id": "<id42>",
     "status": "open",
     "table_id": "<id5>",
     "table_label": "Mesa 1"
@@ -3598,7 +3809,7 @@
     "local_number": 2,
     "opened_at": "<ts>",
     "operator_id": "<id10>",
-    "origin_device_id": "<id40>",
+    "origin_device_id": "<id42>",
     "status": "open",
     "table_id": "<id6>",
     "table_label": "Mesa 2"
@@ -3608,7 +3819,7 @@
    "entity_table": "order_items",
    "operation": "insert",
    "payload": {
-    "client_uuid": "<id41>",
+    "client_uuid": "<id43>",
     "created_at": "<ts>",
     "created_by_user_id": "<id10>",
     "gross_weight_grams": 0,
@@ -3617,59 +3828,13 @@
     "net_weight_grams": 0,
     "order_id": "<id8>",
     "pricing_mode": "unit",
-    "product_id": "<id42>",
+    "product_id": "<id44>",
     "product_name": "Café coado",
     "quantity": "2",
     "scale_reading_raw": null,
     "tare_grams": 0,
-    "tenant_id": "<id43>",
+    "tenant_id": "<id45>",
     "total_cents": 1400,
-    "unit_price_cents": 700
-   }
-  },
-  {
-   "entity_table": "order_items",
-   "operation": "insert",
-   "payload": {
-    "client_uuid": "<id44>",
-    "created_at": "<ts>",
-    "created_by_user_id": null,
-    "gross_weight_grams": 0,
-    "id": "<id19>",
-    "ingredients": [],
-    "net_weight_grams": 0,
-    "order_id": "<id8>",
-    "pricing_mode": "unit",
-    "product_id": "<id42>",
-    "product_name": "Café coado",
-    "quantity": "1.50",
-    "scale_reading_raw": null,
-    "tare_grams": 0,
-    "tenant_id": "<id43>",
-    "total_cents": 1050,
-    "unit_price_cents": 700
-   }
-  },
-  {
-   "entity_table": "order_items",
-   "operation": "insert",
-   "payload": {
-    "client_uuid": "<id45>",
-    "created_at": "<ts>",
-    "created_by_user_id": null,
-    "gross_weight_grams": 0,
-    "id": "<id20>",
-    "ingredients": [],
-    "net_weight_grams": 0,
-    "order_id": "<id8>",
-    "pricing_mode": "unit",
-    "product_id": "<id42>",
-    "product_name": "Café coado",
-    "quantity": "0.25",
-    "scale_reading_raw": null,
-    "tare_grams": 0,
-    "tenant_id": "<id43>",
-    "total_cents": 175,
     "unit_price_cents": 700
    }
   },
@@ -3679,6 +3844,52 @@
    "payload": {
     "client_uuid": "<id46>",
     "created_at": "<ts>",
+    "created_by_user_id": null,
+    "gross_weight_grams": 0,
+    "id": "<id19>",
+    "ingredients": [],
+    "net_weight_grams": 0,
+    "order_id": "<id8>",
+    "pricing_mode": "unit",
+    "product_id": "<id44>",
+    "product_name": "Café coado",
+    "quantity": "1.50",
+    "scale_reading_raw": null,
+    "tare_grams": 0,
+    "tenant_id": "<id45>",
+    "total_cents": 1050,
+    "unit_price_cents": 700
+   }
+  },
+  {
+   "entity_table": "order_items",
+   "operation": "insert",
+   "payload": {
+    "client_uuid": "<id47>",
+    "created_at": "<ts>",
+    "created_by_user_id": null,
+    "gross_weight_grams": 0,
+    "id": "<id20>",
+    "ingredients": [],
+    "net_weight_grams": 0,
+    "order_id": "<id8>",
+    "pricing_mode": "unit",
+    "product_id": "<id44>",
+    "product_name": "Café coado",
+    "quantity": "0.25",
+    "scale_reading_raw": null,
+    "tare_grams": 0,
+    "tenant_id": "<id45>",
+    "total_cents": 175,
+    "unit_price_cents": 700
+   }
+  },
+  {
+   "entity_table": "order_items",
+   "operation": "insert",
+   "payload": {
+    "client_uuid": "<id48>",
+    "created_at": "<ts>",
     "created_by_user_id": "<id27>",
     "gross_weight_grams": 0,
     "id": "<id21>",
@@ -3686,12 +3897,12 @@
     "net_weight_grams": 0,
     "order_id": "<id8>",
     "pricing_mode": "unit",
-    "product_id": "<id42>",
+    "product_id": "<id44>",
     "product_name": "Café coado",
     "quantity": "0.015",
     "scale_reading_raw": null,
     "tare_grams": 0,
-    "tenant_id": "<id43>",
+    "tenant_id": "<id45>",
     "total_cents": 10,
     "unit_price_cents": 700
    }
@@ -3716,21 +3927,21 @@
    "entity_table": "order_items",
    "operation": "insert",
    "payload": {
-    "client_uuid": "<id47>",
+    "client_uuid": "<id49>",
     "created_at": "<ts>",
     "created_by_user_id": null,
     "gross_weight_grams": 0,
-    "id": "<id31>",
+    "id": "<id32>",
     "ingredients": [],
     "net_weight_grams": 0,
     "order_id": "<id11>",
     "pricing_mode": "unit",
-    "product_id": "<id42>",
+    "product_id": "<id44>",
     "product_name": "Café coado",
     "quantity": "3",
     "scale_reading_raw": null,
     "tare_grams": 0,
-    "tenant_id": "<id43>",
+    "tenant_id": "<id45>",
     "total_cents": 2100,
     "unit_price_cents": 700
    }
@@ -3767,18 +3978,18 @@
    "payload": {
     "actor_user_id": "<id27>",
     "authorizer_user_id": null,
-    "client_uuid": "<id48>",
+    "client_uuid": "<id50>",
     "created_at": "<ts>",
-    "device_id": "<id40>",
+    "device_id": "<id42>",
     "event_type": "items_transferred",
     "hash": "<hash>",
-    "id": "<id49>",
+    "id": "<id51>",
     "payload_json": "{\"from_local_number\":1,\"from_order_id\":\"<id8>\",\"from_table\":\"Mesa 1\",\"item_ids\":[\"<id19>\"],\"operator_name\":\"Bruno Gerente\",\"to_local_number\":2,\"to_order_id\":\"<id11>\",\"to_table\":\"Mesa 2\",\"total_cents\":1050}",
     "prev_hash": "<hash>",
     "seq": 1,
     "severity": "warning",
-    "store_id": "<id50>",
-    "tenant_id": "<id43>"
+    "store_id": "<id52>",
+    "tenant_id": "<id45>"
    }
   },
   {
@@ -3796,18 +4007,18 @@
    "payload": {
     "actor_user_id": "<id27>",
     "authorizer_user_id": "<id27>",
-    "client_uuid": "<id51>",
+    "client_uuid": "<id53>",
     "created_at": "<ts>",
-    "device_id": "<id40>",
+    "device_id": "<id42>",
     "event_type": "price_override",
     "hash": "<hash>",
-    "id": "<id52>",
+    "id": "<id54>",
     "payload_json": "{\"authorizer_name\":\"Bruno Gerente\",\"channel\":\"waiter\",\"from_table\":\"Mesa 2\",\"operation\":\"table_transfer\",\"order_id\":\"<id11>\",\"to_table\":\"Mesa 3\"}",
     "prev_hash": "<hash>",
     "seq": 2,
     "severity": "warning",
-    "store_id": "<id50>",
-    "tenant_id": "<id43>"
+    "store_id": "<id52>",
+    "tenant_id": "<id45>"
    }
   },
   {
@@ -3820,7 +4031,7 @@
     "local_number": 3,
     "opened_at": "<ts>",
     "operator_id": "<id10>",
-    "origin_device_id": "<id40>",
+    "origin_device_id": "<id42>",
     "status": "open",
     "table_id": "<id5>",
     "table_label": "Mesa 1"
@@ -3859,7 +4070,7 @@
     "amount_cents": 2000,
     "change_cents": 500,
     "created_at": "<ts>",
-    "id": "<id53>",
+    "id": "<id55>",
     "method": "cash",
     "order_id": "<id23>"
    }
@@ -3885,18 +4096,18 @@
    "payload": {
     "actor_user_id": "<id27>",
     "authorizer_user_id": null,
-    "client_uuid": "<id54>",
+    "client_uuid": "<id56>",
     "created_at": "<ts>",
-    "device_id": "<id40>",
+    "device_id": "<id42>",
     "event_type": "sale_closed",
     "hash": "<hash>",
-    "id": "<id55>",
+    "id": "<id57>",
     "payload_json": "{\"channel\":\"waiter\",\"items\":1,\"local_number\":3,\"order_id\":\"<id23>\",\"payments\":[{\"amount_cents\":2000,\"method\":\"cash\"}],\"received_by_name\":\"Bruno Gerente\",\"served_by_name\":\"João Garçom\",\"served_by_user_id\":\"<id10>\",\"split_from_local_number\":1,\"split_from_order_id\":\"<id8>\",\"table_label\":\"Mesa 1\",\"tip_cents\":100,\"total_cents\":1400}",
     "prev_hash": "<hash>",
     "seq": 3,
     "severity": "info",
-    "store_id": "<id50>",
-    "tenant_id": "<id43>"
+    "store_id": "<id52>",
+    "tenant_id": "<id45>"
    }
   },
   {
@@ -3906,7 +4117,7 @@
     "amount_cents": 100,
     "change_cents": 0,
     "created_at": "<ts>",
-    "id": "<id56>",
+    "id": "<id58>",
     "method": "pix",
     "order_id": "<id8>"
    }
@@ -3918,7 +4129,7 @@
     "amount_cents": 50,
     "change_cents": 15,
     "created_at": "<ts>",
-    "id": "<id57>",
+    "id": "<id59>",
     "method": "cash",
     "order_id": "<id8>"
    }
@@ -3930,7 +4141,7 @@
     "amount_cents": 50,
     "change_cents": 0,
     "created_at": "<ts>",
-    "id": "<id58>",
+    "id": "<id60>",
     "method": "cash",
     "order_id": "<id8>"
    }
@@ -3956,18 +4167,18 @@
    "payload": {
     "actor_user_id": "<id27>",
     "authorizer_user_id": null,
-    "client_uuid": "<id59>",
+    "client_uuid": "<id61>",
     "created_at": "<ts>",
-    "device_id": "<id40>",
+    "device_id": "<id42>",
     "event_type": "sale_closed",
     "hash": "<hash>",
-    "id": "<id60>",
+    "id": "<id62>",
     "payload_json": "{\"channel\":\"waiter\",\"items\":2,\"local_number\":1,\"order_id\":\"<id8>\",\"payments\":[{\"amount_cents\":100,\"method\":\"pix\"},{\"amount_cents\":50,\"method\":\"cash\"},{\"amount_cents\":50,\"method\":\"cash\"}],\"received_by_name\":\"Bruno Gerente\",\"served_by_name\":\"João Garçom\",\"served_by_user_id\":\"<id10>\",\"table_label\":\"Mesa 1\",\"tip_cents\":0,\"total_cents\":185}",
     "prev_hash": "<hash>",
     "seq": 4,
     "severity": "info",
-    "store_id": "<id50>",
-    "tenant_id": "<id43>"
+    "store_id": "<id52>",
+    "tenant_id": "<id45>"
    }
   },
   {
@@ -3980,7 +4191,7 @@
     "local_number": 4,
     "opened_at": "<ts>",
     "operator_id": "<id27>",
-    "origin_device_id": "<id40>",
+    "origin_device_id": "<id42>",
     "status": "open",
     "table_id": "<id6>",
     "table_label": "Mesa 2"
@@ -4006,18 +4217,18 @@
    "payload": {
     "actor_user_id": "<id27>",
     "authorizer_user_id": "<id27>",
-    "client_uuid": "<id61>",
+    "client_uuid": "<id63>",
     "created_at": "<ts>",
-    "device_id": "<id40>",
+    "device_id": "<id42>",
     "event_type": "item_canceled",
     "hash": "<hash>",
-    "id": "<id62>",
+    "id": "<id64>",
     "payload_json": "{\"authorizer_name\":\"Bruno Gerente\",\"channel\":\"waiter\",\"item_count\":0,\"local_number\":4,\"order_id\":\"<id25>\",\"reason\":\"aberta por engano\",\"table_label\":\"Mesa 2\",\"total_cents\":0}",
     "prev_hash": "<hash>",
     "seq": 5,
     "severity": "critical",
-    "store_id": "<id50>",
-    "tenant_id": "<id43>"
+    "store_id": "<id52>",
+    "tenant_id": "<id45>"
    }
   },
   {
@@ -4030,7 +4241,7 @@
     "local_number": 5,
     "opened_at": "<ts>",
     "operator_id": "<id10>",
-    "origin_device_id": "<id40>",
+    "origin_device_id": "<id42>",
     "status": "open",
     "table_id": "<id5>",
     "table_label": "Mesa 1"
@@ -4040,30 +4251,114 @@
    "entity_table": "order_items",
    "operation": "insert",
    "payload": {
-    "client_uuid": "<id63>",
+    "client_uuid": "<id65>",
     "created_at": "<ts>",
     "created_by_user_id": null,
     "gross_weight_grams": 0,
-    "id": "<id32>",
+    "id": "<id33>",
     "ingredients": [],
     "net_weight_grams": 0,
     "order_id": "<id28>",
     "pricing_mode": "unit",
-    "product_id": "<id42>",
+    "product_id": "<id44>",
     "product_name": "Café coado",
     "quantity": "1",
     "scale_reading_raw": null,
     "tare_grams": 0,
-    "tenant_id": "<id43>",
+    "tenant_id": "<id45>",
     "total_cents": 700,
     "unit_price_cents": 700
    }
   },
   {
    "entity_table": "order_items",
+   "operation": "insert",
+   "payload": {
+    "client_uuid": "<id66>",
+    "created_at": "<ts>",
+    "created_by_user_id": null,
+    "gross_weight_grams": 0,
+    "id": "<id34>",
+    "ingredients": [
+     {
+      "client_uuid": "<id67>",
+      "consumed_mg": 107478,
+      "id": "<id68>",
+      "inventory_item_id": "<id69>",
+      "inventory_item_name": "Chocolate",
+      "unit_cost_cents": 451
+     },
+     {
+      "client_uuid": "<id70>",
+      "consumed_mg": 83152,
+      "id": "<id71>",
+      "inventory_item_id": "<id72>",
+      "inventory_item_name": "Farinha",
+      "unit_cost_cents": 54
+     }
+    ],
+    "net_weight_grams": 0,
+    "order_id": "<id28>",
+    "pricing_mode": "unit",
+    "product_id": "<id73>",
+    "product_name": "Fatia de torta",
+    "quantity": "2",
+    "scale_reading_raw": null,
+    "tare_grams": 0,
+    "tenant_id": "<id45>",
+    "total_cents": 2900,
+    "unit_price_cents": 1450
+   }
+  },
+  {
+   "entity_table": "stock_movements",
+   "operation": "insert",
+   "payload": {
+    "client_uuid": "<id74>",
+    "created_at": "<ts>",
+    "id": "<id75>",
+    "inventory_item_id": "<id69>",
+    "movement_type": "sale",
+    "origin_device_id": "<id42>",
+    "qty_mg": -107478,
+    "reference_id": "<id34>",
+    "reference_type": "order_item",
+    "store_id": "<id52>",
+    "tenant_id": "<id45>",
+    "unit_cost_cents": 451
+   }
+  },
+  {
+   "entity_table": "stock_movements",
+   "operation": "insert",
+   "payload": {
+    "client_uuid": "<id76>",
+    "created_at": "<ts>",
+    "id": "<id77>",
+    "inventory_item_id": "<id72>",
+    "movement_type": "sale",
+    "origin_device_id": "<id42>",
+    "qty_mg": -83152,
+    "reference_id": "<id34>",
+    "reference_type": "order_item",
+    "store_id": "<id52>",
+    "tenant_id": "<id45>",
+    "unit_cost_cents": 54
+   }
+  },
+  {
+   "entity_table": "order_items",
    "operation": "update",
    "payload": {
-    "id": "<id32>",
+    "id": "<id33>",
+    "order_id": "<id11>"
+   }
+  },
+  {
+   "entity_table": "order_items",
+   "operation": "update",
+   "payload": {
+    "id": "<id34>",
     "order_id": "<id11>"
    }
   },
@@ -4081,8 +4376,8 @@
    "operation": "update",
    "payload": {
     "id": "<id11>",
-    "subtotal_cents": 3850,
-    "total_cents": 3850
+    "subtotal_cents": 6750,
+    "total_cents": 6750
    }
   },
   {
@@ -4104,18 +4399,18 @@
    "payload": {
     "actor_user_id": "<id27>",
     "authorizer_user_id": null,
-    "client_uuid": "<id64>",
+    "client_uuid": "<id78>",
     "created_at": "<ts>",
-    "device_id": "<id40>",
+    "device_id": "<id42>",
     "event_type": "order_merged",
     "hash": "<hash>",
-    "id": "<id65>",
-    "payload_json": "{\"from_local_number\":5,\"from_order_id\":\"<id28>\",\"from_table\":\"Mesa 1\",\"items\":1,\"operator_name\":\"Bruno Gerente\",\"to_local_number\":2,\"to_order_id\":\"<id11>\",\"to_table\":\"Mesa 3\",\"total_cents\":700}",
+    "id": "<id79>",
+    "payload_json": "{\"from_local_number\":5,\"from_order_id\":\"<id28>\",\"from_table\":\"Mesa 1\",\"items\":2,\"operator_name\":\"Bruno Gerente\",\"to_local_number\":2,\"to_order_id\":\"<id11>\",\"to_table\":\"Mesa 3\",\"total_cents\":3600}",
     "prev_hash": "<hash>",
     "seq": 6,
     "severity": "warning",
-    "store_id": "<id50>",
-    "tenant_id": "<id43>"
+    "store_id": "<id52>",
+    "tenant_id": "<id45>"
    }
   },
   {
@@ -4135,7 +4430,7 @@
     "cancel_reason": "[comanda cancelada] cliente foi embora",
     "canceled_at": "<ts>",
     "canceled_by_user_id": "<id27>",
-    "id": "<id31>"
+    "id": "<id32>"
    }
   },
   {
@@ -4145,7 +4440,53 @@
     "cancel_reason": "[comanda cancelada] cliente foi embora",
     "canceled_at": "<ts>",
     "canceled_by_user_id": "<id27>",
-    "id": "<id32>"
+    "id": "<id33>"
+   }
+  },
+  {
+   "entity_table": "order_items",
+   "operation": "update",
+   "payload": {
+    "cancel_reason": "[comanda cancelada] cliente foi embora",
+    "canceled_at": "<ts>",
+    "canceled_by_user_id": "<id27>",
+    "id": "<id34>"
+   }
+  },
+  {
+   "entity_table": "stock_movements",
+   "operation": "insert",
+   "payload": {
+    "client_uuid": "<id80>",
+    "created_at": "<ts>",
+    "id": "<id81>",
+    "inventory_item_id": "<id69>",
+    "movement_type": "adjustment",
+    "origin_device_id": "<id42>",
+    "qty_mg": 107478,
+    "reference_id": "<id34>",
+    "reference_type": "order_item_cancel",
+    "store_id": "<id52>",
+    "tenant_id": "<id45>",
+    "unit_cost_cents": 0
+   }
+  },
+  {
+   "entity_table": "stock_movements",
+   "operation": "insert",
+   "payload": {
+    "client_uuid": "<id82>",
+    "created_at": "<ts>",
+    "id": "<id83>",
+    "inventory_item_id": "<id72>",
+    "movement_type": "adjustment",
+    "origin_device_id": "<id42>",
+    "qty_mg": 83152,
+    "reference_id": "<id34>",
+    "reference_type": "order_item_cancel",
+    "store_id": "<id52>",
+    "tenant_id": "<id45>",
+    "unit_cost_cents": 0
    }
   },
   {
@@ -4168,18 +4509,18 @@
    "payload": {
     "actor_user_id": "<id27>",
     "authorizer_user_id": "<id27>",
-    "client_uuid": "<id66>",
+    "client_uuid": "<id84>",
     "created_at": "<ts>",
-    "device_id": "<id40>",
+    "device_id": "<id42>",
     "event_type": "item_canceled",
     "hash": "<hash>",
-    "id": "<id67>",
-    "payload_json": "{\"authorizer_name\":\"Bruno Gerente\",\"channel\":\"waiter\",\"item_count\":3,\"local_number\":2,\"order_id\":\"<id11>\",\"reason\":\"cliente foi embora\",\"table_label\":\"Mesa 3\",\"total_cents\":3850}",
+    "id": "<id85>",
+    "payload_json": "{\"authorizer_name\":\"Bruno Gerente\",\"channel\":\"waiter\",\"item_count\":4,\"local_number\":2,\"order_id\":\"<id11>\",\"reason\":\"cliente foi embora\",\"table_label\":\"Mesa 3\",\"total_cents\":6750}",
     "prev_hash": "<hash>",
     "seq": 7,
     "severity": "critical",
-    "store_id": "<id50>",
-    "tenant_id": "<id43>"
+    "store_id": "<id52>",
+    "tenant_id": "<id45>"
    }
   },
   {
@@ -4188,11 +4529,11 @@
    "payload": {
     "channel": "waiter",
     "customer_id": "Mesa 2",
-    "id": "<id33>",
+    "id": "<id35>",
     "local_number": 6,
     "opened_at": "<ts>",
     "operator_id": "<id10>",
-    "origin_device_id": "<id40>",
+    "origin_device_id": "<id42>",
     "status": "open",
     "table_id": "<id6>",
     "table_label": "Mesa 2"
@@ -4202,21 +4543,21 @@
    "entity_table": "order_items",
    "operation": "insert",
    "payload": {
-    "client_uuid": "<id68>",
+    "client_uuid": "<id86>",
     "created_at": "<ts>",
     "created_by_user_id": null,
     "gross_weight_grams": 0,
-    "id": "<id36>",
+    "id": "<id38>",
     "ingredients": [],
     "net_weight_grams": 0,
-    "order_id": "<id33>",
+    "order_id": "<id35>",
     "pricing_mode": "unit",
-    "product_id": "<id42>",
+    "product_id": "<id44>",
     "product_name": "Café coado",
     "quantity": "1",
     "scale_reading_raw": null,
     "tare_grams": 0,
-    "tenant_id": "<id43>",
+    "tenant_id": "<id45>",
     "total_cents": 700,
     "unit_price_cents": 700
    }
@@ -4228,9 +4569,9 @@
     "amount_cents": 700,
     "change_cents": 0,
     "created_at": "<ts>",
-    "id": "<id69>",
+    "id": "<id87>",
     "method": "debit",
-    "order_id": "<id33>"
+    "order_id": "<id35>"
    }
   },
   {
@@ -4239,7 +4580,7 @@
    "payload": {
     "closed_at": "<ts>",
     "discount_cents": 0,
-    "id": "<id33>",
+    "id": "<id35>",
     "served_by_user_id": "<id10>",
     "status": "paid",
     "subtotal_cents": 700,
@@ -4254,18 +4595,18 @@
    "payload": {
     "actor_user_id": "<id27>",
     "authorizer_user_id": null,
-    "client_uuid": "<id70>",
+    "client_uuid": "<id88>",
     "created_at": "<ts>",
-    "device_id": "<id40>",
+    "device_id": "<id42>",
     "event_type": "sale_closed",
     "hash": "<hash>",
-    "id": "<id71>",
-    "payload_json": "{\"channel\":\"waiter\",\"items\":1,\"local_number\":6,\"order_id\":\"<id33>\",\"payments\":[{\"amount_cents\":700,\"method\":\"debit\"}],\"received_by_name\":\"Bruno Gerente\",\"served_by_name\":\"João Garçom\",\"served_by_user_id\":\"<id10>\",\"table_label\":\"Mesa 2\",\"tip_cents\":0,\"total_cents\":700}",
+    "id": "<id89>",
+    "payload_json": "{\"channel\":\"waiter\",\"items\":1,\"local_number\":6,\"order_id\":\"<id35>\",\"payments\":[{\"amount_cents\":700,\"method\":\"debit\"}],\"received_by_name\":\"Bruno Gerente\",\"served_by_name\":\"João Garçom\",\"served_by_user_id\":\"<id10>\",\"table_label\":\"Mesa 2\",\"tip_cents\":0,\"total_cents\":700}",
     "prev_hash": "<hash>",
     "seq": 8,
     "severity": "info",
-    "store_id": "<id50>",
-    "tenant_id": "<id43>"
+    "store_id": "<id52>",
+    "tenant_id": "<id45>"
    }
   }
  ]

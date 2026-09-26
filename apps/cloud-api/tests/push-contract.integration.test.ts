@@ -213,10 +213,10 @@ describeDb("contrato do push com a fila real do caixa", () => {
         for (const tab of tabs.filter((t) => t.status === "paid")) {
           expect(tab.total_cents).toBe(tab.live_total);
         }
-        // A parte paga (1 item), a mesa do começo (1 item) e a comanda que
-        // recebeu tudo (1 dela + 1 movido + 1 da junção).
+        // A parte paga (1 item), a mesa do começo (café + fatia) e a comanda
+        // que recebeu tudo (1 dela + 1 movido + 1 da junção).
         expect(tabs.filter((t) => t.status === "paid").map((t) => Number(t.live)).sort())
-          .toEqual(splits ? [1, 1, 3] : [1]);
+          .toEqual(splits ? [1, 2, 3] : [1]);
         // Nenhuma cancelada ficou com item vivo: a juntada foi esvaziada antes,
         // e a aberta por engano teve os itens cancelados junto. A 1.1.2 não
         // enviava o cancelamento dos itens — defeito que a fila congelada guarda.
@@ -272,9 +272,12 @@ describeDb("contrato do push com a fila real do caixa", () => {
             SELECT cancel_reason FROM order_items
              WHERE tenant_id = ${tenant} AND canceled_at IS NOT NULL
           `;
-          expect(canceled.map((i) => i.cancel_reason).sort()).toEqual(
-            ["Cliente desistiu", "[comanda cancelada] Mesa aberta por engano"],
-          );
+          // A comanda aberta por engano tinha café e fatia: os dois saem cancelados.
+          expect(canceled.map((i) => i.cancel_reason).sort()).toEqual([
+            "Cliente desistiu",
+            "[comanda cancelada] Mesa aberta por engano",
+            "[comanda cancelada] Mesa aberta por engano",
+          ]);
         });
 
         it("o item lançado pelo garçom chega com nome e preço", async () => {
@@ -283,12 +286,41 @@ describeDb("contrato do push com a fila real do caixa", () => {
               JOIN orders o ON o.id = i.order_id AND o.tenant_id = i.tenant_id
              WHERE i.tenant_id = ${tenant} AND o.channel = 'waiter'
           `;
-          // Mesa do começo (1), aberta por engano (1), e as da divisão (3 + 1).
-          expect(items.length).toBe(splits ? 6 : 2);
+          // Mesa do começo (2), aberta por engano (2), e as da divisão (3 + 1).
+          expect(items.length).toBe(splits ? 8 : 2);
           for (const item of items) {
             expect(item.product_name).not.toBe("");
             expect(Number(item.unit_price_cents)).toBeGreaterThan(0);
           }
+        });
+
+        it("o insumo do item de mesa chega, e a comanda cancelada o devolve", async () => {
+          // Até a 1.1.5 o garçom lançava sem baixar insumo: a mesa não aparecia
+          // no estoque nem no CMV do painel, que só enxergava o balcão.
+          const byOrder = await admin<{ status: string; ingredients: string; net_mg: string; sales: string; reversals: string }[]>`
+            SELECT o.status,
+                   (SELECT count(*) FROM order_item_ingredients g
+                     JOIN order_items gi ON gi.id = g.order_item_id AND gi.tenant_id = g.tenant_id
+                    WHERE gi.order_id = o.id AND g.tenant_id = o.tenant_id)::text AS ingredients,
+                   coalesce(sum(m.quantity_mg), 0)::text AS net_mg,
+                   count(m.id) FILTER (WHERE m.reason = 'sale')::text AS sales,
+                   count(m.id) FILTER (WHERE m.reason = 'adjustment')::text AS reversals
+              FROM orders o
+              JOIN order_items i ON i.order_id = o.id AND i.tenant_id = o.tenant_id
+              LEFT JOIN stock_movements m ON m.order_item_id = i.id::text AND m.tenant_id = i.tenant_id
+             WHERE o.tenant_id = ${tenant} AND o.channel = 'waiter'
+             GROUP BY o.id, o.status
+            HAVING count(m.id) > 0
+          `;
+          // A mesa recebida baixou a fatia; a aberta por engano baixou e estornou.
+          expect(byOrder.map((o) => o.status).sort()).toEqual(["canceled", "paid"]);
+          for (const order of byOrder) expect(Number(order.ingredients)).toBe(5);
+          const paid = byOrder.find((o) => o.status === "paid")!;
+          expect([Number(paid.sales), Number(paid.reversals)]).toEqual([5, 0]);
+          expect(Number(paid.net_mg)).toBeLessThan(0);
+          const canceled = byOrder.find((o) => o.status === "canceled")!;
+          expect([Number(canceled.sales), Number(canceled.reversals)]).toEqual([5, 5]);
+          expect(Number(canceled.net_mg)).toBe(0);
         });
 
         it("uma atualização não regride comanda já paga", async () => {

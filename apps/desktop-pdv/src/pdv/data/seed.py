@@ -171,10 +171,47 @@ def seed_demo_data(database: Database, config: AppConfig) -> None:
             [
                 (new_id(), tenant, store, "CAFE-EXP", "7891000000011",
                  "Café Expresso", "Cafeteria", 700, now),
-                (new_id(), tenant, store, "FATIA-CHOC", "7891000000028",
-                 "Fatia de Torta de Chocolate", "Confeitaria", 1450, now),
                 (new_id(), tenant, store, "SUCO-LAR", "7891000000035",
                  "Suco de Laranja 300ml", "Bebidas", 1200, now),
+            ],
+        )
+
+        # A fatia TEM ficha: é a mesma torta, em porção de 150 g. Sem ela a
+        # demonstração nunca mostraria insumo baixando pelo salão — e foi
+        # exatamente por não haver item de mesa com receita que a mesa passou
+        # meses sem baixar estoque sem ninguém ver.
+        slice_id, slice_recipe_id = new_id(), new_id()
+        tx.execute(
+            """
+            INSERT INTO products
+                (id, tenant_id, store_id, sku, barcode, name, category,
+                 pricing_mode, price_cents, tare_grams, recipe_id, is_active,
+                 updated_at)
+            VALUES (?, ?, ?, 'FATIA-CHOC', '7891000000028',
+                    'Fatia de Torta de Chocolate', 'Confeitaria', 'unit', 1450,
+                    0, ?, 1, ?)
+            """,
+            (slice_id, tenant, store, slice_recipe_id, now),
+        )
+        tx.execute(
+            """
+            INSERT INTO recipes (id, tenant_id, product_id, base_qty_g,
+                                 yield_factor, updated_at)
+            VALUES (?, ?, ?, 150, '0.92', ?)
+            """,
+            (slice_recipe_id, tenant, slice_id, now),
+        )
+        tx.executemany(
+            """
+            INSERT INTO recipe_lines
+                (id, recipe_id, inventory_item_id, qty_per_base_mg,
+                 waste_percent, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            [
+                # As linhas da torta inteira, proporcionais a 150 g.
+                (new_id(), slice_recipe_id, item_id, qty * 150 // 1000, waste, now)
+                for item_id, qty, waste in recipe_lines
             ],
         )
 

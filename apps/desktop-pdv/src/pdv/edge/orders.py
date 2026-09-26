@@ -35,14 +35,21 @@ from decimal import Decimal
 
 from pdv.config import AppConfig
 from pdv.data.database import Database
-from pdv.data.repositories import OutboxRepository, ProductRepository, SaleRepository
-from pdv.domain.errors import PdvError
+from pdv.data.repositories import (
+    OutboxRepository,
+    ProductRepository,
+    RecipeRepository,
+    SaleRepository,
+    StockRepository,
+)
+from pdv.domain.errors import InsufficientStockError, InvalidWeightError, PdvError
 from pdv.domain.models import (
     AuditEventType,
     AuditSeverity,
     Cents,
     EntityId,
     Grams,
+    Milligrams,
     Payment,
     PricingMode,
     Sale,
@@ -56,6 +63,7 @@ from pdv.edge.tables import TableError, TableService
 from pdv.hardware.printer.layout import ReceiptContext, build_sale_receipt
 from pdv.services.audit import AuditService
 from pdv.services.payments import record_payments, settle_payments
+from pdv.services.stock import StockService, explode_recipe
 
 logger = logging.getLogger(__name__)
 
@@ -585,12 +593,13 @@ class TableOrderService:
                 "SELECT id FROM order_items WHERE order_id = ? AND canceled_at IS NULL",
                 (order_id,),
             ).fetchall():
-                sales.cancel_item(
+                if sales.cancel_item(
                     EntityId(str(row["id"])),
                     canceled_at=now,
                     canceled_by_user_id=authorizer_id,
                     reason=f"[comanda cancelada] {reason}",
-                )
+                ):
+                    self._restore_stock(connection, EntityId(str(row["id"])))
             # Ticket na fila da cozinha de comanda cancelada some da tela: manter
             # é mandar preparar comida que ninguém vai receber.
             connection.execute(
@@ -999,6 +1008,31 @@ class TableOrderService:
             },
         )
 
+    def _restore_stock(self, connection: sqlite3.Connection, item_id: EntityId) -> None:
+        """Estorna o insumo que o item baixou, dentro da transação do chamador.
+
+        Lê o consumo **gravado** em `order_item_ingredients`, não a ficha de
+        hoje: se a receita mudou entre o lançamento e o cancelamento, estornar
+        pela ficha nova devolveria ao estoque o que nunca saiu dele. É o mesmo
+        caminho do cancelamento remoto e o mesmo movimento do balcão.
+        """
+        stock = StockRepository(connection, self._outbox)
+        for line in connection.execute(
+            "SELECT inventory_item_id, consumed_mg FROM order_item_ingredients "
+            " WHERE order_item_id = ?",
+            (item_id,),
+        ).fetchall():
+            stock.register_movement(
+                tenant_id=EntityId(self._config.tenant_id),
+                store_id=EntityId(self._config.store_id),
+                device_id=EntityId(self._config.device_id),
+                inventory_item_id=EntityId(str(line["inventory_item_id"])),
+                qty_mg=Milligrams(int(line["consumed_mg"])),  # positivo = estorno
+                movement_type="adjustment",
+                reference_type="order_item_cancel",
+                reference_id=item_id,
+            )
+
     def _two_open(
         self, source_id: EntityId, target_id: EntityId
     ) -> tuple[TableOrder, TableOrder]:
@@ -1137,6 +1171,21 @@ class TableOrderService:
         aceitar um peso digitado no celular abriria exatamente o buraco que o
         módulo anti-furto existe para fechar — peso informado por quem cobra, sem
         o quadro cru da balança como prova.
+
+        **O insumo baixa aqui, no lançamento**, pela mesma ficha técnica do
+        balcão. É o momento em que o prato vai para a cozinha e o insumo é
+        gasto, e é o mesmo momento do balcão, que baixa ao registrar o item.
+        Baixar só no recebimento deixaria o estoque mais alto que o real durante
+        todo o serviço — e para sempre na comanda cancelada, justamente onde a
+        comida saiu e o dinheiro não entrou. Por isso quem cancela **estorna**
+        (ver `cancel_order` e o cancelamento remoto, que leem o consumo gravado
+        em `order_item_ingredients`). Antes daqui a mesa não baixava nada: o
+        saldo de insumo ficava acima do real e o CMV do painel só via o balcão.
+
+        Raises:
+            ProductNotSellableError: produto inexistente, por peso, quantidade
+                inválida, ou sem saldo de insumo quando a loja bloqueia venda
+                com estoque negativo.
         """
         if quantity <= 0:
             raise ProductNotSellableError("Quantidade precisa ser maior que zero.")
@@ -1166,26 +1215,45 @@ class TableOrderService:
             )
         )
 
-        item = SaleItem(
-            id=EntityId(new_id()),
-            client_uuid=client_uuid,
-            product_id=product.id,
-            product_name=product.name,
-            pricing_mode=PricingMode.UNIT,
-            quantity=quantity,
-            gross_weight_grams=Grams(0),
-            tare_grams=Grams(0),
-            net_weight_grams=Grams(0),
-            unit_price_cents=product.price_cents,
-            total_cents=total,
-            scale_reading_raw=None,
-            consumptions=(),
-        )
-
         ticket_id = new_id()
         now = iso(utc_now())
+        warnings: list[str] = []
 
         with self._db.transaction() as connection:
+            stock = StockService(
+                StockRepository(connection, self._outbox), self._config.stock
+            )
+            recipe = RecipeRepository(connection).get_for_product_or_none(product)
+            consumptions: tuple = ()
+            if recipe is not None:
+                # A ficha é por `base_qty_g` do produto pronto: a porção
+                # vendida é `base_qty_g` × quantidade, igual ao balcão.
+                try:
+                    consumptions = explode_recipe(
+                        recipe, Grams(int(recipe.base_qty_g * quantity))
+                    )
+                    warnings = stock.check_availability(consumptions)
+                except (InsufficientStockError, InvalidWeightError) as exc:
+                    # A mesma recusa de produto que o app já sabe mostrar: sem
+                    # isto o servidor do salão responderia 500 ao garçom.
+                    raise ProductNotSellableError(str(exc)) from exc
+
+            item = SaleItem(
+                id=EntityId(new_id()),
+                client_uuid=client_uuid,
+                product_id=product.id,
+                product_name=product.name,
+                pricing_mode=PricingMode.UNIT,
+                quantity=quantity,
+                gross_weight_grams=Grams(0),
+                tare_grams=Grams(0),
+                net_weight_grams=Grams(0),
+                unit_price_cents=product.price_cents,
+                total_cents=total,
+                scale_reading_raw=None,
+                consumptions=consumptions,
+            )
+
             # Quem lançou, gravado no item e não só na comanda: mesa grande é
             # atendida por mais de uma pessoa, e atribuir tudo a quem abriu
             # apagaria o segundo garçom do relatório e da trilha.
@@ -1195,6 +1263,14 @@ class TableOrderService:
                 tenant_id=EntityId(self._config.tenant_id),
                 created_by_user_id=created_by_user_id,
             )
+            if consumptions:
+                stock.write_off(
+                    consumptions,
+                    tenant_id=EntityId(self._config.tenant_id),
+                    store_id=EntityId(self._config.store_id),
+                    device_id=EntityId(self._config.device_id),
+                    order_item_id=item.id,
+                )
             connection.execute(
                 "UPDATE orders SET subtotal_cents = subtotal_cents + ?, "
                 "total_cents = total_cents + ?, updated_at = ? WHERE id = ?",
@@ -1216,6 +1292,8 @@ class TableOrderService:
                 ),
             )
 
+        if warnings:
+            logger.warning("Estoque baixo após lançamento na mesa: %s", "; ".join(warnings))
         self._hub.publish(
             Event(
                 "ticket.queued",

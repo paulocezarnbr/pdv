@@ -109,7 +109,13 @@ A retaguarda já tem `POST /api/fiscal/issue` e `GET /api/fiscal/status`
    Exige o A1 **em cada terminal**. **Não construir sem a decisão do dono**
    (ver Decisões pendentes).
 
-### 2. C6e — Servidor do salão (a maior)
+### 2. C6e — Servidor do salão (a maior) — **em andamento**
+
+Feito em 26/09/2026 (detalhe em `docs/port_csharp.md`): mesas, comandas,
+cozinha, barramento, pareamento, sessão do garçom, gerente e resultado do
+turno, conferidos contra `contracts/salon.json`. Falta o servidor HTTP, o
+WebSocket do KDS, TLS, anúncio na rede e a ligação no caixa. No caminho,
+corrigido nos dois PDVs: item de mesa com ficha técnica não baixava insumo.
 
 `apps/desktop-pdv/src/pdv/edge/` (~4.000 linhas) em ASP.NET Core dentro do
 PDV:

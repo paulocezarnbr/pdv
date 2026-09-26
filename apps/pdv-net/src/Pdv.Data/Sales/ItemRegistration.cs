@@ -45,6 +45,7 @@ public sealed class ItemRegistration(
     private readonly TimeProvider _clock = clock ?? TimeProvider.System;
     private readonly Outbox _outbox = new(clock);
     private readonly SaleRepository _sales = new(terminal, clock);
+    private readonly StockWriter _stock = new(terminal, clock);
 
     /// <summary>Registra um item por unidade. Sem pedido aberto, abre um (já gravado).</summary>
     public ItemResult RegisterUnitItem(string? orderId, Product product, decimal quantity, string operatorId)
@@ -181,23 +182,8 @@ public sealed class ItemRegistration(
         });
     }
 
-    private List<string> CheckAvailability(SqliteTransaction transaction, IReadOnlyList<IngredientConsumption> consumptions)
-    {
-        var warnings = new List<string>();
-        foreach (var consumption in consumptions)
-        {
-            using var command = transaction.Command(
-                "SELECT balance_mg FROM inventory_items WHERE id = $id", ("$id", consumption.InventoryItemId));
-            var available = command.ExecuteScalar() is long balance ? balance : 0L;
-            if (available >= consumption.ConsumedMg) continue;
-
-            var message = string.Create(CultureInfo.InvariantCulture,
-                $"{consumption.InventoryItemName}: saldo {available / 1000m:0.000} g para consumo de {consumption.ConsumedMg / 1000m:0.000} g");
-            if (blockSaleOnNegativeStock) throw new InsufficientStockException(message);
-            warnings.Add(message);
-        }
-        return warnings;
-    }
+    private List<string> CheckAvailability(SqliteTransaction transaction, IReadOnlyList<IngredientConsumption> consumptions) =>
+        _stock.CheckAvailability(transaction, consumptions, blockSaleOnNegativeStock);
 
     private void AddItem(SqliteTransaction transaction, string orderId, SaleItem item, Product product, string operatorId)
     {
@@ -221,36 +207,7 @@ public sealed class ItemRegistration(
             insert.ExecuteNonQuery();
         }
 
-        // Os ids vão no payload: a nuvem grava com o MESMO id e client_uuid, e
-        // um reenvio cai no ON CONFLICT em vez de virar um segundo consumo.
-        var ingredients = new List<Dictionary<string, object?>>();
-        foreach (var consumption in item.Consumptions)
-        {
-            var ingredientId = Iso.NewId();
-            var ingredientUuid = Iso.NewId();
-            using (var insert = transaction.Command(
-                       """
-                       INSERT INTO order_item_ingredients
-                           (id, order_item_id, inventory_item_id, inventory_item_name, consumed_mg, unit_cost_cents,
-                            created_at, client_uuid, is_synced)
-                       VALUES ($id, $item, $inventory, $name, $mg, $cost, $now, $uuid, 0)
-                       """,
-                       ("$id", ingredientId), ("$item", item.Id), ("$inventory", consumption.InventoryItemId),
-                       ("$name", consumption.InventoryItemName), ("$mg", consumption.ConsumedMg),
-                       ("$cost", consumption.UnitCostCents), ("$now", now), ("$uuid", ingredientUuid)))
-            {
-                insert.ExecuteNonQuery();
-            }
-            ingredients.Add(new Dictionary<string, object?>
-            {
-                ["id"] = ingredientId,
-                ["client_uuid"] = ingredientUuid,
-                ["inventory_item_id"] = consumption.InventoryItemId,
-                ["inventory_item_name"] = consumption.InventoryItemName,
-                ["consumed_mg"] = consumption.ConsumedMg,
-                ["unit_cost_cents"] = consumption.UnitCostCents,
-            });
-        }
+        var ingredients = _stock.InsertIngredients(transaction, item.Id, item.Consumptions, now);
 
         _outbox.Enqueue(transaction, "order_items", item.Id, clientUuid, "insert", new Dictionary<string, object?>
         {
@@ -275,51 +232,8 @@ public sealed class ItemRegistration(
         });
     }
 
-    /// <summary>Movimento de saída (quantidade negativa) e o cache de saldo, como o <c>register_movement</c>.</summary>
-    private void WriteOff(SqliteTransaction transaction, IngredientConsumption consumption, string orderItemId)
-    {
-        var id = Iso.NewId();
-        var clientUuid = Iso.NewId();
-        var now = Iso.Now(_clock);
-        var quantity = -consumption.ConsumedMg;
-        using (var insert = transaction.Command(
-                   """
-                   INSERT INTO stock_movements
-                       (id, tenant_id, store_id, inventory_item_id, qty_mg, movement_type, reference_type,
-                        reference_id, unit_cost_cents, created_at, origin_device_id, client_uuid, is_synced)
-                   VALUES ($id, $tenant, $store, $inventory, $qty, 'sale', 'order_item', $ref, $cost, $now,
-                           $device, $uuid, 0)
-                   """,
-                   ("$id", id), ("$tenant", terminal.TenantId), ("$store", terminal.StoreId),
-                   ("$inventory", consumption.InventoryItemId), ("$qty", quantity), ("$ref", orderItemId),
-                   ("$cost", consumption.UnitCostCents), ("$now", now), ("$device", terminal.DeviceId),
-                   ("$uuid", clientUuid)))
-        {
-            insert.ExecuteNonQuery();
-        }
-        using (var balance = transaction.Command(
-                   "UPDATE inventory_items SET balance_mg = balance_mg + $qty, updated_at = $now WHERE id = $id",
-                   ("$qty", quantity), ("$now", now), ("$id", consumption.InventoryItemId)))
-        {
-            balance.ExecuteNonQuery();
-        }
-
-        _outbox.Enqueue(transaction, "stock_movements", id, clientUuid, "insert", new Dictionary<string, object?>
-        {
-            ["id"] = id,
-            ["tenant_id"] = terminal.TenantId,
-            ["store_id"] = terminal.StoreId,
-            ["inventory_item_id"] = consumption.InventoryItemId,
-            ["qty_mg"] = quantity,
-            ["movement_type"] = "sale",
-            ["reference_type"] = "order_item",
-            ["reference_id"] = orderItemId,
-            ["unit_cost_cents"] = consumption.UnitCostCents,
-            ["created_at"] = now,
-            ["origin_device_id"] = terminal.DeviceId,
-            ["client_uuid"] = clientUuid,
-        });
-    }
+    private void WriteOff(SqliteTransaction transaction, IngredientConsumption consumption, string orderItemId) =>
+        _stock.WriteOff(transaction, consumption, orderItemId);
 
     /// <summary>O <c>str(Decimal)</c> do Python: "2", "1.5", "0.25" — quantidade vai como texto.</summary>
     private static string PythonDecimal(decimal value) => value.ToString(CultureInfo.InvariantCulture);

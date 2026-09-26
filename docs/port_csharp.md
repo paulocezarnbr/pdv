@@ -418,6 +418,45 @@ A arquitetura existe para que a tela seja testável:
   - **Contingência offline não foi construída** (decisão pendente do dono:
     exige o A1 em cada caixa). Sem conexão, sai o cupom e a nota é pedida
     quando a rede voltar.
+- [ ] **C6e. Servidor do salão** (`Pdv.Data.Edge`) — **em andamento**.
+  - **Contrato por roteiro, não por função.** `contracts/salon.json` é
+    gerado por `apps/desktop-pdv/tests/salon_script.py`: passos em JSON
+    (mesa, comanda, item, cozinha, pareamento, sessão, gerente, turno,
+    saldo de insumo), cada um com a resposta ou a recusa que o Python deu,
+    os eventos que publicou no barramento e a fila do outbox inteira. O
+    `SalonContractTests` roda os mesmos passos no C# e exige o mesmo texto.
+    Ids viram `<idN>` na ordem de aparição e horário vira `<ts>`; hash do
+    ledger, token, código de pareamento e segundos restantes saem trocados
+    por marcador, porque dependem do relógio ou do acaso.
+  - **Feito:** mesas (`TableService`), comandas e contas
+    (`TableOrderService`: abrir idempotente pelo `client_uuid` do celular,
+    lançar, pedir e desfazer conta, transferir, mover itens, juntar,
+    receber inteiro e em parte, cancelar com gerente), cozinha
+    (`KdsService`, com recall), barramento (`EventHub`, que nunca espera o
+    assinante), pareamento com freio (`EdgeAuth`), sessão do garçom
+    (`StaffSessions`), concessão de gerente em memória (`ManagerSessions`)
+    e resultado do turno (`StaffReport`). 172 passos no roteiro. Nas
+    comandas, na cozinha, nas credenciais e na baixa pelo salão, 42
+    mutações, 40 mortas. As duas que sobrevivem são equivalentes: a
+    observação vazia do ticket gravada como NULL (a tela recebe "" nos dois
+    casos) e a gorjeta somada sem filtrar comanda paga (comanda aberta
+    nunca tem gorjeta). As mensagens dos commits `d3081b4` e `00ce757` citam
+    84 e 72 passos; os números certos são 69 e 70.
+  - **Falta:** o servidor HTTP em ASP.NET Core com as rotas do
+    `edge/server.py` (contrato de rotas contra o FastAPI, 401/403 com
+    `X-Auth-Scope`, 409 com a comanda no corpo), o WebSocket do KDS, TLS
+    (`edge/tls.py`), anúncio na rede (`edge/discovery.py`) e a ligação no
+    caixa.
+  - **Baixa de insumo pelo salão (correção nos dois PDVs, 26/09/2026).** O
+    item lançado pelo garçom não baixava estoque: `add_item` gravava
+    `consumptions=()`. Agora baixa **no lançamento**, pela mesma ficha do
+    balcão, e o cancelamento da comanda estorna pelo consumo gravado em
+    `order_item_ingredients` (o remoto já estornava daí). No C#, baixa,
+    estorno e conferência de saldo viraram uma peça só (`StockWriter`),
+    usada pelo balcão, pelo cancelamento e pela mesa. Sem saldo, com a loja
+    bloqueando venda negativa, a mesa recusa como produto não vendável (o
+    app do garçom já mostra essa recusa); o texto é o de cada PDV, que já
+    diferia no balcão.
   - 48 testes novos no PDV, 3 na retaguarda e 1 no `fiscal-net`; 22 regras
     verificadas por mutação.
   - **Pendências.** Reimprimir o DANFE de uma venda que não é a última

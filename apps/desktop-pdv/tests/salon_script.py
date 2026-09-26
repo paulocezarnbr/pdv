@@ -48,6 +48,7 @@ WAITER = "5a1a0000-0000-4000-8000-0000000000a1"
 MANAGER = "5a1a0000-0000-4000-8000-0000000000a2"
 CAFE = "5a1a0000-0000-4000-8000-0000000000b1"
 TORTA = "5a1a0000-0000-4000-8000-0000000000b2"
+FATIA = "5a1a0000-0000-4000-8000-0000000000b3"
 MISSING = "5a1a0000-0000-4000-8000-00000000dead"
 
 
@@ -74,6 +75,14 @@ SEED: dict[str, list[dict[str, Any]]] = {
          # PIN 5160.
          "pin_hash": "$argon2id$v=19$m=65536,t=3,p=4$7CPgBUYfN32CU12ofQnkYA$e76mY7TbKQzMYGGVIVPrfvwwiEn9YKIypLB4ogVSHHg"},
     ],
+    "inventory_items": [
+        {"id": "5a1a0000-0000-4000-8000-0000000000e1", "tenant_id": TENANT, "store_id": STORE,
+         "name": "Farinha", "unit": "mg", "balance_mg": 10_000_000, "min_stock_mg": 0,
+         "avg_cost_cents_per_kg": 650, "updated_at": "2026-09-26T00:00:00.000+00:00"},
+        {"id": "5a1a0000-0000-4000-8000-0000000000e2", "tenant_id": TENANT, "store_id": STORE,
+         "name": "Chocolate", "unit": "mg", "balance_mg": 5_000_000, "min_stock_mg": 0,
+         "avg_cost_cents_per_kg": 4_200, "updated_at": "2026-09-26T00:00:00.000+00:00"},
+    ],
     "products": [
         {"id": "5a1a0000-0000-4000-8000-0000000000b1", "tenant_id": TENANT, "store_id": STORE,
          "sku": "CAFE", "name": "Café coado", "pricing_mode": "unit", "price_cents": 700,
@@ -81,6 +90,24 @@ SEED: dict[str, list[dict[str, Any]]] = {
         {"id": "5a1a0000-0000-4000-8000-0000000000b2", "tenant_id": TENANT, "store_id": STORE,
          "sku": "TORTA", "name": "Torta de limão", "pricing_mode": "weight", "price_cents": 5900,
          "updated_at": "2026-09-26T00:00:00.000+00:00"},
+        # Unitário COM ficha: é o que prova a baixa de insumo pelo salão.
+        {"id": "5a1a0000-0000-4000-8000-0000000000b3", "tenant_id": TENANT, "store_id": STORE,
+         "sku": "FATIA", "name": "Fatia de torta", "pricing_mode": "unit", "price_cents": 1450,
+         "recipe_id": "5a1a0000-0000-4000-8000-0000000000f1",
+         "updated_at": "2026-09-26T00:00:00.000+00:00"},
+    ],
+    "recipes": [
+        {"id": "5a1a0000-0000-4000-8000-0000000000f1", "tenant_id": TENANT,
+         "product_id": "5a1a0000-0000-4000-8000-0000000000b3", "base_qty_g": 150, "yield_factor": "0.92",
+         "updated_at": "2026-09-26T00:00:00.000+00:00"},
+    ],
+    "recipe_lines": [
+        {"id": "5a1a0000-0000-4000-8000-0000000000f2", "recipe_id": "5a1a0000-0000-4000-8000-0000000000f1",
+         "inventory_item_id": "5a1a0000-0000-4000-8000-0000000000e1", "qty_per_base_mg": 37_500,
+         "waste_percent": "2", "updated_at": "2026-09-26T00:00:00.000+00:00"},
+        {"id": "5a1a0000-0000-4000-8000-0000000000f3", "recipe_id": "5a1a0000-0000-4000-8000-0000000000f1",
+         "inventory_item_id": "5a1a0000-0000-4000-8000-0000000000e2", "qty_per_base_mg": 48_000,
+         "waste_percent": "3", "updated_at": "2026-09-26T00:00:00.000+00:00"},
     ],
 }
 
@@ -202,11 +229,23 @@ SCRIPT: list[dict[str, Any]] = [
      "save": {"o4": "order_id"}},
     {"op": "orders.add_item", "args": {"order_id": "$o4", "client_uuid": _uuid(0xd012), "product_id": CAFE,
                                        "quantity": "1", "notes": "com leite"}},
+    # A fatia baixa insumo no lançamento; porção de zero grama é recusada.
+    {"op": "stock.balances"},
+    {"op": "orders.add_item", "args": {"order_id": "$o4", "client_uuid": _uuid(0xd014), "product_id": FATIA,
+                                       "quantity": "2"}},
+    {"op": "orders.add_item", "args": {"order_id": "$o4", "client_uuid": _uuid(0xd014), "product_id": FATIA,
+                                       "quantity": "2"}},
+    {"op": "orders.add_item", "args": {"order_id": "$o4", "client_uuid": _uuid(0xd015), "product_id": FATIA,
+                                       "quantity": "0.001"}},
+    {"op": "stock.balances"},
     {"op": "orders.merge", "args": {"source_order_id": "$o4", "target_order_id": "$o2"}},
     {"op": "orders.merge", "args": {"source_order_id": "$o4", "target_order_id": "$o2"}},
+    {"op": "stock.balances"},
     {"op": "orders.list_open"},
     {"op": "orders.get", "args": {"order_id": MISSING}},
     {"op": "orders.cancel", "args": {"order_id": "$o2", "reason": "cliente foi embora"}},
+    # Cancelar a comanda que recebeu a fatia devolve o insumo.
+    {"op": "stock.balances"},
     {"op": "orders.items", "args": {"order_id": "$o2"}},
     # Escolher TODOS os itens é o recebimento inteiro, na própria comanda.
     {"op": "orders.open", "args": {"client_uuid": _uuid(0xc009), "operator_id": WAITER, "table_id": "$m2"},
@@ -458,6 +497,10 @@ def run(tmp_path: Path) -> dict[str, Any]:
         "report.by_waiter": lambda: [r.to_json() for r in report.by_waiter()],
         "report.for_user": lambda user_id: report.for_user(EntityId(user_id)),
         "report.totals": lambda: report.totals(),
+        "stock.balances": lambda: [
+            {"name": str(r["name"]), "balance_mg": int(r["balance_mg"])}
+            for r in database.query_all("SELECT name, balance_mg FROM inventory_items ORDER BY name")
+        ],
         "tables.list": lambda include_inactive=False: [
             t.to_json() for t in tables.list_tables(include_inactive=include_inactive)
         ],

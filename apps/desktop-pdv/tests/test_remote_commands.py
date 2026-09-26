@@ -108,8 +108,8 @@ def open_sale(terminal):  # noqa: ANN001, ANN201
 def weighed_sale(terminal):  # noqa: ANN001, ANN201
     """Uma venda com item **pesado**, que é o que tem ficha técnica.
 
-    Os unitários da base de demonstração não consomem insumo, então só aqui dá
-    para observar o estorno de estoque de um cancelamento.
+    O estorno do item unitário com ficha (a fatia) lançado na mesa está em
+    `test_table_stock.py`; aqui é o do balcão.
     """
     database, config = terminal
     checkout = CheckoutService(database, config)

@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json.Nodes;
 using Microsoft.Data.Sqlite;
 using Pdv.Core;
+using Pdv.Core.Stock;
 using Pdv.Data.Sales;
 
 namespace Pdv.Data.Edge;
@@ -92,10 +93,15 @@ public sealed class TableOrderService
     private readonly TimeProvider _clock;
     private readonly Outbox _outbox;
     private readonly SaleRepository _sales;
+    private readonly StockWriter _stock;
+    private readonly bool _blockSaleOnNegativeStock;
 
     public TableOrderService(
-        PdvDatabase database, TerminalIdentity terminal, AuditLedger ledger, EventHub? hub = null, TimeProvider? clock = null)
+        PdvDatabase database, TerminalIdentity terminal, AuditLedger ledger, EventHub? hub = null, TimeProvider? clock = null,
+        bool blockSaleOnNegativeStock = false)
     {
+        _blockSaleOnNegativeStock = blockSaleOnNegativeStock;
+        _stock = new StockWriter(terminal, clock);
         _database = database;
         _terminal = terminal;
         _ledger = ledger;
@@ -230,7 +236,11 @@ public sealed class TableOrderService
             }
             foreach (var itemId in live)
             {
-                CancelItem(transaction, itemId, now, authorizerId, $"[comanda cancelada] {reason}");
+                // O insumo baixou no lançamento; cancelar a comanda o devolve.
+                if (CancelItem(transaction, itemId, now, authorizerId, $"[comanda cancelada] {reason}"))
+                {
+                    _stock.RestoreItem(transaction, itemId);
+                }
             }
             // Ticket de comanda cancelada sai da tela: manter é mandar preparar comida que ninguém vai receber.
             transaction.Command(
@@ -396,6 +406,14 @@ public sealed class TableOrderService
     // -- itens ----------------------------------------------------------------
 
     /// <summary>Acrescenta um item unitário e enfileira o ticket da cozinha. Item por peso não entra pelo celular.</summary>
+    /// <remarks>
+    /// O insumo baixa aqui, no lançamento, pela mesma ficha do balcão: é quando o
+    /// prato vai para a cozinha. Quem cancela a comanda estorna. Até a 1.1.5 a
+    /// mesa não baixava nada, e o CMV do painel só enxergava o balcão.
+    /// </remarks>
+    /// <exception cref="ProductNotSellableException">
+    /// Produto inexistente, por peso, quantidade inválida, ou sem saldo de insumo com a loja bloqueando.
+    /// </exception>
     public TableOrder AddItem(
         string orderId, string clientUuid, string productId, decimal quantity, string notes = "", string station = "cozinha",
         string? createdByUserId = null)
@@ -422,8 +440,24 @@ public sealed class TableOrderService
         var now = Iso.Now(_clock);
         var quantityText = quantity.ToString(CultureInfo.InvariantCulture);
 
+        var recipe = new Catalog(_database.Connection, _terminal.TenantId).RecipeFor(product);
         _database.InTransaction(transaction =>
         {
+            IReadOnlyList<IngredientConsumption> consumptions = [];
+            if (recipe is not null)
+            {
+                try
+                {
+                    consumptions = RecipeExplosion.Explode(recipe, RecipeExplosion.UnitPortionGrams(recipe.BaseQtyG, quantity));
+                    // Saldo baixo só avisa (o padrão do food service); o aviso é do caixa, não do garçom.
+                    _stock.CheckAvailability(transaction, consumptions, _blockSaleOnNegativeStock);
+                }
+                catch (Exception error) when (error is InsufficientStockException or InvalidQuantityException)
+                {
+                    // A recusa de produto que o app do garçom já sabe mostrar, em vez de um 500.
+                    throw new ProductNotSellableException(error.Message);
+                }
+            }
             transaction.Command(
                 """
                 INSERT INTO order_items
@@ -436,6 +470,7 @@ public sealed class TableOrderService
                 ("$id", itemId), ("$order", orderId), ("$tenant", _terminal.TenantId), ("$product", product.Id),
                 ("$name", product.Name), ("$qty", quantityText), ("$price", product.PriceCents), ("$total", total),
                 ("$now", now), ("$by", createdByUserId), ("$uuid", clientUuid)).ExecuteNonQuery();
+            var ingredients = _stock.InsertIngredients(transaction, itemId, consumptions, now);
             _outbox.Enqueue(transaction, "order_items", itemId, clientUuid, "insert", new Dictionary<string, object?>
             {
                 ["id"] = itemId, ["order_id"] = orderId, ["tenant_id"] = _terminal.TenantId, ["product_id"] = product.Id,
@@ -443,8 +478,9 @@ public sealed class TableOrderService
                 ["gross_weight_grams"] = 0, ["tare_grams"] = 0, ["net_weight_grams"] = 0,
                 ["unit_price_cents"] = product.PriceCents, ["total_cents"] = total, ["scale_reading_raw"] = null,
                 ["created_at"] = now, ["client_uuid"] = clientUuid, ["created_by_user_id"] = createdByUserId,
-                ["ingredients"] = new List<object?>(),
+                ["ingredients"] = ingredients,
             });
+            foreach (var consumption in consumptions) _stock.WriteOff(transaction, consumption, itemId);
             transaction.Command(
                 "UPDATE orders SET subtotal_cents = subtotal_cents + $total, total_cents = total_cents + $total, " +
                 "updated_at = $now WHERE id = $id",
@@ -593,17 +629,18 @@ public sealed class TableOrderService
             new Payment(intent.Method, intent.AmountCents, index == cashIndex ? change : 0, null, Iso.NewId()))];
     }
 
-    private void CancelItem(SqliteTransaction transaction, string itemId, string canceledAt, string by, string reason)
+    private bool CancelItem(SqliteTransaction transaction, string itemId, string canceledAt, string by, string reason)
     {
         var changed = transaction.Command(
             "UPDATE order_items SET canceled_at = $at, canceled_by_user_id = $by, cancel_reason = $reason " +
             "WHERE id = $id AND canceled_at IS NULL",
             ("$at", canceledAt), ("$by", by), ("$reason", reason), ("$id", itemId)).ExecuteNonQuery();
-        if (changed == 0) return;
+        if (changed == 0) return false;
         _outbox.Enqueue(transaction, "order_items", itemId, Iso.NewId(), "update", new Dictionary<string, object?>
         {
             ["id"] = itemId, ["canceled_at"] = canceledAt, ["canceled_by_user_id"] = by, ["cancel_reason"] = reason,
         });
+        return true;
     }
 
     private (TableOrder Source, TableOrder Target) TwoOpen(string sourceId, string targetId)

@@ -205,6 +205,12 @@ def run_day(tmp_path: Path) -> list[dict[str, object]]:
         product_id=products["CAFE-EXP"].id, quantity=Decimal("2"),
         created_by_user_id=waiter,
     )
+    # A fatia tem ficha técnica: o lançamento na mesa baixa insumo.
+    orders.add_item(
+        order_id=order.id, client_uuid=EntityId(new_id()),
+        product_id=products["FATIA-CHOC"].id, quantity=Decimal("1"),
+        created_by_user_id=waiter,
+    )
     orders.request_bill(order.id)
     orders.transfer(
         order_id=order.id, table_id=free[1].id,
@@ -224,6 +230,12 @@ def run_day(tmp_path: Path) -> list[dict[str, object]]:
     orders.add_item(
         order_id=mistake.id, client_uuid=EntityId(new_id()),
         product_id=products["CAFE-EXP"].id, quantity=Decimal("1"),
+        created_by_user_id=waiter,
+    )
+    # E o cancelamento da comanda estorna o que a fatia baixou.
+    orders.add_item(
+        order_id=mistake.id, client_uuid=EntityId(new_id()),
+        product_id=products["FATIA-CHOC"].id, quantity=Decimal("1"),
         created_by_user_id=waiter,
     )
     orders.cancel_order(

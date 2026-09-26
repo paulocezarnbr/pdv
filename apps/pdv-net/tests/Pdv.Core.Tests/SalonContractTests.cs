@@ -204,8 +204,22 @@ public sealed partial class SalonContractTests : IDisposable
             "report.by_waiter" => new JsonArray([.. report.ByWaiter().Select(r => (JsonNode)r.ToJson())]),
             "report.for_user" => report.ForUser(Text("user_id")),
             "report.totals" => report.Totals(),
+            "stock.balances" => Balances(),
             _ => throw new InvalidOperationException($"Passo desconhecido no roteiro: {op}"),
         };
+
+        JsonNode Balances()
+        {
+            using var command = _database.Connection.CreateCommand();
+            command.CommandText = "SELECT name, balance_mg FROM inventory_items ORDER BY name";
+            using var reader = command.ExecuteReader();
+            var balances = new JsonArray();
+            while (reader.Read())
+            {
+                balances.Add(new JsonObject { ["name"] = reader.GetString(0), ["balance_mg"] = reader.GetInt64(1) });
+            }
+            return balances;
+        }
 
         JsonNode CreateCode()
         {

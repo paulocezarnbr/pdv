@@ -29,6 +29,7 @@ public sealed class SaleAdjustments(
 {
     private readonly TimeProvider _clock = clock ?? TimeProvider.System;
     private readonly Outbox _outbox = new(clock);
+    private readonly StockWriter _stock = new(terminal, clock);
 
     /// <summary>A conexão desta tela, para reler o pedido que o painel alterou.</summary>
     public SqliteConnection Connection => database.Connection;
@@ -218,49 +219,8 @@ public sealed class SaleAdjustments(
         return new CanceledItem(name, net, total, consumptions);
     }
 
-    /// <summary>O estorno: movimento positivo de ajuste, como o <c>register_movement</c> do cancelamento no Python.</summary>
-    private void Reverse(SqliteTransaction transaction, string inventoryItemId, long consumedMg, string orderItemId)
-    {
-        var id = Iso.NewId();
-        var clientUuid = Iso.NewId();
-        var now = Iso.Now(_clock);
-        using (var insert = transaction.Command(
-                   """
-                   INSERT INTO stock_movements
-                       (id, tenant_id, store_id, inventory_item_id, qty_mg, movement_type, reference_type,
-                        reference_id, unit_cost_cents, created_at, origin_device_id, client_uuid, is_synced)
-                   VALUES ($id, $tenant, $store, $inventory, $qty, 'adjustment', 'order_item_cancel', $ref, 0, $now,
-                           $device, $uuid, 0)
-                   """,
-                   ("$id", id), ("$tenant", terminal.TenantId), ("$store", terminal.StoreId),
-                   ("$inventory", inventoryItemId), ("$qty", consumedMg), ("$ref", orderItemId), ("$now", now),
-                   ("$device", terminal.DeviceId), ("$uuid", clientUuid)))
-        {
-            insert.ExecuteNonQuery();
-        }
-        using (var balance = transaction.Command(
-                   "UPDATE inventory_items SET balance_mg = balance_mg + $qty, updated_at = $now WHERE id = $id",
-                   ("$qty", consumedMg), ("$now", now), ("$id", inventoryItemId)))
-        {
-            balance.ExecuteNonQuery();
-        }
-
-        _outbox.Enqueue(transaction, "stock_movements", id, clientUuid, "insert", new Dictionary<string, object?>
-        {
-            ["id"] = id,
-            ["tenant_id"] = terminal.TenantId,
-            ["store_id"] = terminal.StoreId,
-            ["inventory_item_id"] = inventoryItemId,
-            ["qty_mg"] = consumedMg,
-            ["movement_type"] = "adjustment",
-            ["reference_type"] = "order_item_cancel",
-            ["reference_id"] = orderItemId,
-            ["unit_cost_cents"] = 0,
-            ["created_at"] = now,
-            ["origin_device_id"] = terminal.DeviceId,
-            ["client_uuid"] = clientUuid,
-        });
-    }
+    private void Reverse(SqliteTransaction transaction, string inventoryItemId, long consumedMg, string orderItemId) =>
+        _stock.Reverse(transaction, inventoryItemId, consumedMg, orderItemId);
 
     internal sealed record CanceledItem(
         string ProductName, long NetWeightGrams, long TotalCents, IReadOnlyList<(string InventoryItemId, long ConsumedMg)> Consumptions);
